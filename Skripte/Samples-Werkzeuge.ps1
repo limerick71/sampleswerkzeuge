@@ -2,7 +2,7 @@
 # (c) 2026 Herbert Stoecker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Veroeffentlichung geaenderter Fassungen nur mit Zustimmung.
 <#
 .SYNOPSIS
-    Samples-Werkzeuge (Version 1.1): Oberfläche für Sortieren, Duplikate entfernen und Einstellungen.
+    Samples-Werkzeuge (Version 1.2): Oberfläche für Sortieren, Duplikate entfernen und Einstellungen.
 
 .DESCRIPTION
     Start per Doppelklick auf "GUI_Samples-Werkzeuge.cmd" im Programmordner oder über die

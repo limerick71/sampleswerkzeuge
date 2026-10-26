@@ -23,6 +23,8 @@
   - Bereits vorhandene Zieldateien werden nie ueberschrieben; sie erscheinen schon in der
     Vorschau als "bereits im Ziel".
   - Ordner-Verknuepfungen (Junctions) in der Quelle werden nicht verfolgt.
+  - Liegt derselbe Inhalt schon irgendwo im Ziel (anderer Ordner oder anderer Name),
+    wird die Datei nicht erneut kopiert (Vorfilter Groesse, dann Pruefsumme; Kits ausgenommen).
 #>
 [CmdletBinding()]
 param(
@@ -199,7 +201,7 @@ foreach ($f in $alle) {
     $eintrag = [ordered]@{
         Aktion = 'Kopieren'; Kategorie = ''; Quelle = $f.FullName; Ziel = ''
         GroesseMB = [math]::Round($f.Length / 1MB, 2); Bytes = $f.Length
-        Dedup = $true; ZielRel = ''
+        Dedup = $true; ZielRel = ''; Hinweis = ''
     }
 
     # --- Ignorieren -------------------------------------------------------
@@ -341,8 +343,60 @@ for ($runde = 1; $runde -le 2; $runde++) {
 foreach ($x in $plan) {
     if ($x.Aktion -eq 'Kopieren') {
         $x.Ziel = [IO.Path]::Combine($Ziel, $x.ZielRel)
-        if (Test-Path -LiteralPath $x.Ziel) { $x.Aktion = 'Bereits im Ziel' }
+        if (Test-Path -LiteralPath $x.Ziel) { $x.Aktion = 'Bereits im Ziel'; $x.Hinweis = 'gleicher Pfad im Ziel' }
     }
+}
+
+# ----------------------------------------------------------------------------
+# 3b) Inhaltsabgleich mit dem ganzen Ziel (Version 1.2)
+#     Gleicher Inhalt an anderer Stelle oder unter anderem Namen wird nicht erneut kopiert.
+#     Vorfilter Dateigroesse (kostet nichts), Bestaetigung per Pruefsumme nur bei gleicher Groesse.
+#     Drum-Kits und Construction Kits sind ausgenommen, damit sie vollstaendig bleiben.
+# ----------------------------------------------------------------------------
+$imZielAnzahl = 0
+$pruefKandidaten = @($plan | Where-Object { $_.Aktion -eq 'Kopieren' -and $_.Dedup })
+if ($pruefKandidaten.Count -gt 0 -and (Test-Path -LiteralPath $Ziel)) {
+    Write-Host "Gleiche den Inhalt mit dem Ziel ab ..." -ForegroundColor Cyan
+    $nachGroesse = @{}
+    $zstapel = New-Object System.Collections.Generic.Stack[string]
+    $zstapel.Push($Ziel)
+    while ($zstapel.Count -gt 0) {
+        $o = $zstapel.Pop()
+        try { $inh = @(Get-ChildItem -LiteralPath $o -Force -ErrorAction Stop) } catch { continue }
+        foreach ($e in $inh) {
+            if ($e.PSIsContainer) {
+                if (-not ($e.Attributes -band [IO.FileAttributes]::ReparsePoint)) { $zstapel.Push($e.FullName) }
+            } elseif ($e.Name -match $RxAudio) {
+                $k = [string]$e.Length
+                if (-not $nachGroesse.ContainsKey($k)) { $nachGroesse[$k] = New-Object System.Collections.Generic.List[object] }
+                $nachGroesse[$k].Add($e)
+            }
+        }
+    }
+    $zielHash = @{}
+    $i = 0
+    foreach ($x in $pruefKandidaten) {
+        $i++
+        $k = [string]$x.Bytes
+        if (-not $nachGroesse.ContainsKey($k)) { continue }
+        if ($i % 20 -eq 0) { Write-Progress -Activity 'Inhaltsabgleich mit dem Ziel' -Status "$i / $($pruefKandidaten.Count)" -PercentComplete ($i * 100 / $pruefKandidaten.Count) }
+        try { $h = (Get-FileHash -LiteralPath $x.Quelle -Algorithm MD5 -ErrorAction Stop).Hash } catch { continue }
+        foreach ($z in $nachGroesse[$k]) {
+            if (-not $zielHash.ContainsKey($z.FullName)) {
+                try { $zielHash[$z.FullName] = (Get-FileHash -LiteralPath $z.FullName -Algorithm MD5 -ErrorAction Stop).Hash } catch { $zielHash[$z.FullName] = '' }
+            }
+            if ($zielHash[$z.FullName] -eq $h) {
+                $x.Aktion = 'Bereits im Ziel'
+                $gleicherName = ($z.Name -ieq [IO.Path]::GetFileName($x.Quelle))
+                $x.Hinweis = if ($gleicherName) { 'gleicher Inhalt, gleicher Name, anderer Ordner' } else { "gleicher Inhalt, anderer Name ($($z.Name))" }
+                $x.Ziel = $z.FullName
+                $x.ZielRel = "(identisch mit $($z.FullName))"
+                $imZielAnzahl++
+                break
+            }
+        }
+    }
+    Write-Progress -Activity 'Inhaltsabgleich mit dem Ziel' -Completed
 }
 
 # Anzeigetexte fuer Vorschau (was passieren wuerde) und Protokoll (was passiert ist)
@@ -361,7 +415,7 @@ $TextProtokoll = @{
 }
 function Export-Plan([string]$pfad, [hashtable]$texte) {
     $plan | Select-Object @{ n = 'Aktion'; e = { if ($texte.ContainsKey($_.Aktion)) { $texte[$_.Aktion] } else { $_.Aktion } } },
-        Kategorie, Quelle, Ziel, ZielRel, GroesseMB |
+        Kategorie, Quelle, Ziel, ZielRel, GroesseMB, Hinweis |
         Export-Csv -LiteralPath $pfad -NoTypeInformation -Delimiter ';' -Encoding UTF8
 }
 
@@ -379,6 +433,10 @@ Write-Host "==================== Zusammenfassung ====================" -Foregrou
 Write-Host ("Dateien in der Quelle:                    {0,7}" -f $plan.Count)
 Write-Host ("  neu, werden kopiert:                    {0,7}   ({1:N2} GB)" -f $kopieren.Count, $summeGB) -ForegroundColor Green
 Write-Host ("  schon im Ziel, werden uebersprungen:    {0,7}" -f $nVorhanden)
+if ($imZielAnzahl -gt 0) {
+    $umbenannt = @($plan | Where-Object { $_.Hinweis -like '*anderer Name*' }).Count
+    Write-Host ("    davon an anderer Stelle im Ziel:      {0,7}   (unter anderem Namen: {1})" -f $imZielAnzahl, $umbenannt) -ForegroundColor DarkGray
+}
 Write-Host ("  doppelt in der Quelle, nur 1x kopiert:  {0,7}" -f $dupAnzahl)
 Write-Host ("  Hilfsdateien, werden ignoriert:         {0,7}" -f $nIgnoriert)
 Write-Host ""
@@ -440,7 +498,7 @@ foreach ($x in $kopieren) {
     $i++
     if ($i % 50 -eq 0) { Write-Progress -Activity 'Kopiere Samples' -Status "$i / $($kopieren.Count)" -PercentComplete ($i * 100 / $kopieren.Count) }
     try {
-        if (Test-Path -LiteralPath $x.Ziel) { $x.Aktion = 'Bereits im Ziel'; $vorhanden++; continue }
+        if (Test-Path -LiteralPath $x.Ziel) { $x.Aktion = 'Bereits im Ziel'; $x.Hinweis = 'gleicher Pfad im Ziel'; $vorhanden++; continue }
         $zielDir = Split-Path -Parent $x.Ziel
         if (-not (Test-Path -LiteralPath $zielDir)) { New-Item -ItemType Directory -Path $zielDir -Force | Out-Null }
         Copy-Item -LiteralPath $x.Quelle -Destination $x.Ziel

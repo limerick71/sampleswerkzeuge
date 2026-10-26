@@ -1,5 +1,5 @@
 {\rtf1\ansi\ansicpg1252\deff0{\fonttbl{\f0\fswiss Segoe UI;}}{\colortbl;\red31\green78\blue121;}\viewkind4\uc1\f0\fs20
-\pard\sa200\cf1\b\fs32 Samples-Werkzeuge 1.1.0 \u8211? Dokumentation\b0\cf0\fs20\par
+\pard\sa200\cf1\b\fs32 Samples-Werkzeuge 1.2.0 \u8211? Dokumentation\b0\cf0\fs20\par
 \pard\sa120 Die Samples-Werkzeuge kopieren Sample-Packs aus einem Quellordner sortiert nach Instrument in eine Sample-Bibliothek und entfernen auf Wunsch doppelte Samples im Quellordner. Sie laufen mit dem Windows PowerShell, das bei Windows 10 und 11 dabei ist. Eine Installation ist nicht n\u246?tig.\par
 \pard\sb240\sa100\cf1\b\fs24 1. Ordnerstruktur\b0\cf0\fs20\par
 \pard\fi-280\li560\sa60\bullet\tab GUI_Samples-Werkzeuge.cmd \u8211? startet die Oberfl\u228?che.\par
@@ -27,6 +27,7 @@
 \pard\fi-280\li560\sa60\bullet\tab Das Instrument wird aus dem Dateinamen erkannt, sonst aus den Ordnernamen. One-Shot oder Loop ergibt sich aus Namen, Ordnern oder der L\u228?nge der WAV-Datei (ab 6 Sekunden Loop).\par
 \pard\fi-280\li560\sa60\bullet\tab Dateinamen bleiben unver\u228?ndert. Identische Dateien (Name, Gr\u246?\u223?e und Inhalt) werden nur einmal kopiert und als \u8222?Duplikat \u8211? \u252?bersprungen\u8220? protokolliert.\par
 \pard\fi-280\li560\sa60\bullet\tab Construction Kits und Drum-Kits bleiben als Ganzes erhalten.\par
+\pard\fi-280\li560\sa60\bullet\tab Abgleich mit dem Ziel: Liegt derselbe Inhalt schon irgendwo im Ziel \u8211? in einem anderen Ordner oder unter einem anderen Namen \u8211?, wird die Datei nicht erneut kopiert. Dazu werden zuerst die Dateigr\u246?\u223?en verglichen; nur bei gleicher Gr\u246?\u223?e wird der Inhalt per Pr\u252?fsumme best\u228?tigt. Die Vorschau zeigt in der Spalte \u8222?Hinweis\u8220?, ob es dieselbe Datei unter gleichem Namen oder eine umbenannte Kopie ist, und in \u8222?Ziel\u8220? den Fundort. Dateien aus Drum-Kits und Construction Kits sind ausgenommen, damit die Kits vollst\u228?ndig bleiben.\par
 \pard\fi-280\li560\sa60\bullet\tab Der Ordner ModX (Yamaha-Bibliotheken), Ableton-Analysedateien (.asd) und Systemdateien werden nicht kopiert. Liegt der Programmordner in der Quelle, wird er ebenfalls ausgelassen.\par
 \pard\fi-280\li560\sa60\bullet\tab Vorhandene Dateien im Ziel werden nie \u252?berschrieben. Ein zweiter Lauf kopiert nur Neues.\par
 \pard\fi-280\li560\sa60\bullet\tab Vor dem Kopieren wird der freie Speicher gepr\u252?ft. Reicht er nicht, wird nicht kopiert.\par
@@ -42,6 +43,7 @@
 \pard\fi-280\li560\sa60\bullet\tab Version 0 lag im Ordner E:\\Sounds und Samples\\_Sortier-Skript. Sie kann bleiben; Version 1 liest dort bei Bedarf das alte Protokoll f\u252?r die Duplikat-Bereinigung.\par
 \pard\fi-280\li560\sa60\bullet\tab Die Desktop-Verkn\u252?pfung \u8222?Samples-Werkzeuge\u8220? wird beim ersten Start auf Version 1 umgestellt. Den alten Desktop-Ordner \u8222?Samples-Werkzeuge\u8220? mit den Verkn\u252?pfungen 1\u8211?4 bitte von Hand l\u246?schen.\par
 \pard\sb240\sa100\cf1\b\fs24 8. Versionen\b0\cf0\fs20\par
+\pard\fi-280\li560\sa60\bullet\tab 1.2.0 (26.10.2026): Abgleich neuer Dateien mit dem ganzen Ziel nach Inhalt (Gr\u246?\u223?e, dann Pr\u252?fsumme); gleicher Inhalt in anderem Ordner oder unter anderem Namen wird nicht erneut kopiert.\par
 \pard\fi-280\li560\sa60\bullet\tab 1.1.0 (26.10.2026): Befunde aus dem ersten Windows-Test behoben: ZIP ohne doppelten Ordner, fehlendes Ziel-Laufwerk wird gemeldet, verst\u228?ndliche Zusammenfassung und Vorschau, bereits vorhandene Dateien schon in der Vorschau erkannt, Junctions werden \u252?bersprungen.\par
 \pard\fi-280\li560\sa60\bullet\tab 1.0.0 (26.10.2026): Ordnerstruktur wie die Plugin-Werkzeuge, einstellbare Ordner, neue Oberfl\u228?che mit Status, Begr\u252?\u223?ung und Desktop-Verkn\u252?pfung, Vorschau mit R\u252?ckfrage statt getrennter Starter, Protokolle in eigenem Ordner.\par
 \pard\fi-280\li560\sa60\bullet\tab 0 (21.10.2026): Sortieren, Duplikate entfernen, einfache Oberfl\u228?che, feste Pfade.\par
