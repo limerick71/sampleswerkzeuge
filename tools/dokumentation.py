@@ -1,6 +1,6 @@
 # Erzeugt "Dokumentation Samples-Werkzeuge.rtf" (Aufruf: python3 tools/dokumentation.py)
 import os
-V = "1.2.0"
+V = "1.2.1"
 D = [
 ("h1", f"Samples-Werkzeuge {V} – Dokumentation"),
 ("p", "Die Samples-Werkzeuge kopieren Sample-Packs aus einem Quellordner sortiert nach Instrument in eine Sample-Bibliothek und entfernen auf Wunsch doppelte Samples im Quellordner. Sie laufen mit dem Windows PowerShell, das bei Windows 10 und 11 dabei ist. Eine Installation ist nicht nötig."),
@@ -31,7 +31,8 @@ D = [
 ("li", "Dateinamen bleiben unverändert. Identische Dateien (Name, Größe und Inhalt) werden nur einmal kopiert und als „Duplikat – übersprungen“ protokolliert."),
 ("li", "Construction Kits und Drum-Kits bleiben als Ganzes erhalten."),
 ("li", "Abgleich mit dem Ziel: Liegt derselbe Inhalt schon irgendwo im Ziel – in einem anderen Ordner oder unter einem anderen Namen –, wird die Datei nicht erneut kopiert. Dazu werden zuerst die Dateigrößen verglichen; nur bei gleicher Größe wird der Inhalt per Prüfsumme bestätigt. Die Vorschau zeigt in der Spalte „Hinweis“, ob es dieselbe Datei unter gleichem Namen oder eine umbenannte Kopie ist, und in „Ziel“ den Fundort. Dateien aus Drum-Kits und Construction Kits sind ausgenommen, damit die Kits vollständig bleiben."),
-("li", "Der Ordner ModX (Yamaha-Bibliotheken), Ableton-Analysedateien (.asd) und Systemdateien werden nicht kopiert. Liegt der Programmordner in der Quelle, wird er ebenfalls ausgelassen."),
+("li", "Der Ordner ModX (Yamaha-Bibliotheken) wird nicht kopiert. Liegt der Programmordner in der Quelle, wird er ebenfalls ausgelassen."),
+("li", "Hilfsdateien werden nicht kopiert. Das sind Dateien, die Programme oder Betriebssysteme automatisch anlegen und die keinen Klang enthalten: Ableton-Analysedateien (.asd, legt Ableton bei Bedarf neu an), Ableton-Ordnerinformationen (Ableton Folder/Project Info), Metadaten-Dateien (.xmp), macOS-Systemdateien (.DS_Store und Dateien, die mit „._“ beginnen), Windows-Dateien (Thumbs.db, desktop.ini) sowie Dateien der Samples-Werkzeuge selbst. Die Vorschau nennt in der Spalte „Hinweis“ für jede Hilfsdatei den Grund."),
 ("li", "Vorhandene Dateien im Ziel werden nie überschrieben. Ein zweiter Lauf kopiert nur Neues."),
 ("li", "Vor dem Kopieren wird der freie Speicher geprüft. Reicht er nicht, wird nicht kopiert."),
 ("li", "Ordner-Verknüpfungen (Junctions) in der Quelle werden nicht verfolgt, nicht lesbare Ordner ausgelassen und gezählt. Enthält die Quelle keine einzige Audiodatei, wird nichts kopiert – meist ist dann der falsche Ordner eingestellt."),
@@ -46,6 +47,7 @@ D = [
 ("li", "Version 0 lag im Ordner E:\\Sounds und Samples\\_Sortier-Skript. Sie kann bleiben; Version 1 liest dort bei Bedarf das alte Protokoll für die Duplikat-Bereinigung."),
 ("li", "Die Desktop-Verknüpfung „Samples-Werkzeuge“ wird beim ersten Start auf Version 1 umgestellt. Den alten Desktop-Ordner „Samples-Werkzeuge“ mit den Verknüpfungen 1–4 bitte von Hand löschen."),
 ("h2", "8. Versionen"),
+("li", "1.2.1 (26.10.2026): Quelle ohne Audiodateien zeigt nur noch einen Hinweis statt einer Kopier-Zusammenfassung; Hilfsdateien mit Grund in der Vorschau; Hinweis auf ModX nur, wenn der Ordner existiert."),
 ("li", "1.2.0 (26.10.2026): Abgleich neuer Dateien mit dem ganzen Ziel nach Inhalt (Größe, dann Prüfsumme); gleicher Inhalt in anderem Ordner oder unter anderem Namen wird nicht erneut kopiert."),
 ("li", "1.1.0 (26.10.2026): Befunde aus dem ersten Windows-Test behoben: ZIP ohne doppelten Ordner, fehlendes Ziel-Laufwerk wird gemeldet, verständliche Zusammenfassung und Vorschau, bereits vorhandene Dateien schon in der Vorschau erkannt, Junctions werden übersprungen."),
 ("li", "1.0.0 (26.10.2026): Ordnerstruktur wie die Plugin-Werkzeuge, einstellbare Ordner, neue Oberfläche mit Status, Begrüßung und Desktop-Verknüpfung, Vorschau mit Rückfrage statt getrennter Starter, Protokolle in eigenem Ordner."),

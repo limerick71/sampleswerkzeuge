@@ -8,7 +8,7 @@
 #   <Wurzel>\Protokolle\    Vorschau-, Kopier- und Duplikat-Protokolle (CSV)
 #   <Berichtsordner>\Inventuren\, \Inventur-Vergleiche\   ab Version 2 (Inventur und Bericht)
 
-$ProgrammVersion = '1.2.0'
+$ProgrammVersion = '1.2.1'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'

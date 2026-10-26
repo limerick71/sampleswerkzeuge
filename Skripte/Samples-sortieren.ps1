@@ -183,7 +183,7 @@ while ($stapel.Count -gt 0) {
         } else { $alle.Add($e) }
     }
 }
-Write-Host "Hinweis: Der Ordner 'ModX' (Yamaha-Bibliotheken) wird ausgespart." -ForegroundColor DarkGray
+if (Test-Path -LiteralPath (Join-Path $Quelle 'ModX')) { Write-Host "Hinweis: Der Ordner 'ModX' (Yamaha-Bibliotheken) wird ausgespart." -ForegroundColor DarkGray }
 if ($nichtLesbar -gt 0) { Write-Host "Hinweis: $nichtLesbar Ordner waren nicht lesbar und wurden ausgelassen." -ForegroundColor Yellow }
 $plan = New-Object System.Collections.Generic.List[object]
 
@@ -205,9 +205,15 @@ foreach ($f in $alle) {
     }
 
     # --- Ignorieren -------------------------------------------------------
-    if ($teile[0] -eq '_Sortier-Skript' -or $teile[0] -like 'Samples-Werkzeuge*' -or $nameL -eq '.ds_store' -or $nameL -eq 'thumbs.db' -or
-        $nameL -eq 'desktop.ini' -or $nameL.EndsWith('.asd') -or $nameL.StartsWith('._')) {
-        $eintrag.Aktion = 'Ignoriert'; $eintrag.Kategorie = 'Hilfsdatei'
+    # Hilfsdateien: entstehen automatisch durch Programme oder Betriebssysteme, enthalten keinen Klang
+    $grund = ''
+    if ($teile[0] -eq '_Sortier-Skript' -or $teile[0] -like 'Samples-Werkzeuge*') { $grund = 'Datei der Samples-Werkzeuge' }
+    elseif ($nameL.EndsWith('.asd'))    { $grund = 'Ableton-Analysedatei (.asd), legt Ableton bei Bedarf neu an' }
+    elseif ($nameL -eq '.ds_store' -or $nameL.StartsWith('._')) { $grund = 'macOS-Systemdatei (Finder-Ansicht bzw. Zusatzinformationen)' }
+    elseif ($nameL -eq 'thumbs.db')     { $grund = 'Windows-Vorschaubilder-Zwischenspeicher' }
+    elseif ($nameL -eq 'desktop.ini')   { $grund = 'Windows-Ordnereinstellungen' }
+    if ($grund) {
+        $eintrag.Aktion = 'Ignoriert'; $eintrag.Kategorie = 'Hilfsdatei'; $eintrag.Hinweis = $grund
         $plan.Add([pscustomobject]$eintrag); continue
     }
 
@@ -231,7 +237,7 @@ foreach ($f in $alle) {
     if ($pack -match 'BSH126') {
         $kat = 'Kits'; $zr = Join-Rel @($K.Kits, 'BSH126 Midnight Synth Funk', $relImPack); $eintrag.Dedup = $false
     } elseif ($pack -match 'Tape Stacks') {
-        if ($nameL.EndsWith('.xmp')) { $eintrag.Aktion = 'Ignoriert'; $eintrag.Kategorie = 'Hilfsdatei'; $plan.Add([pscustomobject]$eintrag); continue }
+        if ($nameL.EndsWith('.xmp')) { $eintrag.Aktion = 'Ignoriert'; $eintrag.Kategorie = 'Hilfsdatei'; $eintrag.Hinweis = 'Metadaten-Datei (.xmp)'; $plan.Add([pscustomobject]$eintrag); continue }
         $kat = 'Kits'; $zr = Join-Rel @($K.Kits, $pack, $relImPack); $eintrag.Dedup = $false
     } elseif (($idx = [array]::IndexOf(@($packOrdner | ForEach-Object { $_.ToUpperInvariant() }), 'DRUM KITS')) -ge 0) {
         $rest = $packRel[($idx + 1)..($packRel.Count - 1)]
@@ -239,7 +245,9 @@ foreach ($f in $alle) {
     }
     # --- Ableton-Ordnerinfos, Doku, MIDI, Sonstiges -----------------------
     elseif ($nameL.EndsWith('.xmp') -or $ordnerText -match 'Ableton (Folder|Project) Info') {
-        $eintrag.Aktion = 'Ignoriert'; $eintrag.Kategorie = 'Hilfsdatei'; $plan.Add([pscustomobject]$eintrag); continue
+        $eintrag.Aktion = 'Ignoriert'; $eintrag.Kategorie = 'Hilfsdatei'
+        $eintrag.Hinweis = if ($nameL.EndsWith('.xmp')) { 'Metadaten-Datei (.xmp)' } else { 'Ableton-Ordnerinformation (Ableton Folder/Project Info)' }
+        $plan.Add([pscustomobject]$eintrag); continue
     } elseif ($teile[0] -match '^Komplette St') {
         $kat = 'Songs'; $zr = Join-Rel @($K.Songs, $teile[0], $relImPack)
     } elseif ($teile[0] -match '100ufgrooves') {
@@ -426,7 +434,14 @@ $kopieren = @($plan | Where-Object { $_.Aktion -eq 'Kopieren' })
 $summeGB  = [math]::Round((($kopieren | Measure-Object Bytes -Sum).Sum) / 1GB, 2)
 $nVorhanden = @($plan | Where-Object { $_.Aktion -eq 'Bereits im Ziel' }).Count
 $nIgnoriert = @($plan | Where-Object { $_.Aktion -eq 'Ignoriert' }).Count
-$audioAnzahl = @($plan | Where-Object { $_.Quelle -match $RxAudio }).Count
+$audioAnzahl = @($plan | Where-Object { $_.Aktion -ne 'Ignoriert' -and $_.Quelle -match $RxAudio }).Count
+
+if ($audioAnzahl -eq 0) {
+    Write-Host ""
+    Write-Host ("In der Quelle wurden {0} Datei(en) gefunden, aber keine einzige Audiodatei." -f $plan.Count) -ForegroundColor Yellow
+    Write-Host "Ist der Quellordner richtig eingestellt? Es wird nichts kopiert und keine Vorschau angelegt." -ForegroundColor Yellow
+    return
+}
 
 Write-Host ""
 Write-Host "==================== Zusammenfassung ====================" -ForegroundColor Yellow
@@ -438,7 +453,7 @@ if ($imZielAnzahl -gt 0) {
     Write-Host ("    davon an anderer Stelle im Ziel:      {0,7}   (unter anderem Namen: {1})" -f $imZielAnzahl, $umbenannt) -ForegroundColor DarkGray
 }
 Write-Host ("  doppelt in der Quelle, nur 1x kopiert:  {0,7}" -f $dupAnzahl)
-Write-Host ("  Hilfsdateien, werden ignoriert:         {0,7}" -f $nIgnoriert)
+Write-Host ("  Hilfsdateien, werden ignoriert:         {0,7}   (z. B. .asd, .DS_Store - Grund in der Vorschau)" -f $nIgnoriert)
 Write-Host ""
 if ($kopieren.Count -gt 0) { Write-Host "Neue Dateien nach Kategorie:" }
 $kopieren | Group-Object { ($_.ZielRel -split '[\\/]')[0] } | Sort-Object Name | ForEach-Object {
@@ -465,12 +480,6 @@ Write-Host ""
 Write-Host "Vorschau gespeichert (zeigt nur, was passieren wuerde):" -ForegroundColor Green
 Write-Host "  $vorschauPfad"
 
-if ($audioAnzahl -eq 0) {
-    Write-Host ""
-    Write-Host "In der Quelle wurden keine Audiodateien gefunden. Ist der Quellordner richtig eingestellt?" -ForegroundColor Yellow
-    Write-Host "Es wurde nichts kopiert."
-    return
-}
 if ($kopieren.Count -eq 0) { Write-Host ""; Write-Host "Nichts Neues zu kopieren. Alles ist bereits im Ziel." -ForegroundColor Green; return }
 if (-not $Ausfuehren) {
     if ($NurVorschau -or $zuWenigPlatz) {
