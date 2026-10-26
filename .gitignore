@@ -1,4 +1,5 @@
-Vorschau_*.csv
-Protokoll_*.csv
-Duplikate_*.csv
-*.log
+Protokolle/
+Inventuren/
+Inventur-Vergleiche/
+Skripte/Einstellungen.json
+Skripte/*.log

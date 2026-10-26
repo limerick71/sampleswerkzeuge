@@ -1,0 +1,76 @@
+﻿ERSTE SCHRITTE – Samples-Werkzeuge
+============================================================
+
+Die Samples-Werkzeuge kopieren Sample-Packs aus einem Quellordner sortiert nach
+Instrument (Kick, Snare, Bass, Vocals …, jeweils One-Shots und Loops) in eine
+Sample-Bibliothek und entfernen auf Wunsch doppelte Samples im Quellordner.
+Eine Installation ist nicht nötig.
+
+
+1. ENTPACKEN
+------------------------------------------------------------
+Die ZIP-Datei mit Rechtsklick > „Alle extrahieren …“ an einen festen Ort entpacken,
+z. B. nach Dokumente. Es entsteht ein Ordner mit dem Namen der ZIP-Datei, darin
+liegen die Startdateien. Nicht direkt aus der ZIP-Datei starten.
+
+
+2. STARTEN: GUI_Samples-Werkzeuge.cmd
+------------------------------------------------------------
+Doppelklick auf die Datei. Es öffnet sich die Oberfläche (kurzes Aufblitzen eines
+schwarzen Fensters ist normal).
+
+Beim ersten Start erscheint ein Begrüßungsfenster:
+  - Haken „Verknüpfung auf dem Desktop anlegen“ gesetzt lassen – danach lässt sich
+    das Programm auch über das Symbol „Samples-Werkzeuge“ auf dem Desktop starten.
+  - Mit „Los geht's“ bestätigen.
+Erscheint eine blaue Windows-Warnung („Der Computer wurde durch Windows geschützt“):
+„Weitere Informationen“ > „Trotzdem ausführen“.
+
+
+3. ORDNER EINSTELLEN
+------------------------------------------------------------
+Im Bereich „3 Einstellungen“ mit „Ändern …“ die Ordner wählen:
+  - Quelle: Ordner mit den unsortierten Sample-Packs (Standard E:\Sounds und Samples)
+  - Ziel:   sortierte Sample-Bibliothek (Standard E:\Samples)
+Die übrigen Ordner (Downloads, Download-Archiv, Berichte) werden erst in den
+nächsten Versionen genutzt. Die Auswahl wird gespeichert.
+
+
+4. SORTIEREN
+------------------------------------------------------------
+Im Bereich „1 Sortieren“ auf „Samples sortieren …“ klicken:
+  - Ein Fenster zeigt eine Zusammenfassung, was wohin kopiert würde. Die
+    vollständige Liste liegt als CSV (für Excel) im Ordner „Protokolle“.
+  - Erst nach Eingabe von „J“ wird kopiert. Mit Enter oder „N“ wird abgebrochen.
+  - Es wird nur kopiert: nichts gelöscht, nichts überschrieben. Ein zweiter Lauf
+    kopiert nur, was neu dazugekommen ist.
+  - Dateien, die das Programm keinem Instrument zuordnen kann, landen in
+    „_Unsortiert“ und lassen sich von Hand verschieben.
+
+
+5. DUPLIKATE ENTFERNEN (OPTIONAL)
+------------------------------------------------------------
+Im Bereich „2 Duplikate“ auf „Duplikate entfernen …“ klicken:
+  - Grundlage ist das Protokoll des letzten Kopierlaufs. Entfernt werden nur
+    Samples im Quellordner, die beim Kopieren als doppelt erkannt wurden.
+  - Vorher wird per Hash geprüft, ob das behaltene Original noch da ist und
+    denselben Inhalt hat.
+  - Erst nach Eingabe von „J“ gehen die Dateien in den Windows-Papierkorb und
+    lassen sich von dort wiederherstellen („Papierkorb öffnen“).
+
+
+WICHTIG
+------------------------------------------------------------
+  - Die angezeigte Vorschau vor dem Bestätigen prüfen.
+  - Die Nutzung erfolgt auf eigene Verantwortung.
+
+Ausführliche Beschreibung: „Dokumentation Samples-Werkzeuge.rtf“ in diesem Ordner
+oder Knopf „Dokumentation“ in der Oberfläche.
+
+Neueste Version und offizielle Download-Seite (zum Weitergeben bitte nur
+diesen Link verwenden):
+  https://github.com/limerick71/sampleswerkzeuge/releases/latest
+
+© 2026 Herbert Stöcker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle
+Download-Seite weitergeben; Verkauf und Veröffentlichung geänderter Fassungen
+nur mit Zustimmung.

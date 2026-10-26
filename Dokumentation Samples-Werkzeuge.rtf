@@ -1,0 +1,48 @@
+{\rtf1\ansi\ansicpg1252\deff0{\fonttbl{\f0\fswiss Segoe UI;}}{\colortbl;\red31\green78\blue121;}\viewkind4\uc1\f0\fs20
+\pard\sa200\cf1\b\fs32 Samples-Werkzeuge 1.0.0 \u8211? Dokumentation\b0\cf0\fs20\par
+\pard\sa120 Die Samples-Werkzeuge kopieren Sample-Packs aus einem Quellordner sortiert nach Instrument in eine Sample-Bibliothek und entfernen auf Wunsch doppelte Samples im Quellordner. Sie laufen mit dem Windows PowerShell, das bei Windows 10 und 11 dabei ist. Eine Installation ist nicht n\u246?tig.\par
+\pard\sb240\sa100\cf1\b\fs24 1. Ordnerstruktur\b0\cf0\fs20\par
+\pard\fi-280\li560\sa60\bullet\tab GUI_Samples-Werkzeuge.cmd \u8211? startet die Oberfl\u228?che.\par
+\pard\fi-280\li560\sa60\bullet\tab Samples sortieren.cmd, Duplikate entfernen.cmd \u8211? starten die Funktionen direkt ohne Oberfl\u228?che.\par
+\pard\fi-280\li560\sa60\bullet\tab Erste Schritte.txt, Dokumentation Samples-Werkzeuge.rtf \u8211? Anleitungen.\par
+\pard\fi-280\li560\sa60\bullet\tab Skripte \u8211? die PowerShell-Skripte und die Datei Einstellungen.json mit den gew\u228?hlten Ordnern.\par
+\pard\fi-280\li560\sa60\bullet\tab Protokolle \u8211? Vorschauen und Protokolle aller L\u228?ufe als CSV (Semikolon-getrennt, f\u252?r Excel).\par
+\pard\sa120 Jede Version liegt in einem eigenen Ordner, z. B. Samples-Werkzeuge_1. Liegen die Versionen nebeneinander im selben Ordner, \u252?bernimmt eine neue Version beim ersten Start die Einstellungen der zuletzt genutzten Version. Die Ordner bitte trotzdem unter \u8222?Einstellungen\u8220? pr\u252?fen.\par
+\pard\sb240\sa100\cf1\b\fs24 2. Oberfl\u228?che\b0\cf0\fs20\par
+\pard\sa120 Status: zeigt, ob Quelle und Ziel gefunden werden, wann zuletzt kopiert und wann zuletzt Duplikate entfernt wurden, und ob die Desktop-Verkn\u252?pfung auf diese Version zeigt. Der Status wird jedes Mal aktualisiert, wenn das Fenster wieder in den Vordergrund kommt.\par
+\pard\sa120 1 Sortieren: \u8222?Samples sortieren \u8230?\u8220? startet die Sortierung (siehe 4). \u8222?Letztes Protokoll \u246?ffnen\u8220? \u246?ffnet das Protokoll des letzten Kopierlaufs. \u8222?Ziel \u246?ffnen\u8220? und \u8222?Quelle \u246?ffnen\u8220? zeigen die Ordner im Explorer.\par
+\pard\sa120 2 Duplikate: \u8222?Duplikate entfernen \u8230?\u8220? startet die Bereinigung (siehe 5). \u8222?Papierkorb \u246?ffnen\u8220? zeigt den Windows-Papierkorb. Au\u223?erdem lassen sich der Protokoll- und der Programmordner \u246?ffnen.\par
+\pard\sa120 3 Einstellungen: Mit \u8222?\u196?ndern \u8230?\u8220? wird f\u252?r jeden Ordner ein Ordner ausgew\u228?hlt; die Auswahl wird sofort gespeichert. Quelle und Ziel d\u252?rfen nicht gleich sein und nicht ineinander liegen, sonst wird die \u196?nderung abgelehnt.\par
+\pard\sa120 Unten: Desktop-Verkn\u252?pfung anlegen bzw. auf diese Version umstellen, Dokumentation \u246?ffnen, Schlie\u223?en.\par
+\pard\sb240\sa100\cf1\b\fs24 3. Einstellungen\b0\cf0\fs20\par
+\pard\fi-280\li560\sa60\bullet\tab Quelle (Standard E:\\Sounds und Samples): unsortierte Sample-Packs. Wird beim Sortieren nur gelesen.\par
+\pard\fi-280\li560\sa60\bullet\tab Ziel (Standard E:\\Samples): sortierte Bibliothek. Wird beim ersten Kopieren angelegt.\par
+\pard\fi-280\li560\sa60\bullet\tab Downloads (Standard: Download-Ordner des Benutzers): ab Version 3 f\u252?r den Import neuer Packs.\par
+\pard\fi-280\li560\sa60\bullet\tab Download-Archiv (Standard E:\\Samples-Archiv\\Downloads): ab Version 3 f\u252?r archivierte Original-Downloads.\par
+\pard\fi-280\li560\sa60\bullet\tab Berichte (Standard: Programmordner): ab Version 2 f\u252?r Inventuren und Inventur-Vergleiche.\par
+\pard\sb240\sa100\cf1\b\fs24 4. Samples sortieren\b0\cf0\fs20\par
+\pard\sa120 Das Skript liest alle Dateien der Quelle, ordnet jede Datei einer Kategorie zu und zeigt eine Zusammenfassung. Die vollst\u228?ndige Liste (Aktion, Kategorie, Quelle, Ziel, Gr\u246?\u223?e) wird als Vorschau_<Datum>.csv im Ordner Protokolle gespeichert. Danach fragt das Skript, ob kopiert werden soll; Standard ist Nein. Nach dem Kopieren entsteht Protokoll_<Datum>.csv; eine Kopie davon liegt im Zielordner.\par
+\pard\sa120 Regeln:\par
+\pard\fi-280\li560\sa60\bullet\tab Zielstruktur: Kategorie\\Instrument\\One-Shots oder Loops\\Pack\\Datei, z. B. 01 Drums\\Kick\\One-Shots\\<Pack>\\BD 14.wav. Kategorien: 01 Drums, 02 Percussion, 03 Bass, 04 Keys & Synth, 05 Guitar, 06 Brass & Sax, 07 Vocals, 08 FX & Noise, 09 Atmos & Field Recordings, 10 Construction Kits, 11 MIDI, 12 Songs & Playalongs, _Lizenzen & Infos, _Sonstiges, _Unsortiert.\par
+\pard\fi-280\li560\sa60\bullet\tab Das Instrument wird aus dem Dateinamen erkannt, sonst aus den Ordnernamen. One-Shot oder Loop ergibt sich aus Namen, Ordnern oder der L\u228?nge der WAV-Datei (ab 6 Sekunden Loop).\par
+\pard\fi-280\li560\sa60\bullet\tab Dateinamen bleiben unver\u228?ndert. Identische Dateien (Name, Gr\u246?\u223?e und Inhalt) werden nur einmal kopiert und als \u8222?Duplikat \u8211? \u252?bersprungen\u8220? protokolliert.\par
+\pard\fi-280\li560\sa60\bullet\tab Construction Kits und Drum-Kits bleiben als Ganzes erhalten.\par
+\pard\fi-280\li560\sa60\bullet\tab Der Ordner ModX (Yamaha-Bibliotheken), Ableton-Analysedateien (.asd) und Systemdateien werden nicht kopiert. Liegt der Programmordner in der Quelle, wird er ebenfalls ausgelassen.\par
+\pard\fi-280\li560\sa60\bullet\tab Vorhandene Dateien im Ziel werden nie \u252?berschrieben. Ein zweiter Lauf kopiert nur Neues.\par
+\pard\fi-280\li560\sa60\bullet\tab Vor dem Kopieren wird der freie Speicher gepr\u252?ft. Reicht er nicht, wird nicht kopiert.\par
+\pard\sb240\sa100\cf1\b\fs24 5. Duplikate entfernen\b0\cf0\fs20\par
+\pard\sa120 Grundlage ist das neueste Protokoll eines Kopierlaufs (im Ordner Protokolle, ersatzweise im Zielordner oder im alten Skript-Ordner von Version 0). F\u252?r jede als Duplikat markierte Datei wird gepr\u252?ft: Sie liegt in der Quelle, ist eine Audiodatei, existiert noch, und das behaltene Original existiert mit identischem Inhalt (SHA-256). Nur dann wird sie entfernt.\par
+\pard\sa120 Nach der Vorschau (Duplikate-Vorschau_<Datum>.csv) fragt das Skript nach; Standard ist Nein. Die Dateien und ihre .asd-Dateien gehen in den Windows-Papierkorb; leer gewordene Ordner ebenfalls. Ergebnis: Duplikate-entfernt_<Datum>.csv.\par
+\pard\sa120 Hinweis: Der Papierkorb hat je Laufwerk eine Gr\u246?\u223?engrenze. Ist sie \u252?berschritten, kann Windows Dateien endg\u252?ltig l\u246?schen statt sie in den Papierkorb zu legen. Eine Warnung davor folgt in einer sp\u228?teren Version.\par
+\pard\sb240\sa100\cf1\b\fs24 6. Start ohne Oberfl\u228?che\b0\cf0\fs20\par
+\pard\sa120 Die Skripte lassen sich auch \u252?ber die .cmd-Dateien oder in PowerShell starten. Schalter: -NurVorschau (nur Vorschau, keine Frage), -Ausfuehren (ohne Frage ausf\u252?hren), -Quelle und -Ziel (abweichende Ordner f\u252?r diesen Lauf).\par
+\pard\sb240\sa100\cf1\b\fs24 7. Umstieg von Version 0\b0\cf0\fs20\par
+\pard\fi-280\li560\sa60\bullet\tab Version 0 lag im Ordner E:\\Sounds und Samples\\_Sortier-Skript. Sie kann bleiben; Version 1 liest dort bei Bedarf das alte Protokoll f\u252?r die Duplikat-Bereinigung.\par
+\pard\fi-280\li560\sa60\bullet\tab Die Desktop-Verkn\u252?pfung \u8222?Samples-Werkzeuge\u8220? wird beim ersten Start auf Version 1 umgestellt. Den alten Desktop-Ordner \u8222?Samples-Werkzeuge\u8220? mit den Verkn\u252?pfungen 1\u8211?4 bitte von Hand l\u246?schen.\par
+\pard\sb240\sa100\cf1\b\fs24 8. Versionen\b0\cf0\fs20\par
+\pard\fi-280\li560\sa60\bullet\tab 1.0.0 (26.10.2026): Ordnerstruktur wie die Plugin-Werkzeuge, einstellbare Ordner, neue Oberfl\u228?che mit Status, Begr\u252?\u223?ung und Desktop-Verkn\u252?pfung, Vorschau mit R\u252?ckfrage statt getrennter Starter, Protokolle in eigenem Ordner.\par
+\pard\fi-280\li560\sa60\bullet\tab 0 (21.10.2026): Sortieren, Duplikate entfernen, einfache Oberfl\u228?che, feste Pfade.\par
+\pard\sb240\sa100\cf1\b\fs24 Download und Urheberrecht\b0\cf0\fs20\par
+\pard\sa120 Neueste Version: https://github.com/limerick71/sampleswerkzeuge/releases/latest\par
+\pard\sa120 \u169? 2026 Herbert St\u246?cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver\u246?ffentlichung ge\u228?nderter Fassungen nur mit Zustimmung. Die Nutzung erfolgt auf eigene Verantwortung.\par
+}

@@ -1,15 +1,17 @@
-﻿<#
+﻿# (c) 2026 Herbert Stoecker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Veroeffentlichung geaenderter Fassungen nur mit Zustimmung.
+<#
 .SYNOPSIS
-  Kopiert Sounds & Samples aus "E:\Sounds und Samples" nach "E:\Samples",
-  sortiert nach Instrument (One-Shots / Loops). Es wird NICHTS geloescht
-  und NICHTS ueberschrieben.
+  Kopiert Sounds & Samples aus dem Quellordner in den Zielordner (Standard:
+  "E:\Sounds und Samples" -> "E:\Samples"), sortiert nach Instrument
+  (One-Shots / Loops). Es wird NICHTS geloescht und NICHTS ueberschrieben.
+  Quelle und Ziel kommen aus Skripte\Einstellungen.json (in der Oberflaeche einstellbar).
 
 .BENUTZUNG
-  1) Vorschau (kopiert nichts, erzeugt nur eine CSV-Liste Quelle -> Ziel):
-       powershell -ExecutionPolicy Bypass -File "E:\Sounds und Samples\_Sortier-Skript\Samples-sortieren.ps1"
-
-  2) Wenn die Vorschau passt, wirklich kopieren:
-       powershell -ExecutionPolicy Bypass -File "E:\Sounds und Samples\_Sortier-Skript\Samples-sortieren.ps1" -Ausfuehren
+  Ohne Schalter: Vorschau anzeigen, CSV in "Protokolle" schreiben und fragen,
+  ob kopiert werden soll (Standard: Nein).
+    -NurVorschau   nur Vorschau, keine Frage
+    -Ausfuehren    ohne Frage kopieren
+    -Quelle / -Ziel  abweichende Ordner fuer diesen Lauf
 
 .REGELN
   - Unter jeder Kategorie bleibt der Pack-Name als Unterordner erhalten.
@@ -22,19 +24,31 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Quelle = 'E:\Sounds und Samples',
-    [string]$Ziel   = 'E:\Samples',
+    [string]$Quelle = '',
+    [string]$Ziel   = '',
+    [switch]$NurVorschau,
     [switch]$Ausfuehren
 )
 
 $ErrorActionPreference = 'Stop'
-$SkriptOrdner = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $PSScriptRoot 'Gemeinsam.ps1')
 $Zeitstempel  = Get-Date -Format 'yyyy-MM-dd_HHmmss'
 
-if (-not (Test-Path -LiteralPath $Quelle)) { throw "Quellordner nicht gefunden: $Quelle" }
+$einst = Get-Einstellungen
+if (-not $Quelle) { $Quelle = $einst.Quelle }
+if (-not $Ziel)   { $Ziel   = $einst.Ziel }
+Write-Host "Samples sortieren (Samples-Werkzeuge $ProgrammVersion)" -ForegroundColor Cyan
+Write-Host "  Quelle: $Quelle"
+Write-Host "  Ziel:   $Ziel"
+Write-Host ""
+
+if (-not (Test-Path -LiteralPath $Quelle)) { throw "Quellordner nicht gefunden: $Quelle  (in der Oberflaeche unter 'Einstellungen' aendern)" }
 $Quelle = (Resolve-Path -LiteralPath $Quelle).ProviderPath.TrimEnd('\','/')
 $Ziel   = $Ziel.TrimEnd('\','/')
-if ($Ziel.StartsWith($Quelle, [StringComparison]::OrdinalIgnoreCase)) { throw "Das Ziel darf nicht innerhalb der Quelle liegen." }
+$pruef = Test-QuelleZiel $Quelle $Ziel
+if ($pruef) { throw $pruef }
+# Programmordner und Protokolle nie mitkopieren, falls sie in der Quelle liegen
+$Ausnahmen = @($wurzel, $protokollOrdner) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\','/') }
 
 # ----------------------------------------------------------------------------
 # Kategorien
@@ -150,6 +164,10 @@ $alle = Get-ChildItem -LiteralPath $Quelle -Force | Where-Object { $_.Name -ne '
 Write-Host "Hinweis: Der Ordner 'ModX' (Yamaha-Bibliotheken) wird ausgespart." -ForegroundColor DarkGray
 $plan = New-Object System.Collections.Generic.List[object]
 
+$alle = @($alle | Where-Object {
+    $voll = $_.FullName
+    -not @($Ausnahmen | Where-Object { $voll.StartsWith($_ + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) }).Count
+})
 foreach ($f in $alle) {
     $rel   = $f.FullName.Substring($Quelle.Length).TrimStart('\','/')
     $teile = $rel -split '[\\/]'
@@ -164,7 +182,7 @@ foreach ($f in $alle) {
     }
 
     # --- Ignorieren -------------------------------------------------------
-    if ($teile[0] -eq '_Sortier-Skript' -or $nameL -eq '.ds_store' -or $nameL -eq 'thumbs.db' -or
+    if ($teile[0] -eq '_Sortier-Skript' -or $teile[0] -like 'Samples-Werkzeuge*' -or $nameL -eq '.ds_store' -or $nameL -eq 'thumbs.db' -or
         $nameL -eq 'desktop.ini' -or $nameL.EndsWith('.asd') -or $nameL.StartsWith('._')) {
         $eintrag.Aktion = 'Ignoriert'; $eintrag.Kategorie = 'Hilfsdatei'
         $plan.Add([pscustomobject]$eintrag); continue
@@ -331,18 +349,27 @@ try {
 } catch { Write-Host "Freier Speicher konnte nicht ermittelt werden." }
 if ($Ausfuehren -and $zuWenigPlatz) { throw "Abbruch wegen zu wenig Speicherplatz." }
 
-$csvName = if ($Ausfuehren) { "Protokoll_$Zeitstempel.csv" } else { "Vorschau_$Zeitstempel.csv" }
-$csvPfad = [IO.Path]::Combine($SkriptOrdner, $csvName)
+$vorschauPfad = [IO.Path]::Combine($protokollOrdner, "Vorschau_$Zeitstempel.csv")
 $plan | Select-Object Aktion, Kategorie, Quelle, Ziel, ZielRel, GroesseMB |
-    Export-Csv -LiteralPath $csvPfad -NoTypeInformation -Delimiter ';' -Encoding UTF8
+    Export-Csv -LiteralPath $vorschauPfad -NoTypeInformation -Delimiter ';' -Encoding UTF8
+Write-Host ""
+Write-Host "Vorschau gespeichert (Excel):" -ForegroundColor Green
+Write-Host "  $vorschauPfad"
 
 if (-not $Ausfuehren) {
+    if ($NurVorschau -or $zuWenigPlatz) {
+        Write-Host "Es wurde nichts kopiert."
+        return
+    }
+    if ($kopieren.Count -eq 0) { Write-Host "Es gibt nichts zu kopieren."; return }
     Write-Host ""
-    Write-Host "VORSCHAU erstellt (es wurde nichts kopiert):" -ForegroundColor Green
-    Write-Host "  $csvPfad"
-    Write-Host "Zum Kopieren das Skript mit dem Schalter -Ausfuehren starten."
-    return
+    if (-not (Read-JaNein "Jetzt $($kopieren.Count) Dateien ($summeGB GB) nach '$Ziel' kopieren?")) {
+        Write-Host "Abgebrochen. Es wurde nichts kopiert." -ForegroundColor Yellow
+        return
+    }
 }
+$csvName = "Protokoll_$Zeitstempel.csv"
+$csvPfad = [IO.Path]::Combine($protokollOrdner, $csvName)
 
 # ----------------------------------------------------------------------------
 # 5) Kopieren (nie ueberschreiben, nie loeschen)

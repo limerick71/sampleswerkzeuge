@@ -1,10 +1,12 @@
-﻿<#
+﻿# (c) 2026 Herbert Stoecker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Veroeffentlichung geaenderter Fassungen nur mit Zustimmung.
+<#
 .SYNOPSIS
-  Entfernt in "E:\Sounds und Samples" die doppelten Samples, also genau die Dateien,
-  die Samples-sortieren.ps1 beim Kopieren als "Duplikat - uebersprungen" markiert hat.
+  Entfernt im Quellordner (Standard "E:\Sounds und Samples") die doppelten Samples, also genau
+  die Dateien, die Samples-sortieren.ps1 beim Kopieren als "Duplikat - uebersprungen" markiert hat.
 
   Sicherheit:
-  - Grundlage ist das neueste Protokoll_*.csv (bzw. Vorschau_*.csv) im Skript-Ordner.
+  - Grundlage ist das neueste Protokoll_*.csv (bzw. Vorschau_*.csv) im Ordner "Protokolle",
+    ersatzweise im Zielordner oder im alten Skript-Ordner (Version 0).
   - Vor jedem Loeschen wird geprueft, ob das behaltene Original noch existiert
     und per Hash denselben Inhalt hat. Sonst bleibt die Datei liegen.
   - Nur Audiodateien werden entfernt (Lizenztexte o. ae. bleiben in jedem Pack).
@@ -13,29 +15,37 @@
   - Ordner, die dadurch komplett leer werden, werden entfernt.
 
 .BENUTZUNG
-  1) Vorschau (loescht nichts):
-       powershell -ExecutionPolicy Bypass -File "E:\Sounds und Samples\_Sortier-Skript\Duplikate-entfernen.ps1"
-  2) Wirklich in den Papierkorb verschieben:
-       powershell -ExecutionPolicy Bypass -File "E:\Sounds und Samples\_Sortier-Skript\Duplikate-entfernen.ps1" -Ausfuehren
+  Ohne Schalter: Vorschau anzeigen, CSV in "Protokolle" schreiben und fragen, ob die Duplikate
+  in den Papierkorb sollen (Standard: Nein).
+    -NurVorschau   nur Vorschau, keine Frage
+    -Ausfuehren    ohne Frage in den Papierkorb verschieben
 #>
 [CmdletBinding()]
 param(
-    [string]$Quelle = 'E:\Sounds und Samples',
+    [string]$Quelle = '',
     [string]$Protokoll = '',
+    [switch]$NurVorschau,
     [switch]$Ausfuehren
 )
 
 $ErrorActionPreference = 'Stop'
-$SkriptOrdner = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $PSScriptRoot 'Gemeinsam.ps1')
 $Zeitstempel  = Get-Date -Format 'yyyy-MM-dd_HHmmss'
+$einst = Get-Einstellungen
+if (-not $Quelle) { $Quelle = $einst.Quelle }
 $Quelle = $Quelle.TrimEnd('\','/')
+Write-Host "Duplikate entfernen (Samples-Werkzeuge $ProgrammVersion)" -ForegroundColor Cyan
+Write-Host "  Quelle: $Quelle"
+Write-Host ""
 $RxAudio = '\.(wav|aiff?|mp3|flac|ogg|rx2|rex|m4a)$'
 
 # --- Protokoll finden --------------------------------------------------------
 if (-not $Protokoll) {
-    $p = Get-ChildItem -LiteralPath $SkriptOrdner -Filter 'Protokoll_*.csv' | Sort-Object Name | Select-Object -Last 1
-    if (-not $p) { $p = Get-ChildItem -LiteralPath $SkriptOrdner -Filter 'Vorschau_*.csv' | Sort-Object Name | Select-Object -Last 1 }
-    if (-not $p) { throw "Kein Protokoll_*.csv oder Vorschau_*.csv im Ordner '$SkriptOrdner' gefunden. Bitte zuerst Samples-sortieren.ps1 ausfuehren." }
+    # Neues Protokoll in "Protokolle", sonst Kopie im Zielordner, sonst alter Skript-Ordner (Version 0)
+    $orte = @($protokollOrdner, $einst.Ziel, (Join-Path $Quelle '_Sortier-Skript'))
+    $p = Get-NeuestesProtokoll 'Protokoll_*.csv' $orte
+    if (-not $p) { $p = Get-NeuestesProtokoll 'Vorschau_*.csv' $orte }
+    if (-not $p) { throw "Kein Protokoll_*.csv oder Vorschau_*.csv gefunden (gesucht in: $($orte -join ', ')). Bitte zuerst 'Samples sortieren' ausfuehren." }
     $Protokoll = $p.FullName
 }
 Write-Host "Verwende Protokoll: $Protokoll" -ForegroundColor Cyan
@@ -71,17 +81,22 @@ $ergebnis | Group-Object Status | ForEach-Object { "{0,-50} {1,5} Dateien" -f $_
 $mb = ($weg | ForEach-Object { [double]($_.GroesseMB -replace ',', '.') } | Measure-Object -Sum).Sum
 Write-Host ("Frei werdender Platz: {0:N1} MB" -f $mb)
 
-$csvName = if ($Ausfuehren) { "Duplikate-entfernt_$Zeitstempel.csv" } else { "Duplikate-Vorschau_$Zeitstempel.csv" }
-$csvPfad = [IO.Path]::Combine($SkriptOrdner, $csvName)
+$vorschauPfad = [IO.Path]::Combine($protokollOrdner, "Duplikate-Vorschau_$Zeitstempel.csv")
+$ergebnis | Export-Csv -LiteralPath $vorschauPfad -NoTypeInformation -Delimiter ';' -Encoding UTF8
+Write-Host ""
+Write-Host "Vorschau gespeichert (Excel):" -ForegroundColor Green
+Write-Host "  $vorschauPfad"
 
 if (-not $Ausfuehren) {
-    $ergebnis | Export-Csv -LiteralPath $csvPfad -NoTypeInformation -Delimiter ';' -Encoding UTF8
+    if ($NurVorschau) { Write-Host "Es wurde nichts geloescht."; return }
+    if ($weg.Count -eq 0) { Write-Host "Es gibt nichts zu entfernen."; return }
     Write-Host ""
-    Write-Host "VORSCHAU erstellt (es wurde nichts geloescht):" -ForegroundColor Green
-    Write-Host "  $csvPfad"
-    Write-Host "Zum Entfernen das Skript mit dem Schalter -Ausfuehren starten."
-    return
+    if (-not (Read-JaNein "Jetzt $($weg.Count) doppelte Dateien in den Papierkorb verschieben?")) {
+        Write-Host "Abgebrochen. Es wurde nichts geloescht." -ForegroundColor Yellow
+        return
+    }
 }
+$csvPfad = [IO.Path]::Combine($protokollOrdner, "Duplikate-entfernt_$Zeitstempel.csv")
 
 # --- In den Papierkorb verschieben -------------------------------------------
 Add-Type -AssemblyName Microsoft.VisualBasic
