@@ -2,7 +2,7 @@
 # (c) 2026 Herbert Stoecker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Veroeffentlichung geaenderter Fassungen nur mit Zustimmung.
 <#
 .SYNOPSIS
-    Samples-Werkzeuge (Version 1.2): Oberfläche für Sortieren, Duplikate entfernen und Einstellungen.
+    Samples-Werkzeuge (Version 2): Oberfläche für Sortieren, Inventur mit Bericht, Duplikate und Einstellungen.
 
 .DESCRIPTION
     Start per Doppelklick auf "GUI_Samples-Werkzeuge.cmd" im Programmordner oder über die
@@ -67,6 +67,19 @@ function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 
         Show-Meldung "Start fehlgeschlagen:`n$($_.Exception.Message)" 'Error'
         return $false
     }
+}
+
+# Neuesten Bericht oeffnen (fehlt die HTML-Datei, wird sie aus der Liste neu erzeugt)
+function Open-Bericht {
+    $c = Get-NeuesteInventur 'Sample'
+    if (-not $c) { Show-Meldung 'Noch keine Inventur vorhanden.' 'Warning'; return }
+    $html = [IO.Path]::ChangeExtension($c.FullName, '.html')
+    if (-not (Test-Path -LiteralPath $html)) {
+        $form.Cursor = 'WaitCursor'
+        try { Start-Process -FilePath $psExe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $skriptOrdner 'Inventur.ps1')`" -NurBericht" -WindowStyle Hidden -Wait } catch { }
+        $form.Cursor = 'Default'
+    }
+    if (Test-Path -LiteralPath $html) { Open-Pfad $html } else { Show-Meldung 'Der Bericht konnte nicht erzeugt werden.' 'Error' }
 }
 
 function Open-Pfad([string]$pfad) {
@@ -196,7 +209,7 @@ $titel.AutoSize = $true
 $form.Controls.Add($titel)
 
 $unter = New-Object System.Windows.Forms.Label
-$unter.Text = "Version $ProgrammVersion - Sortieren, Duplikate und Einstellungen"
+$unter.Text = "Version $ProgrammVersion - Sortieren, Inventur, Bericht und Bereinigung"
 $unter.ForeColor = [System.Drawing.Color]::DimGray
 $unter.Location = New-Object System.Drawing.Point(22, 46)
 $unter.AutoSize = $true
@@ -235,9 +248,9 @@ $gStatus = New-Gruppe 'Status'
 $lblStatus = New-Object System.Windows.Forms.Label
 $lblStatus.Font = $schrift
 $lblStatus.Location = New-Object System.Drawing.Point(14, 24)
-$lblStatus.Size = New-Object System.Drawing.Size(($breite - 36 - 28), 96)
+$lblStatus.Size = New-Object System.Drawing.Size(($breite - 36 - 28), 112)
 $gStatus.Controls.Add($lblStatus)
-Close-Gruppe $gStatus 128
+Close-Gruppe $gStatus 144
 
 # --- 1 Sortieren
 $gSort = New-Gruppe '1  Sortieren'
@@ -251,11 +264,58 @@ $btnProt = New-Knopf $gSort 'Letztes Protokoll öffnen' 1 $gy `
 $gy += 44
 $null = New-Knopf $gSort 'Ziel öffnen' 0 $gy "Öffnet die sortierte Sample-Bibliothek im Explorer." { Open-Pfad (Get-Einstellungen).Ziel }
 $null = New-Knopf $gSort 'Quelle öffnen' 1 $gy "Öffnet den Quellordner im Explorer." { Open-Pfad (Get-Einstellungen).Quelle }
-$gy += 44
+$gy += 42
+$cbRx2 = New-Object System.Windows.Forms.CheckBox
+$cbRx2.Text = 'RX2 beibehalten'; $cbRx2.Font = $schrift; $cbRx2.AutoSize = $true
+$cbRx2.Location = New-Object System.Drawing.Point(16, $gy)
+$cbRx2.Checked = (Get-Einstellungen).RX2Beibehalten
+$cbRx2.Add_CheckedChanged({ try { Set-Einstellung 'RX2Beibehalten' $cbRx2.Checked } catch { } })
+$tipp.SetToolTip($cbRx2, "Haken (Standard): RX2/REX-Dateien werden mitsortiert.`nOhne Haken: RX2-Dateien, zu denen es eine WAV mit gleichem Namen gibt, werden nicht kopiert und beim Sortieren in den Papierkorb verschoben. RX2 ohne WAV-Gegenstück bleiben erhalten.")
+$gSort.Controls.Add($cbRx2)
+$lMac = New-Object System.Windows.Forms.Label
+$lMac.Text = 'macOS-Reste gehen beim Sortieren in den Papierkorb.'
+$lMac.Font = $schrift; $lMac.ForeColor = [System.Drawing.Color]::DimGray; $lMac.AutoSize = $true
+$lMac.Location = New-Object System.Drawing.Point(150, ($gy + 3))
+$gSort.Controls.Add($lMac)
+$gy += 30
 Close-Gruppe $gSort ($gy + 2)
 
+# --- 2 Inventur und Bericht
+$gInv = New-Gruppe '2  Inventur und Bericht'
+$gy = 24
+$null = New-Knopf $gInv 'Inventur starten' 0 $gy `
+    "Erfasst alle Samples und Packs im Ziel (Audio-Eigenschaften, BPM, Tonart, Pack-Art), sucht Duplikate, vergleicht mit der letzten Inventur und erstellt Liste und HTML-Bericht. Es wird nichts verändert." `
+    {
+        $zs = Get-OrdnerStatus (Get-Einstellungen).Ziel
+        if ($zs.Fehlt -or $zs.Text -ne 'vorhanden') { Show-Meldung "Der Zielordner ist nicht vorhanden:`n$((Get-Einstellungen).Ziel)`n`nBitte zuerst sortieren oder unter 'Einstellungen' den richtigen Ordner wählen." 'Warning'; return }
+        [void](Start-Skript 'Inventur.ps1' '' 'Inventur')
+    }
+$btnBericht = New-Knopf $gInv 'Bericht öffnen' 1 $gy `
+    "Öffnet den HTML-Bericht der neuesten Inventur im Browser: Samples, Packs und Duplikate mit Suche, Gliederung, Filtern und Abspielen." `
+    { Open-Bericht }
+$gy += 44
+$btnCsv = New-Knopf $gInv 'Liste öffnen (Excel)' 0 $gy `
+    "Öffnet die neueste Inventur als CSV-Datei (eine Zeile je Sample), z. B. in Excel." `
+    { $c = Get-NeuesteInventur 'Sample'; if ($c) { Open-Pfad $c.FullName } else { Show-Meldung 'Noch keine Inventur vorhanden.' 'Warning' } }
+$btnVgl = New-Knopf $gInv 'Änderungen anzeigen' 1 $gy `
+    "Öffnet den Vergleich der letzten mit der vorherigen Inventur: neu, entfernt, verschoben." `
+    { $c = Get-NeuesterVergleich; if ($c) { Open-Pfad $c.FullName } else { Show-Meldung 'Noch kein Vergleich vorhanden (entsteht ab der zweiten Inventur).' 'Warning' } }
+$gy += 44
+$null = New-Knopf $gInv 'Pack-Arten korrigieren' 0 $gy `
+    "Öffnet Pack-Arten.csv. Dort lässt sich die automatisch bestimmte Pack-Art einzelner Packs überschreiben; gilt ab der nächsten Inventur." `
+    {
+        if (-not (Test-Path -LiteralPath $packArtenPfad)) { Set-Content -LiteralPath $packArtenPfad -Value 'Pack;Pack-Art' -Encoding UTF8 }
+        Show-Meldung ("Eine Zeile je Pack: Name des Packs (wie im Bericht), Semikolon, Pack-Art.`nBeispiel:  Lofi Forest;Atmos/Field Recording`n`nMögliche Pack-Arten:`n" + ($PackArten -join ', ') + "`n`nDie Korrektur gilt ab der nächsten Inventur.")
+        Open-Pfad $packArtenPfad
+    }
+$btnZielDup = New-Knopf $gInv 'Duplikate im Ziel entfernen ...' 1 $gy `
+    "Verschiebt doppelte Samples in der Bibliothek in den Papierkorb. Grundlage ist die neueste Inventur. Je Gruppe bleibt ein Exemplar, Kits bleiben vollständig. Vorher Prüfung, Vorschau und Rückfrage." `
+    { [void](Start-Skript 'Ziel-Duplikate-entfernen.ps1' '' 'Duplikate im Ziel entfernen') }
+$gy += 44
+Close-Gruppe $gInv ($gy + 2)
+
 # --- 2 Duplikate
-$gDup = New-Gruppe '2  Duplikate'
+$gDup = New-Gruppe '3  Duplikate in der Quelle'
 $gy = 24
 $null = New-Knopf $gDup 'Duplikate entfernen ...' 0 $gy `
     "Entfernt im Quellordner die Samples, die beim Kopieren als doppelt erkannt wurden. Vorher Prüfung per Hash, Vorschau und Rückfrage. Die Dateien gehen in den Papierkorb." `
@@ -270,7 +330,7 @@ $gy += 44
 Close-Gruppe $gDup ($gy + 2)
 
 # --- 3 Einstellungen (Ordner)
-$gEin = New-Gruppe '3  Einstellungen'
+$gEin = New-Gruppe '4  Einstellungen'
 $gy = 24
 $pfadFelder = @{}
 foreach ($pe in $PfadEinstellungen) {
@@ -316,7 +376,7 @@ foreach ($pe in $PfadEinstellungen) {
     $gy += 32
 }
 $lHinweis = New-Object System.Windows.Forms.Label
-$lHinweis.Text = 'Downloads, Download-Archiv und Berichte werden ab den nächsten Versionen genutzt.'
+$lHinweis.Text = 'Downloads und Download-Archiv werden ab Version 3 (Import) genutzt.'
 $lHinweis.Font = $schrift; $lHinweis.ForeColor = [System.Drawing.Color]::DimGray
 $lHinweis.Location = New-Object System.Drawing.Point(14, ($gy + 2)); $lHinweis.AutoSize = $true
 $gEin.Controls.Add($lHinweis)
@@ -369,7 +429,15 @@ $pfadLabel.Location = New-Object System.Drawing.Point(20, $y)
 $pfadLabel.Size = New-Object System.Drawing.Size(($breite - 40), 20)
 $form.Controls.Add($pfadLabel)
 $y += 28
-$form.ClientSize = New-Object System.Drawing.Size($breite, $y)
+# Kleiner Bildschirm: Fenster begrenzen und scrollbar machen
+$maxH = 0
+try { $maxH = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Height - 60 } catch { }
+if ($maxH -gt 300 -and $y -gt $maxH) {
+    $form.AutoScroll = $true
+    $form.ClientSize = New-Object System.Drawing.Size(($breite + [System.Windows.Forms.SystemInformation]::VerticalScrollBarWidth), $maxH)
+} else {
+    $form.ClientSize = New-Object System.Drawing.Size($breite, $y)
+}
 
 # ---------------------------------------------------------------------------
 # Status aktualisieren (beim Start und immer, wenn das Fenster wieder aktiv wird)
@@ -390,8 +458,24 @@ function Update-Status {
     else    { $zeilen += 'Letzter Kopierlauf:  noch keiner mit dieser Version' }
     $btnProt.Enabled = [bool]$p
 
+    $inv = Get-NeuesteInventur 'Sample'
+    if ($inv) {
+        $t = "Letzte Inventur:  $((Get-Protokollzeit $inv).ToString('dd.MM.yyyy HH:mm'))"
+        try {
+            $j = Get-Content -LiteralPath ([IO.Path]::ChangeExtension($inv.FullName, '.json')) -Raw -Encoding UTF8 | ConvertFrom-Json
+            $t += " - $($j.Samples) Samples in $($j.Packs) Packs, $($j.GroesseGB) GB"
+            if ([int]$j.DuplikatDateien -gt 0) { $t += ", $($j.DuplikatDateien) Duplikate" }
+        } catch { }
+        $zeilen += $t
+    } else { $zeilen += 'Letzte Inventur:  noch keine - "Inventur starten"' }
+    $btnBericht.Enabled = [bool]$inv
+    $btnCsv.Enabled = [bool]$inv
+    $btnVgl.Enabled = [bool](Get-NeuesterVergleich)
+    $btnZielDup.Enabled = [bool]$inv
+    $cbRx2.Checked = $e.RX2Beibehalten
+
     $dp = Get-NeuestesProtokoll 'Duplikate-entfernt_*.csv'
-    if ($dp) { $zeilen += "Duplikate zuletzt entfernt:  $((Get-Protokollzeit $dp).ToString('dd.MM.yyyy HH:mm'))" }
+    if ($dp) { $zeilen += "Duplikate in der Quelle zuletzt entfernt:  $((Get-Protokollzeit $dp).ToString('dd.MM.yyyy HH:mm'))" }
 
     $ziel = ''
     if (Test-Path -LiteralPath $verknuepfung) {

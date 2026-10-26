@@ -3,8 +3,8 @@
 
 Die Samples-Werkzeuge kopieren Sample-Packs aus einem Quellordner sortiert nach
 Instrument (Kick, Snare, Bass, Vocals …, jeweils One-Shots und Loops) in eine
-Sample-Bibliothek und entfernen auf Wunsch doppelte Samples im Quellordner.
-Eine Installation ist nicht nötig.
+Sample-Bibliothek, erstellen eine Inventur mit HTML-Bericht und entfernen auf
+Wunsch doppelte Samples. Eine Installation ist nicht nötig.
 
 
 1. ENTPACKEN
@@ -29,11 +29,12 @@ Erscheint eine blaue Windows-Warnung („Der Computer wurde durch Windows gesch�
 
 3. ORDNER EINSTELLEN
 ------------------------------------------------------------
-Im Bereich „3 Einstellungen“ mit „Ändern …“ die Ordner wählen:
-  - Quelle: Ordner mit den unsortierten Sample-Packs (Standard E:\Sounds und Samples)
-  - Ziel:   sortierte Sample-Bibliothek (Standard E:\Samples)
-Die übrigen Ordner (Downloads, Download-Archiv, Berichte) werden erst in den
-nächsten Versionen genutzt. Die Auswahl wird gespeichert.
+Im Bereich „4 Einstellungen“ mit „Ändern …“ die Ordner wählen:
+  - Quelle:   Ordner mit den unsortierten Sample-Packs (Standard E:\Sounds und Samples)
+  - Ziel:     sortierte Sample-Bibliothek (Standard E:\Samples)
+  - Berichte: hier entstehen Inventuren und Berichte (Standard: Programmordner)
+Downloads und Download-Archiv werden erst ab Version 3 genutzt.
+Die Auswahl wird gespeichert.
 
 
 4. SORTIEREN
@@ -42,21 +43,35 @@ Im Bereich „1 Sortieren“ auf „Samples sortieren …“ klicken:
   - Ein Fenster zeigt eine Zusammenfassung, was wohin kopiert würde. Die
     vollständige Liste liegt als CSV (für Excel) im Ordner „Protokolle“.
   - Erst nach Eingabe von „J“ wird kopiert. Mit Enter oder „N“ wird abgebrochen.
-  - Es wird nur kopiert: nichts gelöscht, nichts überschrieben. Ein zweiter Lauf
-    kopiert nur, was neu dazugekommen ist.
-  - Dateien, die das Programm keinem Instrument zuordnen kann, landen in
-    „_Unsortiert“ und lassen sich von Hand verschieben.
+  - Es wird nur kopiert, nichts überschrieben. Ein zweiter Lauf kopiert nur, was
+    neu dazugekommen ist – auch wenn derselbe Inhalt im Ziel unter anderem Namen
+    oder in einem anderen Ordner liegt.
+  - macOS-Reste (._-Dateien, .DS_Store) in der Quelle gehen dabei in den Papierkorb.
+  - Häkchen „RX2 beibehalten“ (Standard: an). Ohne Häkchen werden RX2-Dateien,
+    zu denen es eine gleichnamige WAV gibt, nicht kopiert und in den Papierkorb
+    verschoben.
 
 
-5. DUPLIKATE ENTFERNEN (OPTIONAL)
+5. INVENTUR UND BERICHT
 ------------------------------------------------------------
-Im Bereich „2 Duplikate“ auf „Duplikate entfernen …“ klicken:
-  - Grundlage ist das Protokoll des letzten Kopierlaufs. Entfernt werden nur
-    Samples im Quellordner, die beim Kopieren als doppelt erkannt wurden.
-  - Vorher wird per Hash geprüft, ob das behaltene Original noch da ist und
-    denselben Inhalt hat.
-  - Erst nach Eingabe von „J“ gehen die Dateien in den Windows-Papierkorb und
-    lassen sich von dort wiederherstellen („Papierkorb öffnen“).
+Im Bereich „2 Inventur und Bericht“ auf „Inventur starten“ klicken:
+  - Die Bibliothek wird erfasst: jedes Sample mit Pack, Instrument, Dauer, BPM,
+    Tonart usw., dazu Duplikate und Änderungen seit der letzten Inventur.
+    Es wird nichts verändert.
+  - „Bericht öffnen“ zeigt den Bericht im Browser: Samples, Packs und Duplikate
+    mit Suche, Gliederung (Pack, Instrument, BPM, Tonart …), Filtern und ▶ zum
+    Anhören.
+  - „Liste öffnen (Excel)“ öffnet die Inventur als CSV.
+  - „Duplikate im Ziel entfernen …“ verschiebt doppelte Samples der Bibliothek
+    nach Vorschau und Rückfrage in den Papierkorb. Danach neue Inventur starten.
+
+
+6. DUPLIKATE IN DER QUELLE ENTFERNEN (OPTIONAL)
+------------------------------------------------------------
+Im Bereich „3 Duplikate in der Quelle“ auf „Duplikate entfernen …“ klicken:
+  - Entfernt werden nur Samples im Quellordner, die beim Kopieren als doppelt
+    erkannt wurden, nach Prüfung per Hash, Vorschau und „J“.
+  - Die Dateien gehen in den Windows-Papierkorb („Papierkorb öffnen“).
 
 
 WICHTIG

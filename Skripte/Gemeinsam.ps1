@@ -1,14 +1,16 @@
 ﻿# (c) 2026 Herbert Stoecker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Veroeffentlichung geaenderter Fassungen nur mit Zustimmung.
-# Gemeinsam.ps1 - gemeinsame Pfade, Einstellungen und Hilfsfunktionen der Samples-Werkzeuge (Version 1.2)
-# Wird von Samples-Werkzeuge.ps1, Samples-sortieren.ps1 und Duplikate-entfernen.ps1 per Dot-Sourcing geladen.
+# Gemeinsam.ps1 - gemeinsame Pfade, Einstellungen und Hilfsfunktionen der Samples-Werkzeuge (Version 2)
+# Wird von allen Skripten der Samples-Werkzeuge per Dot-Sourcing geladen.
 #
 # Ordnerstruktur (wie bei den Plugin-Werkzeugen):
 #   <Wurzel>\               nur Startdateien (*.cmd) und Dokumentation
-#   <Wurzel>\Skripte\       Skripte und Einstellungen.json
+#   <Wurzel>\Skripte\       Skripte, Einstellungen.json und Pack-Arten.csv (eigene Korrekturen)
 #   <Wurzel>\Protokolle\    Vorschau-, Kopier- und Duplikat-Protokolle (CSV)
-#   <Berichtsordner>\Inventuren\, \Inventur-Vergleiche\   ab Version 2 (Inventur und Bericht)
+#   <Berichtsordner>\Inventuren\           Sample-Inventur_<Datum>.csv/.html/.json, Pack-Inventur_<Datum>.csv
+#   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
+#   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
 
-$ProgrammVersion = '1.2.1'
+$ProgrammVersion = '2.0.0'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -19,6 +21,17 @@ $wurzel           = Split-Path -Parent $skriptOrdner
 $protokollOrdner  = Join-Path $wurzel 'Protokolle'
 $einstellungsPfad = Join-Path $skriptOrdner 'Einstellungen.json'
 $fehlerLog        = Join-Path $skriptOrdner 'Fehler.log'
+$packArtenPfad    = Join-Path $skriptOrdner 'Pack-Arten.csv'
+
+# Audiodateien und macOS-Reste (gemeinsam fuer Sortieren und Inventur)
+$RxAudio    = '\.(wav|aiff?|mp3|flac|ogg|rx2|rex|m4a)$'
+$RxRx2      = '\.(rx2|rex)$'
+$PackArten  = @('Drum-Kit', 'One-Shot-Pack', 'Loop-Pack', 'Construction Kit', 'Melodie/Instrument', 'Vocal-Pack',
+                'Atmos/Field Recording', 'FX-Pack', 'MIDI-Pack', 'Song/Playalong', 'gemischt')
+function Test-MacRest([string]$pfad) {
+    $n = [IO.Path]::GetFileName($pfad)
+    return ($n -eq '.DS_Store' -or $n.StartsWith('._') -or $pfad -match '[\\/]__MACOSX([\\/]|$)')
+}
 
 if (-not (Test-Path -LiteralPath $protokollOrdner)) { try { New-Item -ItemType Directory -Path $protokollOrdner -Force | Out-Null } catch { } }
 
@@ -55,6 +68,7 @@ function Get-StandardEinstellungen {
         Downloads           = (Get-StandardDownloads)
         DownloadArchiv      = 'E:\Samples-Archiv\Downloads'
         Berichtsordner      = $wurzel
+        RX2Beibehalten      = $true
         ErsterStartErledigt = $false
     }
 }
@@ -70,7 +84,7 @@ function Get-Einstellungen {
         } catch { Write-FehlerLog "Einstellungen nicht lesbar: $($_.Exception.Message)" }
     }
     foreach ($k in @($e.Keys)) {
-        if ($k -eq 'ErsterStartErledigt') { $e[$k] = [bool]$e[$k] }
+        if ($k -in 'ErsterStartErledigt', 'RX2Beibehalten') { $e[$k] = ([string]$e[$k]) -notin 'False', '0', '' }
         else { $e[$k] = ([string]$e[$k]).Trim().TrimEnd('\', '/') }
     }
     return $e
@@ -87,6 +101,18 @@ function Set-Einstellung([string]$name, $wert) {
         if ($k -eq 'ErsterStartErledigt' -or [string]$e[$k] -ne [string]$std[$k]) { $obj[$k] = $e[$k] }
     }
     ConvertTo-Json -InputObject $obj | Set-Content -LiteralPath $einstellungsPfad -Encoding UTF8
+}
+
+# Neue Version ohne eigene Pack-Arten-Korrekturen: die der neuesten Nachbar-Version uebernehmen
+if (-not (Test-Path -LiteralPath $packArtenPfad)) {
+    try {
+        $alt = @(Get-ChildItem -LiteralPath (Split-Path -Parent $wurzel) -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -ne $wurzel } |
+            ForEach-Object { Join-Path (Join-Path $_.FullName 'Skripte') 'Pack-Arten.csv' } |
+            Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { Get-Item -LiteralPath $_ } |
+            Sort-Object LastWriteTime -Descending) | Select-Object -First 1
+        if ($alt) { Copy-Item -LiteralPath $alt.FullName -Destination $packArtenPfad -ErrorAction Stop }
+    } catch { }
 }
 
 # Neue Version ohne eigene Einstellungen: die der neuesten Nachbar-Version uebernehmen
@@ -148,6 +174,41 @@ function Get-Protokollzeit($datei) {
         try { return [datetime]::ParseExact("$($Matches[1]) $($Matches[2]):$($Matches[3])", 'yyyy-MM-dd HH:mm', $null) } catch { }
     }
     return $datei.LastWriteTime
+}
+
+# ---------------------------------------------------------------------------
+# Inventur-Dateien
+# ---------------------------------------------------------------------------
+function Get-InventurOrdner  { Join-Path (Get-Einstellungen).Berichtsordner 'Inventuren' }
+function Get-VergleichOrdner { Join-Path (Get-Einstellungen).Berichtsordner 'Inventur-Vergleiche' }
+function Get-NeuesteInventur([string]$art = 'Sample') {
+    $o = Get-InventurOrdner
+    if (-not (Test-Path -LiteralPath $o)) { return $null }
+    Get-ChildItem -LiteralPath $o -Filter "$art-Inventur_*.csv" -File -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending | Select-Object -First 1
+}
+function Get-NeuesterVergleich {
+    $o = Get-VergleichOrdner
+    if (-not (Test-Path -LiteralPath $o)) { return $null }
+    Get-ChildItem -LiteralPath $o -Filter 'Inventur-Vergleich_*.csv' -File -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending | Select-Object -First 1
+}
+
+# ---------------------------------------------------------------------------
+# Papierkorb (unter Windows), im Testmodus (Umgebungsvariable SW_PAPIERKORB) ein Ordner
+# ---------------------------------------------------------------------------
+function Send-Papierkorb([string]$pfad) {
+    if ($env:SW_PAPIERKORB) {
+        $ziel = Join-Path $env:SW_PAPIERKORB ([guid]::NewGuid().ToString('N') + '_' + [IO.Path]::GetFileName($pfad))
+        Move-Item -LiteralPath $pfad -Destination $ziel -Force
+        return
+    }
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    if (Test-Path -LiteralPath $pfad -PathType Container) {
+        [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($pfad, 'OnlyErrorDialogs', 'SendToRecycleBin')
+    } else {
+        [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($pfad, 'OnlyErrorDialogs', 'SendToRecycleBin')
+    }
 }
 
 # Ja/Nein-Abfrage in der Konsole, Standard ist Nein

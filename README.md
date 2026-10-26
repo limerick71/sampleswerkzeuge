@@ -11,9 +11,10 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 | Pfad | Inhalt |
 |---|---|
 | `GUI_Samples-Werkzeuge.cmd` | Startet die Oberfläche |
-| `Samples sortieren.cmd`, `Duplikate entfernen.cmd` | Starten die Funktionen ohne Oberfläche |
+| `Samples sortieren.cmd`, `Inventur starten.cmd`, `Duplikate entfernen.cmd` | Starten die Funktionen ohne Oberfläche |
 | `Erste Schritte.txt`, `Dokumentation Samples-Werkzeuge.rtf` | Anleitungen |
-| `Skripte/` | `Gemeinsam.ps1` (Pfade, Einstellungen), `Samples-Werkzeuge.ps1` (Oberfläche), `Samples-sortieren.ps1`, `Duplikate-entfernen.ps1`; zur Laufzeit `Einstellungen.json` |
+| `Skripte/` | `Gemeinsam.ps1` (Pfade, Einstellungen), `Samples-Werkzeuge.ps1` (Oberfläche), `Samples-sortieren.ps1`, `Inventur.ps1`, `Bericht.ps1` (HTML-Bericht), `Ziel-Duplikate-entfernen.ps1`, `Duplikate-entfernen.ps1`; zur Laufzeit `Einstellungen.json` und `Pack-Arten.csv` |
+| `Inventuren/`, `Inventur-Vergleiche/` | entstehen zur Laufzeit im Berichtsordner: Inventur (CSV, JSON), HTML-Bericht, Vergleiche |
 | `Protokolle/` | entsteht zur Laufzeit: Vorschauen und Protokolle (CSV) |
 | `tools/` | nur im Repository: erzeugt die RTF-Dokumentation (`python3 tools/dokumentation.py`) |
 
@@ -21,13 +22,14 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 
 | Version | Datum | Inhalt |
 |---|---|---|
+| 2.0.0 | 26.10.2026 | Inventur der Bibliothek (Pack-Art, Audio-Eigenschaften, BPM, Tonart, Duplikate, Vergleich), HTML-Bericht im Stil der Plugin-Werkzeuge (Samples/Packs/Duplikate, Gliederung, Filter, Abspielen), Duplikate im Ziel entfernen, macOS-Reste beim Sortieren in den Papierkorb, Häkchen „RX2 beibehalten“ |
 | 1.2.1 | 26.10.2026 | W-07b: Quelle ohne Audiodateien zeigt nur einen Hinweis; Hilfsdateien mit Grund in Vorschau und Dokumentation; ModX-Hinweis nur bei vorhandenem Ordner |
 | 1.2.0 | 26.10.2026 | Abgleich neuer Dateien mit dem ganzen Ziel nach Inhalt (Vorfilter Größe, dann Prüfsumme): gleicher Inhalt in anderem Ordner oder unter anderem Namen wird nicht erneut kopiert; Kits ausgenommen; Spalte „Hinweis“ in Vorschau und Protokoll |
 | 1.1.0 | 26.10.2026 | Befunde aus dem Windows-Test: ZIP ohne doppelten Ordner, fehlendes Ziel-Laufwerk wird gemeldet, verständliche Zusammenfassung, Vorschau und Protokoll, bereits vorhandene Dateien schon in der Vorschau erkannt, Junctions übersprungen, Quelle ohne Audiodateien wird abgewiesen |
 | 1.0.0 | 26.10.2026 | Ordnerstruktur wie Plugin-Werkzeuge, einstellbare Ordner (Quelle, Ziel, Downloads, Download-Archiv, Berichte), neue Oberfläche mit Status, Begrüßung und Desktop-Verknüpfung, Vorschau mit Rückfrage, Protokolle in eigenem Ordner, Einstellungen werden von der Vorversion übernommen |
 | 0 | 21.10.2026 | Ausgangsstand: Sortieren, Duplikate entfernen, einfache Oberfläche, feste Pfade |
 
-Geplant: Version 2 Inventur und HTML-Bericht, Version 3 Import aus Downloads, danach Bereinigung am Ursprungsort.
+Geplant: Version 3 Import aus Downloads, danach Bereinigung am Ursprungsort.
 
 © 2026 Herbert Stöcker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite
 weitergeben; Verkauf und Veröffentlichung geänderter Fassungen nur mit Zustimmung.
