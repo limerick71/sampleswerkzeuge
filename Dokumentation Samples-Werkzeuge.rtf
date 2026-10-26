@@ -1,5 +1,5 @@
 {\rtf1\ansi\ansicpg1252\deff0{\fonttbl{\f0\fswiss Segoe UI;}}{\colortbl;\red31\green78\blue121;}\viewkind4\uc1\f0\fs20
-\pard\sa200\cf1\b\fs32 Samples-Werkzeuge 1.0.0 \u8211? Dokumentation\b0\cf0\fs20\par
+\pard\sa200\cf1\b\fs32 Samples-Werkzeuge 1.1.0 \u8211? Dokumentation\b0\cf0\fs20\par
 \pard\sa120 Die Samples-Werkzeuge kopieren Sample-Packs aus einem Quellordner sortiert nach Instrument in eine Sample-Bibliothek und entfernen auf Wunsch doppelte Samples im Quellordner. Sie laufen mit dem Windows PowerShell, das bei Windows 10 und 11 dabei ist. Eine Installation ist nicht n\u246?tig.\par
 \pard\sb240\sa100\cf1\b\fs24 1. Ordnerstruktur\b0\cf0\fs20\par
 \pard\fi-280\li560\sa60\bullet\tab GUI_Samples-Werkzeuge.cmd \u8211? startet die Oberfl\u228?che.\par
@@ -21,7 +21,7 @@
 \pard\fi-280\li560\sa60\bullet\tab Download-Archiv (Standard E:\\Samples-Archiv\\Downloads): ab Version 3 f\u252?r archivierte Original-Downloads.\par
 \pard\fi-280\li560\sa60\bullet\tab Berichte (Standard: Programmordner): ab Version 2 f\u252?r Inventuren und Inventur-Vergleiche.\par
 \pard\sb240\sa100\cf1\b\fs24 4. Samples sortieren\b0\cf0\fs20\par
-\pard\sa120 Das Skript liest alle Dateien der Quelle, ordnet jede Datei einer Kategorie zu und zeigt eine Zusammenfassung. Die vollst\u228?ndige Liste (Aktion, Kategorie, Quelle, Ziel, Gr\u246?\u223?e) wird als Vorschau_<Datum>.csv im Ordner Protokolle gespeichert. Danach fragt das Skript, ob kopiert werden soll; Standard ist Nein. Nach dem Kopieren entsteht Protokoll_<Datum>.csv; eine Kopie davon liegt im Zielordner.\par
+\pard\sa120 Das Skript liest alle Dateien der Quelle, ordnet jede Datei einer Kategorie zu und zeigt eine Zusammenfassung: wie viele Dateien neu sind und kopiert werden, wie viele schon im Ziel liegen und \u252?bersprungen werden, wie viele in der Quelle doppelt sind und wie viele Hilfsdateien ignoriert werden. Die vollst\u228?ndige Liste wird als Vorschau_<Datum>.csv im Ordner Protokolle gespeichert; sie zeigt nur, was passieren w\u252?rde (\u8222?wird kopiert\u8220?, \u8222?bereits im Ziel \u8211? wird nicht kopiert\u8220? \u8230?). Danach fragt das Skript, ob die neuen Dateien kopiert werden sollen; Standard ist Nein. Bei Abbruch entsteht kein Protokoll. Nach dem Kopieren entsteht Protokoll_<Datum>.csv mit dem Ergebnis (\u8222?kopiert\u8220?, \u8222?bereits im Ziel \u8211? nicht kopiert\u8220? \u8230?); eine Kopie davon liegt im Zielordner. Gibt es nichts Neues, endet das Skript mit \u8222?Nichts Neues zu kopieren\u8220?.\par
 \pard\sa120 Regeln:\par
 \pard\fi-280\li560\sa60\bullet\tab Zielstruktur: Kategorie\\Instrument\\One-Shots oder Loops\\Pack\\Datei, z. B. 01 Drums\\Kick\\One-Shots\\<Pack>\\BD 14.wav. Kategorien: 01 Drums, 02 Percussion, 03 Bass, 04 Keys & Synth, 05 Guitar, 06 Brass & Sax, 07 Vocals, 08 FX & Noise, 09 Atmos & Field Recordings, 10 Construction Kits, 11 MIDI, 12 Songs & Playalongs, _Lizenzen & Infos, _Sonstiges, _Unsortiert.\par
 \pard\fi-280\li560\sa60\bullet\tab Das Instrument wird aus dem Dateinamen erkannt, sonst aus den Ordnernamen. One-Shot oder Loop ergibt sich aus Namen, Ordnern oder der L\u228?nge der WAV-Datei (ab 6 Sekunden Loop).\par
@@ -30,6 +30,8 @@
 \pard\fi-280\li560\sa60\bullet\tab Der Ordner ModX (Yamaha-Bibliotheken), Ableton-Analysedateien (.asd) und Systemdateien werden nicht kopiert. Liegt der Programmordner in der Quelle, wird er ebenfalls ausgelassen.\par
 \pard\fi-280\li560\sa60\bullet\tab Vorhandene Dateien im Ziel werden nie \u252?berschrieben. Ein zweiter Lauf kopiert nur Neues.\par
 \pard\fi-280\li560\sa60\bullet\tab Vor dem Kopieren wird der freie Speicher gepr\u252?ft. Reicht er nicht, wird nicht kopiert.\par
+\pard\fi-280\li560\sa60\bullet\tab Ordner-Verkn\u252?pfungen (Junctions) in der Quelle werden nicht verfolgt, nicht lesbare Ordner ausgelassen und gez\u228?hlt. Enth\u228?lt die Quelle keine einzige Audiodatei, wird nichts kopiert \u8211? meist ist dann der falsche Ordner eingestellt.\par
+\pard\fi-280\li560\sa60\bullet\tab Ist das Laufwerk des Ziels nicht vorhanden (z. B. E: auf einem anderen Rechner), zeigt der Status \u8222?NICHT GEFUNDEN\u8220? und das Sortieren startet nicht.\par
 \pard\sb240\sa100\cf1\b\fs24 5. Duplikate entfernen\b0\cf0\fs20\par
 \pard\sa120 Grundlage ist das neueste Protokoll eines Kopierlaufs (im Ordner Protokolle, ersatzweise im Zielordner oder im alten Skript-Ordner von Version 0). F\u252?r jede als Duplikat markierte Datei wird gepr\u252?ft: Sie liegt in der Quelle, ist eine Audiodatei, existiert noch, und das behaltene Original existiert mit identischem Inhalt (SHA-256). Nur dann wird sie entfernt.\par
 \pard\sa120 Nach der Vorschau (Duplikate-Vorschau_<Datum>.csv) fragt das Skript nach; Standard ist Nein. Die Dateien und ihre .asd-Dateien gehen in den Windows-Papierkorb; leer gewordene Ordner ebenfalls. Ergebnis: Duplikate-entfernt_<Datum>.csv.\par
@@ -40,6 +42,7 @@
 \pard\fi-280\li560\sa60\bullet\tab Version 0 lag im Ordner E:\\Sounds und Samples\\_Sortier-Skript. Sie kann bleiben; Version 1 liest dort bei Bedarf das alte Protokoll f\u252?r die Duplikat-Bereinigung.\par
 \pard\fi-280\li560\sa60\bullet\tab Die Desktop-Verkn\u252?pfung \u8222?Samples-Werkzeuge\u8220? wird beim ersten Start auf Version 1 umgestellt. Den alten Desktop-Ordner \u8222?Samples-Werkzeuge\u8220? mit den Verkn\u252?pfungen 1\u8211?4 bitte von Hand l\u246?schen.\par
 \pard\sb240\sa100\cf1\b\fs24 8. Versionen\b0\cf0\fs20\par
+\pard\fi-280\li560\sa60\bullet\tab 1.1.0 (26.10.2026): Befunde aus dem ersten Windows-Test behoben: ZIP ohne doppelten Ordner, fehlendes Ziel-Laufwerk wird gemeldet, verst\u228?ndliche Zusammenfassung und Vorschau, bereits vorhandene Dateien schon in der Vorschau erkannt, Junctions werden \u252?bersprungen.\par
 \pard\fi-280\li560\sa60\bullet\tab 1.0.0 (26.10.2026): Ordnerstruktur wie die Plugin-Werkzeuge, einstellbare Ordner, neue Oberfl\u228?che mit Status, Begr\u252?\u223?ung und Desktop-Verkn\u252?pfung, Vorschau mit R\u252?ckfrage statt getrennter Starter, Protokolle in eigenem Ordner.\par
 \pard\fi-280\li560\sa60\bullet\tab 0 (21.10.2026): Sortieren, Duplikate entfernen, einfache Oberfl\u228?che, feste Pfade.\par
 \pard\sb240\sa100\cf1\b\fs24 Download und Urheberrecht\b0\cf0\fs20\par

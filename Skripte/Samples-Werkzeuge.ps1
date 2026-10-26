@@ -2,7 +2,7 @@
 # (c) 2026 Herbert Stoecker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Veroeffentlichung geaenderter Fassungen nur mit Zustimmung.
 <#
 .SYNOPSIS
-    Samples-Werkzeuge (Version 1): Oberfläche für Sortieren, Duplikate entfernen und Einstellungen.
+    Samples-Werkzeuge (Version 1.1): Oberfläche für Sortieren, Duplikate entfernen und Einstellungen.
 
 .DESCRIPTION
     Start per Doppelklick auf "GUI_Samples-Werkzeuge.cmd" im Programmordner oder über die
@@ -102,6 +102,8 @@ function Test-OrdnerBereit([switch]$NurQuelle) {
     if (-not $NurQuelle) {
         $f = Test-QuelleZiel $e.Quelle $e.Ziel
         if ($f) { Show-Meldung "$f`n`nBitte unter 'Einstellungen' korrigieren." 'Warning'; return $false }
+        $zs = Get-OrdnerStatus $e.Ziel
+        if ($zs.Fehlt) { Show-Meldung "Der Zielordner ist nicht erreichbar:`n$($e.Ziel)`n$($zs.Text)`n`nBitte unter 'Einstellungen' den richtigen Ordner wählen." 'Warning'; return $false }
     }
     return $true
 }
@@ -378,7 +380,8 @@ function Update-Status {
 
     $zeilen = @()
     $q = if (Test-Path -LiteralPath $e.Quelle) { 'gefunden' } else { 'NICHT GEFUNDEN - bitte unter Einstellungen wählen' }
-    $z = if (Test-Path -LiteralPath $e.Ziel) { 'vorhanden' } else { 'noch nicht vorhanden (wird beim Kopieren angelegt)' }
+    $zs = Get-OrdnerStatus $e.Ziel
+    $z = if ($zs.Fehlt) { "$($zs.Text) - bitte unter Einstellungen wählen" } else { $zs.Text }
     $zeilen += "Quelle:  $q"
     $zeilen += "Ziel:  $z"
 

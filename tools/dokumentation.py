@@ -1,6 +1,6 @@
 # Erzeugt "Dokumentation Samples-Werkzeuge.rtf" (Aufruf: python3 tools/dokumentation.py)
 import os
-V = "1.0.0"
+V = "1.1.0"
 D = [
 ("h1", f"Samples-Werkzeuge {V} – Dokumentation"),
 ("p", "Die Samples-Werkzeuge kopieren Sample-Packs aus einem Quellordner sortiert nach Instrument in eine Sample-Bibliothek und entfernen auf Wunsch doppelte Samples im Quellordner. Sie laufen mit dem Windows PowerShell, das bei Windows 10 und 11 dabei ist. Eine Installation ist nicht nötig."),
@@ -24,7 +24,7 @@ D = [
 ("li", "Download-Archiv (Standard E:\\Samples-Archiv\\Downloads): ab Version 3 für archivierte Original-Downloads."),
 ("li", "Berichte (Standard: Programmordner): ab Version 2 für Inventuren und Inventur-Vergleiche."),
 ("h2", "4. Samples sortieren"),
-("p", "Das Skript liest alle Dateien der Quelle, ordnet jede Datei einer Kategorie zu und zeigt eine Zusammenfassung. Die vollständige Liste (Aktion, Kategorie, Quelle, Ziel, Größe) wird als Vorschau_<Datum>.csv im Ordner Protokolle gespeichert. Danach fragt das Skript, ob kopiert werden soll; Standard ist Nein. Nach dem Kopieren entsteht Protokoll_<Datum>.csv; eine Kopie davon liegt im Zielordner."),
+("p", "Das Skript liest alle Dateien der Quelle, ordnet jede Datei einer Kategorie zu und zeigt eine Zusammenfassung: wie viele Dateien neu sind und kopiert werden, wie viele schon im Ziel liegen und übersprungen werden, wie viele in der Quelle doppelt sind und wie viele Hilfsdateien ignoriert werden. Die vollständige Liste wird als Vorschau_<Datum>.csv im Ordner Protokolle gespeichert; sie zeigt nur, was passieren würde („wird kopiert“, „bereits im Ziel – wird nicht kopiert“ …). Danach fragt das Skript, ob die neuen Dateien kopiert werden sollen; Standard ist Nein. Bei Abbruch entsteht kein Protokoll. Nach dem Kopieren entsteht Protokoll_<Datum>.csv mit dem Ergebnis („kopiert“, „bereits im Ziel – nicht kopiert“ …); eine Kopie davon liegt im Zielordner. Gibt es nichts Neues, endet das Skript mit „Nichts Neues zu kopieren“."),
 ("p", "Regeln:"),
 ("li", "Zielstruktur: Kategorie\\Instrument\\One-Shots oder Loops\\Pack\\Datei, z. B. 01 Drums\\Kick\\One-Shots\\<Pack>\\BD 14.wav. Kategorien: 01 Drums, 02 Percussion, 03 Bass, 04 Keys & Synth, 05 Guitar, 06 Brass & Sax, 07 Vocals, 08 FX & Noise, 09 Atmos & Field Recordings, 10 Construction Kits, 11 MIDI, 12 Songs & Playalongs, _Lizenzen & Infos, _Sonstiges, _Unsortiert."),
 ("li", "Das Instrument wird aus dem Dateinamen erkannt, sonst aus den Ordnernamen. One-Shot oder Loop ergibt sich aus Namen, Ordnern oder der Länge der WAV-Datei (ab 6 Sekunden Loop)."),
@@ -33,6 +33,8 @@ D = [
 ("li", "Der Ordner ModX (Yamaha-Bibliotheken), Ableton-Analysedateien (.asd) und Systemdateien werden nicht kopiert. Liegt der Programmordner in der Quelle, wird er ebenfalls ausgelassen."),
 ("li", "Vorhandene Dateien im Ziel werden nie überschrieben. Ein zweiter Lauf kopiert nur Neues."),
 ("li", "Vor dem Kopieren wird der freie Speicher geprüft. Reicht er nicht, wird nicht kopiert."),
+("li", "Ordner-Verknüpfungen (Junctions) in der Quelle werden nicht verfolgt, nicht lesbare Ordner ausgelassen und gezählt. Enthält die Quelle keine einzige Audiodatei, wird nichts kopiert – meist ist dann der falsche Ordner eingestellt."),
+("li", "Ist das Laufwerk des Ziels nicht vorhanden (z. B. E: auf einem anderen Rechner), zeigt der Status „NICHT GEFUNDEN“ und das Sortieren startet nicht."),
 ("h2", "5. Duplikate entfernen"),
 ("p", "Grundlage ist das neueste Protokoll eines Kopierlaufs (im Ordner Protokolle, ersatzweise im Zielordner oder im alten Skript-Ordner von Version 0). Für jede als Duplikat markierte Datei wird geprüft: Sie liegt in der Quelle, ist eine Audiodatei, existiert noch, und das behaltene Original existiert mit identischem Inhalt (SHA-256). Nur dann wird sie entfernt."),
 ("p", "Nach der Vorschau (Duplikate-Vorschau_<Datum>.csv) fragt das Skript nach; Standard ist Nein. Die Dateien und ihre .asd-Dateien gehen in den Windows-Papierkorb; leer gewordene Ordner ebenfalls. Ergebnis: Duplikate-entfernt_<Datum>.csv."),
@@ -43,6 +45,7 @@ D = [
 ("li", "Version 0 lag im Ordner E:\\Sounds und Samples\\_Sortier-Skript. Sie kann bleiben; Version 1 liest dort bei Bedarf das alte Protokoll für die Duplikat-Bereinigung."),
 ("li", "Die Desktop-Verknüpfung „Samples-Werkzeuge“ wird beim ersten Start auf Version 1 umgestellt. Den alten Desktop-Ordner „Samples-Werkzeuge“ mit den Verknüpfungen 1–4 bitte von Hand löschen."),
 ("h2", "8. Versionen"),
+("li", "1.1.0 (26.10.2026): Befunde aus dem ersten Windows-Test behoben: ZIP ohne doppelten Ordner, fehlendes Ziel-Laufwerk wird gemeldet, verständliche Zusammenfassung und Vorschau, bereits vorhandene Dateien schon in der Vorschau erkannt, Junctions werden übersprungen."),
 ("li", "1.0.0 (26.10.2026): Ordnerstruktur wie die Plugin-Werkzeuge, einstellbare Ordner, neue Oberfläche mit Status, Begrüßung und Desktop-Verknüpfung, Vorschau mit Rückfrage statt getrennter Starter, Protokolle in eigenem Ordner."),
 ("li", "0 (21.10.2026): Sortieren, Duplikate entfernen, einfache Oberfläche, feste Pfade."),
 ("h2", "Download und Urheberrecht"),

@@ -1,5 +1,5 @@
 ﻿# (c) 2026 Herbert Stoecker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Veroeffentlichung geaenderter Fassungen nur mit Zustimmung.
-# Gemeinsam.ps1 - gemeinsame Pfade, Einstellungen und Hilfsfunktionen der Samples-Werkzeuge (Version 1)
+# Gemeinsam.ps1 - gemeinsame Pfade, Einstellungen und Hilfsfunktionen der Samples-Werkzeuge (Version 1.1)
 # Wird von Samples-Werkzeuge.ps1, Samples-sortieren.ps1 und Duplikate-entfernen.ps1 per Dot-Sourcing geladen.
 #
 # Ordnerstruktur (wie bei den Plugin-Werkzeugen):
@@ -8,7 +8,7 @@
 #   <Wurzel>\Protokolle\    Vorschau-, Kopier- und Duplikat-Protokolle (CSV)
 #   <Berichtsordner>\Inventuren\, \Inventur-Vergleiche\   ab Version 2 (Inventur und Bericht)
 
-$ProgrammVersion = '1.0.0'
+$ProgrammVersion = '1.1.0'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -117,6 +117,20 @@ function Test-QuelleZiel([string]$quelle, [string]$ziel) {
     if ($z.StartsWith($q, [StringComparison]::OrdinalIgnoreCase)) { return 'Das Ziel darf nicht innerhalb der Quelle liegen.' }
     if ($q.StartsWith($z, [StringComparison]::OrdinalIgnoreCase)) { return 'Die Quelle darf nicht innerhalb des Ziels liegen.' }
     return ''
+}
+
+# Zustand eines Ordners fuer Status und Pruefung: Text und ob er unerreichbar ist
+# (Laufwerk fehlt). Ein fehlender Ordner auf vorhandenem Laufwerk gilt als "wird angelegt".
+function Get-OrdnerStatus([string]$pfad) {
+    if (-not $pfad) { return @{ Text = 'nicht eingestellt'; Fehlt = $true } }
+    if (Test-Path -LiteralPath $pfad) { return @{ Text = 'vorhanden'; Fehlt = $false } }
+    $root = ''
+    try { $root = [IO.Path]::GetPathRoot($pfad) } catch { }
+    if (-not $root -or -not (Test-Path -LiteralPath $root)) {
+        $lw = if ($root) { $root.TrimEnd('\', '/') } else { $pfad }
+        return @{ Text = "NICHT GEFUNDEN (Laufwerk $lw nicht vorhanden)"; Fehlt = $true }
+    }
+    return @{ Text = 'noch nicht vorhanden (wird beim Kopieren angelegt)'; Fehlt = $false }
 }
 
 # ---------------------------------------------------------------------------

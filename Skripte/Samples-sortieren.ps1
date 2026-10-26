@@ -20,7 +20,9 @@
   - Construction Kits und Ableton-Drum-Kits bleiben als Ganzes erhalten.
   - Der Ordner "ModX" (Yamaha-Bibliotheken) wird komplett ausgespart.
   - .asd (Ableton-Analyse) und .DS_Store / Thumbs.db werden nicht kopiert.
-  - Bereits vorhandene Zieldateien werden nie ueberschrieben (uebersprungen).
+  - Bereits vorhandene Zieldateien werden nie ueberschrieben; sie erscheinen schon in der
+    Vorschau als "bereits im Ziel".
+  - Ordner-Verknuepfungen (Junctions) in der Quelle werden nicht verfolgt.
 #>
 [CmdletBinding()]
 param(
@@ -47,6 +49,8 @@ $Quelle = (Resolve-Path -LiteralPath $Quelle).ProviderPath.TrimEnd('\','/')
 $Ziel   = $Ziel.TrimEnd('\','/')
 $pruef = Test-QuelleZiel $Quelle $Ziel
 if ($pruef) { throw $pruef }
+$zielStatus = Get-OrdnerStatus $Ziel
+if ($zielStatus.Fehlt) { throw "Ziel nicht erreichbar: $($zielStatus.Text)  (in der Oberflaeche unter 'Einstellungen' aendern)" }
 # Programmordner und Protokolle nie mitkopieren, falls sie in der Quelle liegen
 $Ausnahmen = @($wurzel, $protokollOrdner) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\','/') }
 
@@ -159,9 +163,26 @@ function Join-Rel([string[]]$Teile) {
 # 1) Einlesen und klassifizieren
 # ----------------------------------------------------------------------------
 Write-Host "Lese Dateien aus '$Quelle' ..." -ForegroundColor Cyan
-$alle = Get-ChildItem -LiteralPath $Quelle -Force | Where-Object { $_.Name -ne 'ModX' } |
-    ForEach-Object { if ($_.PSIsContainer) { Get-ChildItem -LiteralPath $_.FullName -Recurse -File -Force } else { $_ } }
+# Eigene Rekursion: Ordner-Verknuepfungen (Junctions, z. B. "Anwendungsdaten") werden nicht verfolgt,
+# nicht lesbare Ordner werden gezaehlt statt das Skript abzubrechen.
+$nichtLesbar = 0
+$alle = New-Object System.Collections.Generic.List[object]
+$stapel = New-Object System.Collections.Generic.Stack[string]
+$stapel.Push($Quelle)
+while ($stapel.Count -gt 0) {
+    $ordner = $stapel.Pop()
+    try { $inhalt = @(Get-ChildItem -LiteralPath $ordner -Force -ErrorAction Stop) }
+    catch { $nichtLesbar++; continue }
+    foreach ($e in $inhalt) {
+        if ($e.PSIsContainer) {
+            if ($e.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+            if ($ordner -eq $Quelle -and $e.Name -eq 'ModX') { continue }
+            $stapel.Push($e.FullName)
+        } else { $alle.Add($e) }
+    }
+}
 Write-Host "Hinweis: Der Ordner 'ModX' (Yamaha-Bibliotheken) wird ausgespart." -ForegroundColor DarkGray
+if ($nichtLesbar -gt 0) { Write-Host "Hinweis: $nichtLesbar Ordner waren nicht lesbar und wurden ausgelassen." -ForegroundColor Yellow }
 $plan = New-Object System.Collections.Generic.List[object]
 
 $alle = @($alle | Where-Object {
@@ -317,23 +338,54 @@ for ($runde = 1; $runde -le 2; $runde++) {
         }
     }
 }
-foreach ($x in $plan) { if ($x.Aktion -eq 'Kopieren') { $x.Ziel = [IO.Path]::Combine($Ziel, $x.ZielRel) } }
+foreach ($x in $plan) {
+    if ($x.Aktion -eq 'Kopieren') {
+        $x.Ziel = [IO.Path]::Combine($Ziel, $x.ZielRel)
+        if (Test-Path -LiteralPath $x.Ziel) { $x.Aktion = 'Bereits im Ziel' }
+    }
+}
+
+# Anzeigetexte fuer Vorschau (was passieren wuerde) und Protokoll (was passiert ist)
+$TextVorschau = @{
+    'Kopieren'                 = 'wird kopiert'
+    'Bereits im Ziel'          = "bereits im Ziel $([char]0x2013) wird nicht kopiert"
+    'Duplikat - uebersprungen' = "Duplikat in der Quelle $([char]0x2013) wird nicht kopiert"
+    'Ignoriert'                = 'ignoriert (Hilfsdatei)'
+}
+$TextProtokoll = @{
+    'Kopiert'                  = 'kopiert'
+    'Kopieren'                 = 'nicht kopiert (Abbruch)'
+    'Bereits im Ziel'          = "bereits im Ziel $([char]0x2013) nicht kopiert"
+    'Duplikat - uebersprungen' = "Duplikat in der Quelle $([char]0x2013) nicht kopiert"
+    'Ignoriert'                = 'ignoriert (Hilfsdatei)'
+}
+function Export-Plan([string]$pfad, [hashtable]$texte) {
+    $plan | Select-Object @{ n = 'Aktion'; e = { if ($texte.ContainsKey($_.Aktion)) { $texte[$_.Aktion] } else { $_.Aktion } } },
+        Kategorie, Quelle, Ziel, ZielRel, GroesseMB |
+        Export-Csv -LiteralPath $pfad -NoTypeInformation -Delimiter ';' -Encoding UTF8
+}
 
 # ----------------------------------------------------------------------------
 # 4) Zusammenfassung + CSV
 # ----------------------------------------------------------------------------
 $kopieren = @($plan | Where-Object { $_.Aktion -eq 'Kopieren' })
 $summeGB  = [math]::Round((($kopieren | Measure-Object Bytes -Sum).Sum) / 1GB, 2)
+$nVorhanden = @($plan | Where-Object { $_.Aktion -eq 'Bereits im Ziel' }).Count
+$nIgnoriert = @($plan | Where-Object { $_.Aktion -eq 'Ignoriert' }).Count
+$audioAnzahl = @($plan | Where-Object { $_.Quelle -match $RxAudio }).Count
 
 Write-Host ""
 Write-Host "==================== Zusammenfassung ====================" -ForegroundColor Yellow
-$plan | Group-Object Aktion | ForEach-Object { "{0,-28} {1,7} Dateien" -f $_.Name, $_.Count } | Write-Host
+Write-Host ("Dateien in der Quelle:                    {0,7}" -f $plan.Count)
+Write-Host ("  neu, werden kopiert:                    {0,7}   ({1:N2} GB)" -f $kopieren.Count, $summeGB) -ForegroundColor Green
+Write-Host ("  schon im Ziel, werden uebersprungen:    {0,7}" -f $nVorhanden)
+Write-Host ("  doppelt in der Quelle, nur 1x kopiert:  {0,7}" -f $dupAnzahl)
+Write-Host ("  Hilfsdateien, werden ignoriert:         {0,7}" -f $nIgnoriert)
 Write-Host ""
+if ($kopieren.Count -gt 0) { Write-Host "Neue Dateien nach Kategorie:" }
 $kopieren | Group-Object { ($_.ZielRel -split '[\\/]')[0] } | Sort-Object Name | ForEach-Object {
     "{0,-36} {1,7} Dateien {2,10:N1} MB" -f $_.Name, $_.Count, (($_.Group | Measure-Object Bytes -Sum).Sum / 1MB)
 } | Write-Host
-Write-Host ""
-Write-Host "Zu kopierende Datenmenge: $summeGB GB"
 $unsort = @($kopieren | Where-Object { $_.Kategorie -eq 'Unsortiert' }).Count
 if ($unsort -gt 0) { Write-Host "Hinweis: $unsort Datei(en) landen in '_Unsortiert' (bitte in der CSV pruefen)." -ForegroundColor Yellow }
 
@@ -350,21 +402,28 @@ try {
 if ($Ausfuehren -and $zuWenigPlatz) { throw "Abbruch wegen zu wenig Speicherplatz." }
 
 $vorschauPfad = [IO.Path]::Combine($protokollOrdner, "Vorschau_$Zeitstempel.csv")
-$plan | Select-Object Aktion, Kategorie, Quelle, Ziel, ZielRel, GroesseMB |
-    Export-Csv -LiteralPath $vorschauPfad -NoTypeInformation -Delimiter ';' -Encoding UTF8
+Export-Plan $vorschauPfad $TextVorschau
 Write-Host ""
-Write-Host "Vorschau gespeichert (Excel):" -ForegroundColor Green
+Write-Host "Vorschau gespeichert (zeigt nur, was passieren wuerde):" -ForegroundColor Green
 Write-Host "  $vorschauPfad"
 
+if ($audioAnzahl -eq 0) {
+    Write-Host ""
+    Write-Host "In der Quelle wurden keine Audiodateien gefunden. Ist der Quellordner richtig eingestellt?" -ForegroundColor Yellow
+    Write-Host "Es wurde nichts kopiert."
+    return
+}
+if ($kopieren.Count -eq 0) { Write-Host ""; Write-Host "Nichts Neues zu kopieren. Alles ist bereits im Ziel." -ForegroundColor Green; return }
 if (-not $Ausfuehren) {
     if ($NurVorschau -or $zuWenigPlatz) {
         Write-Host "Es wurde nichts kopiert."
         return
     }
-    if ($kopieren.Count -eq 0) { Write-Host "Es gibt nichts zu kopieren."; return }
     Write-Host ""
-    if (-not (Read-JaNein "Jetzt $($kopieren.Count) Dateien ($summeGB GB) nach '$Ziel' kopieren?")) {
+    if (-not (Read-JaNein "Jetzt die $($kopieren.Count) neuen Dateien ($('{0:N2}' -f $summeGB) GB) nach '$Ziel' kopieren?")) {
+        Write-Host ""
         Write-Host "Abgebrochen. Es wurde nichts kopiert." -ForegroundColor Yellow
+        Write-Host "Die Vorschau-Datei zeigt nur, was kopiert worden waere. Es gibt kein Protokoll, weil nichts passiert ist."
         return
     }
 }
@@ -381,7 +440,7 @@ foreach ($x in $kopieren) {
     $i++
     if ($i % 50 -eq 0) { Write-Progress -Activity 'Kopiere Samples' -Status "$i / $($kopieren.Count)" -PercentComplete ($i * 100 / $kopieren.Count) }
     try {
-        if (Test-Path -LiteralPath $x.Ziel) { $x.Aktion = 'Ziel existiert - uebersprungen'; $vorhanden++; continue }
+        if (Test-Path -LiteralPath $x.Ziel) { $x.Aktion = 'Bereits im Ziel'; $vorhanden++; continue }
         $zielDir = Split-Path -Parent $x.Ziel
         if (-not (Test-Path -LiteralPath $zielDir)) { New-Item -ItemType Directory -Path $zielDir -Force | Out-Null }
         Copy-Item -LiteralPath $x.Quelle -Destination $x.Ziel
@@ -392,12 +451,15 @@ foreach ($x in $kopieren) {
 }
 Write-Progress -Activity 'Kopiere Samples' -Completed
 
-$plan | Select-Object Aktion, Kategorie, Quelle, Ziel, ZielRel, GroesseMB |
-    Export-Csv -LiteralPath $csvPfad -NoTypeInformation -Delimiter ';' -Encoding UTF8
+Export-Plan $csvPfad $TextProtokoll
 # Protokoll zusaetzlich im Zielordner ablegen
 try { Copy-Item -LiteralPath $csvPfad -Destination (Join-Path $Ziel $csvName) } catch {}
 
 Write-Host ""
-Write-Host "Fertig. Kopiert: $ok | bereits vorhanden: $vorhanden | Fehler: $fehler | Duplikate uebersprungen: $dupAnzahl" -ForegroundColor Green
+Write-Host "Fertig." -ForegroundColor Green
+Write-Host ("  neu kopiert:                            {0,7}" -f $ok) -ForegroundColor Green
+Write-Host ("  schon im Ziel, uebersprungen:           {0,7}" -f ($nVorhanden + $vorhanden))
+Write-Host ("  doppelt in der Quelle, nur 1x kopiert:  {0,7}" -f $dupAnzahl)
+if ($fehler -gt 0) { Write-Host ("  Fehler:                                 {0,7}" -f $fehler) -ForegroundColor Red }
 Write-Host "Protokoll: $csvPfad"
 if ($fehler -gt 0) { Write-Host "Bitte die Zeilen mit 'FEHLER' in der CSV pruefen (z. B. zu lange Pfade)." -ForegroundColor Red }
