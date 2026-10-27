@@ -2,9 +2,9 @@
 <#
 .SYNOPSIS
   Stellt den Ausgangszustand fuer einen Test her:
-    1. Zielordner (sortierte Bibliothek) komplett entfernen
+    1. Inhalt des Zielordners (sortierte Bibliothek) entfernen; der Zielordner selbst bleibt
     2. in der Quelle das erste Sample-Pack entfernen, dessen Name mit "SINEE" beginnt
-    3. in der Quelle den Ordner "Vocal Loops 120" entfernen
+    3. in der Quelle den Ordner "Vocal Loops 120" entfernen (nur direkt in der Quelle, nicht in Unterordnern)
   Alles geht in den Windows-Papierkorb. Vorher Anzeige und Rueckfrage (Standard: Nein).
 
   Ordner: Standard E:\Sounds und Samples und E:\Samples. Liegt dieses Skript im Programmordner
@@ -55,17 +55,16 @@ if ($zv) {
 }
 
 $liste = New-Object System.Collections.Generic.List[object]
-# 1. Ziel
-if ($zv) { $liste.Add([pscustomobject]@{ Nr = 1; Was = 'Zielordner'; Pfad = $zv }) }
-else { Write-Host "1. Zielordner nicht vorhanden - nichts zu tun." -ForegroundColor DarkGray }
+# 1. Inhalt des Ziels (der Zielordner selbst bleibt)
+$zInhalt = if ($zv) { @(Get-ChildItem -LiteralPath $zv -Force) } else { @() }
+foreach ($i in $zInhalt) { $liste.Add([pscustomobject]@{ Nr = 1; Was = 'Inhalt Ziel'; Pfad = $i.FullName }) }
+if (-not $zInhalt.Count) { Write-Host "1. Zielordner leer oder nicht vorhanden - nichts zu tun." -ForegroundColor DarkGray }
 # 2. erstes Pack "SINEE..." direkt in der Quelle (alphabetisch)
 $sinee = Get-ChildItem -LiteralPath $q -Directory -Force | Where-Object { $_.Name -like 'SINEE*' } | Sort-Object Name | Select-Object -First 1
 if ($sinee) { $liste.Add([pscustomobject]@{ Nr = 2; Was = 'Pack SINEE...'; Pfad = $sinee.FullName }) }
 else { Write-Host "2. Kein Pack 'SINEE...' in der Quelle - nichts zu tun." -ForegroundColor DarkGray }
-# 3. Ordner "Vocal Loops 120" (auch in Unterordnern; ohne Ordner-Verknuepfungen)
-$vocal = @(Get-ChildItem -LiteralPath $q -Directory -Recurse -Force -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -eq 'Vocal Loops 120' -and -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) } |
-    Where-Object { -not $sinee -or -not $_.FullName.StartsWith($sinee.FullName + [IO.Path]::DirectorySeparatorChar) })
+# 3. Ordner "Vocal Loops 120" direkt in der Quelle (erste Ebene)
+$vocal = @(Get-ChildItem -LiteralPath $q -Directory -Force | Where-Object { $_.Name -eq 'Vocal Loops 120' })
 foreach ($v in $vocal) { $liste.Add([pscustomobject]@{ Nr = 3; Was = 'Vocal Loops 120'; Pfad = $v.FullName }) }
 if (-not $vocal.Count) { Write-Host "3. Ordner 'Vocal Loops 120' nicht gefunden - nichts zu tun." -ForegroundColor DarkGray }
 
@@ -74,7 +73,7 @@ if (-not $liste.Count) { Write-Host ''; Write-Host 'Es gibt nichts zu entfernen.
 Write-Host ''
 Write-Host 'Wird in den Papierkorb verschoben:' -ForegroundColor Yellow
 foreach ($x in $liste) {
-    $n = @(Get-ChildItem -LiteralPath $x.Pfad -File -Recurse -Force -ErrorAction SilentlyContinue)
+    $n = if (Test-Path -LiteralPath $x.Pfad -PathType Container) { @(Get-ChildItem -LiteralPath $x.Pfad -File -Recurse -Force -ErrorAction SilentlyContinue) } else { @(Get-Item -LiteralPath $x.Pfad -Force) }
     $mb = ($n | Measure-Object Length -Sum).Sum / 1MB
     Write-Host ("  {0}. {1,-16} {2}   ({3} Dateien, {4:N1} MB)" -f $x.Nr, $x.Was, $x.Pfad, $n.Count, [double]$mb)
 }
@@ -88,9 +87,10 @@ $ok = 0
 foreach ($x in $liste) {
     try {
         if ($env:SW_PAPIERKORB) { Move-Item -LiteralPath $x.Pfad -Destination (Join-Path $env:SW_PAPIERKORB ([guid]::NewGuid().ToString('N') + '_' + (Split-Path -Leaf $x.Pfad))) -Force }
-        else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($x.Pfad, 'OnlyErrorDialogs', 'SendToRecycleBin') }
+        elseif (Test-Path -LiteralPath $x.Pfad -PathType Container) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($x.Pfad, 'OnlyErrorDialogs', 'SendToRecycleBin') }
+        else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($x.Pfad, 'OnlyErrorDialogs', 'SendToRecycleBin') }
         Write-Host "  entfernt: $($x.Pfad)" -ForegroundColor Green; $ok++
     } catch { Write-Host "  FEHLER bei $($x.Pfad): $($_.Exception.Message)" -ForegroundColor Red }
 }
 Write-Host ''
-Write-Host "Fertig: $ok von $($liste.Count) Ordnern im Papierkorb. Testausgangszustand hergestellt." -ForegroundColor Green
+Write-Host "Fertig: $ok von $($liste.Count) Eintraegen im Papierkorb; der Zielordner selbst bleibt. Testausgangszustand hergestellt." -ForegroundColor Green

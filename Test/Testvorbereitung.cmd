@@ -1,5 +1,5 @@
 @echo off
-rem Testvorbereitung Samples-Werkzeuge: Ziel, erstes Pack SINEE... und "Vocal Loops 120" in den Papierkorb.
+rem Testvorbereitung Samples-Werkzeuge: Inhalt des Ziels, erstes Pack SINEE... und "Vocal Loops 120" in den Papierkorb.
 title Testvorbereitung Samples-Werkzeuge
 if not exist "%~dp0Testvorbereitung.ps1" (
   echo.
