@@ -66,7 +66,8 @@ Im Bereich „2 Inventur und Bericht“ auf „Inventur starten“ klicken:
   - „Bericht öffnen“ zeigt den Bericht im Browser: Samples, Packs und Duplikate
     mit Suche, Gliederung (Pack, Instrument, BPM, Tonart …), Filtern und ▶ zum
     Anhören. In der Ansicht „Duplikate“ lassen sich Samples ankreuzen (auch
-    „Alle markieren“) und direkt in den Papierkorb verschieben.
+    „Alle markieren“) und direkt in den Papierkorb verschieben. „Ordner öffnen“
+    zeigt das Sample im Explorer, z. B. zum Ziehen in die DAW.
   - „Liste öffnen (Excel)“ öffnet die Inventur als CSV.
   - „Duplikate im Ziel entfernen …“ verschiebt doppelte Samples der Bibliothek
     nach Vorschau und Rückfrage in den Papierkorb. Danach neue Inventur starten.
@@ -77,10 +78,14 @@ Im Bereich „2 Inventur und Bericht“ auf „Inventur starten“ klicken:
 Im Bereich „3 Quelle aufräumen“ auf „Quelle aufräumen …“ klicken und wählen:
   - Duplikate: beim Kopieren als doppelt erkannt, Prüfung per Hash.
   - macOS-Reste: ._-Dateien, .DS_Store, __MACOSX.
-  - Formate: RX2/MP3/AIFF neben gleichnamiger WAV (nur wenn der Haken unter
-    ⚙ Einstellungen aus ist und die WAV sicher im Ziel liegt).
+  - Formate: RX2, MP3 und/oder AIFF neben gleichnamiger WAV im selben Pack
+    (nur wenn die WAV sicher im Ziel liegt). Die Formate wählt man hier eigens.
+  - Originale (Standard: aus): alles, was nachweislich im Ziel angekommen ist
+    (Prüfsumme). Damit lässt sich die Quelle nach dem Sortieren leeren.
 Danach zeigt ein Fenster die Vorschau; entfernt wird erst nach „J“. Die Dateien
-gehen in den Windows-Papierkorb („Papierkorb öffnen“).
+gehen in den Windows-Papierkorb („Papierkorb öffnen“). Passt die Menge nicht in
+den Papierkorb (oder gibt es keinen, z. B. auf USB-Sticks), erscheint vorher
+eine rote Warnung.
 
 
 WICHTIG

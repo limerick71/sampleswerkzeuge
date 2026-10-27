@@ -6,11 +6,13 @@
     1  Duplikate      Dateien, die beim Kopieren als doppelt erkannt wurden (Pruefung gegen das behaltene Exemplar)
     2  macOS-Reste    ._-Dateien, .DS_Store, __MACOSX (erkannt am Dateikopf)
     3  Formate        RX2/MP3/AIFF neben einer gleichnamigen WAV im selben Pack, deren Kopie im Ziel bestaetigt ist
-                      (nur Formate, deren Haken "zusaetzlich behalten" aus ist)
+                      (welche Formate: frei waehlbar, vorbelegt mit den beim Sortieren abgewaehlten)
+    4  Originale      Dateien, deren Kopie im Ziel laut Kopier-Protokoll vorhanden und per Pruefsumme bestaetigt ist
   Alles mit Vorschau und Rueckfrage (Standard: Nein). Die Dateien gehen in den Papierkorb.
 
 .BENUTZUNG
-    -Duplikate -MacReste -Formate   Gruppen waehlen (ohne Angabe: Auswahl in der Konsole)
+    -Duplikate -MacReste -Formate -Originale   Gruppen waehlen (ohne Angabe: Auswahl in der Konsole)
+    -Formatliste "RX2,MP3"          Formate fuer Gruppe 3 (ohne Angabe: die beim Sortieren abgewaehlten)
     -NurVorschau                    nur Vorschau, keine Frage
     -Ausfuehren                     ohne Frage entfernen
 #>
@@ -19,6 +21,8 @@ param(
     [switch]$Duplikate,
     [switch]$MacReste,
     [switch]$Formate,
+    [switch]$Originale,
+    [string]$Formatliste,
     [switch]$NurVorschau,
     [switch]$Ausfuehren
 )
@@ -34,21 +38,32 @@ Write-Host "  Quelle: $Quelle"
 Write-Host ""
 if (-not (Test-Path -LiteralPath $Quelle)) { throw "Quellordner nicht gefunden: $Quelle" }
 
-$ausgeschlossen = @($FormatEinstellung.Keys | Where-Object { -not $einst[$FormatEinstellung[$_]] })
-$formatText = if ($ausgeschlossen.Count) { (@($ausgeschlossen | ForEach-Object { $FormatName[$FormatEinstellung[$_]] } | Select-Object -Unique)) -join ', ' } else { '' }
+# Formate fuer Gruppe 3 (CLN-12): eigene Auswahl, unabhaengig von den Sortier-Haken
+function Get-FormatEndungen([string]$liste) {
+    $namen = @($liste -split '[,; ]+' | Where-Object { $_ } | ForEach-Object { $_.Trim().ToUpperInvariant() })
+    @($FormatEinstellung.Keys | Where-Object { $namen -contains $FormatName[$FormatEinstellung[$_]] })
+}
+$vorbelegt = (@($FormatEinstellung.Keys | Where-Object { -not $einst[$FormatEinstellung[$_]] } | ForEach-Object { $FormatName[$FormatEinstellung[$_]] } | Select-Object -Unique)) -join ','
 
-if (-not ($Duplikate -or $MacReste -or $Formate)) {
+if (-not ($Duplikate -or $MacReste -or $Formate -or $Originale)) {
     Write-Host "Was soll aus der Quelle in den Papierkorb?"
     Write-Host "  1  Duplikate (beim Kopieren als doppelt erkannt)"
     Write-Host "  2  macOS-Reste (._-Dateien, .DS_Store, __MACOSX)"
-    if ($formatText) { Write-Host "  3  $formatText neben gleichnamiger WAV, deren Kopie im Ziel liegt" }
-    else { Write-Host "  3  (nicht verfuegbar: alle Haken 'zusaetzlich behalten' sind gesetzt)" -ForegroundColor DarkGray }
+    Write-Host "  3  RX2/MP3/AIFF neben gleichnamiger WAV im selben Pack, deren Kopie im Ziel liegt"
+    Write-Host "  4  Originale, deren Kopie im Ziel bestaetigt ist (die Quelle wird damit weitgehend geleert)"
     $a = Read-Host "Auswahl, z. B. 1,2 (Enter = abbrechen)"
     if (-not $a.Trim()) { Write-Host "Abgebrochen."; return }
-    $Duplikate = $a -match '1'; $MacReste = $a -match '2'; $Formate = $a -match '3'
+    $Duplikate = $a -match '1'; $MacReste = $a -match '2'; $Formate = $a -match '3'; $Originale = $a -match '4'
+    if ($Formate -and -not $Formatliste) {
+        $f = Read-Host "Welche Formate? z. B. RX2,MP3,AIFF (Enter = $(if ($vorbelegt) { $vorbelegt } else { 'keine' }))"
+        $Formatliste = if ($f.Trim()) { $f } else { $vorbelegt }
+    }
     Write-Host ""
 }
-if ($Formate -and -not $formatText) { Write-Host "Hinweis: Gruppe 3 entfaellt, alle Haken 'zusaetzlich behalten' sind gesetzt." -ForegroundColor Yellow; $Formate = $false }
+if ($Formate -and -not $PSBoundParameters.ContainsKey('Formatliste') -and -not $Formatliste) { $Formatliste = $vorbelegt }
+$ausgeschlossen = if ($Formate) { @(Get-FormatEndungen $Formatliste) } else { @() }
+$formatText = (@($ausgeschlossen | ForEach-Object { $FormatName[$FormatEinstellung[$_]] } | Select-Object -Unique)) -join ', '
+if ($Formate -and -not $formatText) { Write-Host "Hinweis: Gruppe 3 entfaellt, es ist kein Format (RX2, MP3, AIFF) gewaehlt." -ForegroundColor Yellow; $Formate = $false }
 
 $ergebnis = New-Object System.Collections.Generic.List[object]
 function Add-Eintrag($gruppe, $status, $datei, $grund, $bytes) {
@@ -63,7 +78,7 @@ function Get-Pruefsumme([string]$pfad) {
     return $hashCache[$k]
 }
 function Test-Gleich([string]$a, [string]$b) {
-    if ((Get-Item -LiteralPath $a).Length -ne (Get-Item -LiteralPath $b).Length) { return $false }
+    if (([IO.FileInfo]$a).Length -ne ([IO.FileInfo]$b).Length) { return $false }   # auch versteckte Dateien
     return (Get-Pruefsumme $a) -eq (Get-Pruefsumme $b)
 }
 # Fortschritt: Balken oben im Fenster und alle paar Sekunden eine Zeile, damit man sieht, dass es laeuft
@@ -104,9 +119,9 @@ if ($Duplikate) {
     }
 }
 
-# Quelle einmal durchgehen (fuer macOS-Reste und Formate)
+# Quelle einmal durchgehen (fuer macOS-Reste, Formate und Originale)
 $quellDateien = New-Object System.Collections.Generic.List[object]
-if ($MacReste -or $Formate) {
+if ($MacReste -or $Formate -or $Originale) {
     Write-Host "Lese den Quellordner ..." -ForegroundColor Cyan
     $stapel = New-Object System.Collections.Generic.Stack[string]; $stapel.Push($Quelle)
     while ($stapel.Count -gt 0) {
@@ -137,9 +152,9 @@ if ($MacReste) {
 # ---------------------------------------------------------------------------
 # 3) RX2/MP3/AIFF neben gleichnamiger WAV, deren Kopie im Ziel bestaetigt ist
 # ---------------------------------------------------------------------------
-if ($Formate) {
-    Write-Host "Formate ($formatText): pruefe WAV-Gegenstuecke im Ziel ..." -ForegroundColor Cyan
-    $zielVon = @{}; $dupVon = @{}
+# Kopier-Protokolle: wohin wurde welche Quelldatei kopiert (fuer Formate und Originale)
+$zielVon = @{}; $dupVon = @{}
+if ($Formate -or $Originale) {
     foreach ($p in $protos) {
         try {
             foreach ($z in (Import-Csv -LiteralPath $p.FullName -Delimiter ';' -Encoding UTF8)) {
@@ -148,6 +163,10 @@ if ($Formate) {
             }
         } catch { }
     }
+}
+
+if ($Formate) {
+    Write-Host "Formate ($formatText): pruefe WAV-Gegenstuecke im Ziel ..." -ForegroundColor Cyan
     $wavs = @{}
     foreach ($f in $quellDateien) { if ($f.Extension -ieq '.wav' -and (Get-MacRestArt $f.FullName) -ne 'mac') { $wavs[(Get-FormatSchluessel $f.FullName $Quelle)] = $f.FullName } }
     $kandidaten = @($quellDateien | Where-Object { $ausgeschlossen -contains $_.Extension.ToLowerInvariant() })
@@ -164,6 +183,28 @@ if ($Formate) {
         if (-not (Test-Gleich $wav $zw)) { Add-Eintrag 'Format' 'Uebersprungen: WAV im Ziel weicht ab' $f.FullName $zw $f.Length; continue }
         Add-Eintrag 'Format' 'Wird entfernt' $f.FullName "WAV im Ziel bestaetigt: $zw" $f.Length
     }
+}
+
+# ---------------------------------------------------------------------------
+# 4) Originale, deren Kopie im Ziel bestaetigt ist (CLN-01)
+#    Nur Dateien aus einem Kopier-Protokoll; Ziel-Datei muss existieren und inhaltsgleich sein.
+#    Was nie kopiert wurde (Hilfsdateien, ausgeschlossene Formate, ModX ...), bleibt liegen.
+# ---------------------------------------------------------------------------
+if ($Originale) {
+    Write-Host "Originale: pruefe Kopien im Ziel ..." -ForegroundColor Cyan
+    if (-not $protos.Count) { Write-Host "Originale: kein Kopier-Protokoll gefunden - bitte zuerst 'Samples sortieren'." -ForegroundColor Yellow }
+    $kandidaten = @($quellDateien | Where-Object { $zielVon.ContainsKey($_.FullName.ToLowerInvariant()) })
+    $i = 0
+    foreach ($f in $kandidaten) {
+        $i++; Show-Fortschritt 'Originale pruefen' $i $kandidaten.Count
+        $zw = $zielVon[$f.FullName.ToLowerInvariant()]
+        if (-not $zw.StartsWith($Ziel, [StringComparison]::OrdinalIgnoreCase)) { Add-Eintrag 'Original' 'Uebersprungen: Kopie liegt nicht im eingestellten Ziel' $f.FullName $zw $f.Length; continue }
+        if (-not (Test-Path -LiteralPath $zw -PathType Leaf)) { Add-Eintrag 'Original' 'Uebersprungen: Kopie im Ziel nicht (mehr) vorhanden' $f.FullName $zw $f.Length; continue }
+        if (-not (Test-Gleich $f.FullName $zw)) { Add-Eintrag 'Original' 'Uebersprungen: Kopie im Ziel weicht ab' $f.FullName $zw $f.Length; continue }
+        Add-Eintrag 'Original' 'Wird entfernt' $f.FullName "Kopie im Ziel bestaetigt: $zw" $f.Length
+    }
+    $nie = @($quellDateien | Where-Object { -not $zielVon.ContainsKey($_.FullName.ToLowerInvariant()) }).Count
+    if ($nie) { Write-Host "  $nie Dateien der Quelle wurden nie kopiert und bleiben liegen (Hilfsdateien, ausgeschlossene Formate, Duplikate ...)." -ForegroundColor DarkGray }
 }
 
 # ---------------------------------------------------------------------------
@@ -193,6 +234,9 @@ if ($ergebnis.Count) {
     Write-Host "  $vorschauPfad"
 }
 if ($weg.Count -eq 0) { Write-Host ""; Write-Host "Es gibt nichts zu entfernen." -ForegroundColor Green; return }
+$warnung = Get-PapierkorbWarnung $Quelle ([long](($weg | Measure-Object GroesseMB -Sum).Sum * 1MB))
+if ($warnung) { Write-Host ""; Write-Host "ACHTUNG: $warnung" -ForegroundColor Red }
+if ($Ausfuehren -and $warnung) { Write-Host "Ohne Rueckfrage wird in diesem Fall nichts entfernt." -ForegroundColor Yellow; return }
 if (-not $Ausfuehren) {
     if ($NurVorschau) { Write-Host "Es wurde nichts entfernt."; return }
     Write-Host ""

@@ -266,7 +266,7 @@ function Show-Einstellungen {
     $bAlle.Add_Click({ foreach ($c in $haken) { $c.Checked = $true } })
     $g2.Controls.Add($bAlle)
     $l3 = New-Object System.Windows.Forms.Label
-    $l3.Text = "Das Sortieren verändert die Quelle nie. Nicht kopierte Dateien bleiben dort,`nentfernen lassen sie sich mit 'Quelle aufräumen …'."
+    $l3.Text = "Die Haken gelten nur für das Sortieren. Das Sortieren verändert die Quelle nie;`nnicht kopierte Dateien entfernt man mit 'Quelle aufräumen …' (Formate dort eigens wählbar)."
     $l3.Font = $schrift; $l3.ForeColor = [System.Drawing.Color]::DimGray; $l3.AutoSize = $true
     $l3.Location = New-Object System.Drawing.Point(12, 100); $g2.Controls.Add($l3)
     $g2.Height = 146
@@ -307,23 +307,46 @@ function Show-QuelleAufraeumen {
     $c2.Location = New-Object System.Drawing.Point(18, 88); $c2.AutoSize = $true; $c2.Checked = $true
     $d.Controls.Add($c2)
     $c3 = New-Object System.Windows.Forms.CheckBox
-    $c3.Location = New-Object System.Drawing.Point(18, 116); $c3.AutoSize = $true
-    if ($aus.Count) { $c3.Text = "$($aus -join ', ') neben gleichnamiger WAV, deren Kopie im Ziel bestätigt ist"; $c3.Checked = $true }
-    else { $c3.Text = 'RX2/MP3/AIFF neben WAV (nicht verfügbar: alle Formate werden behalten, siehe ⚙)'; $c3.Enabled = $false }
+    $c3.Text = 'Formate neben gleichnamiger WAV im selben Pack, deren Kopie im Ziel bestätigt ist:'
+    $c3.Location = New-Object System.Drawing.Point(18, 116); $c3.AutoSize = $true; $c3.Checked = [bool]$aus.Count
     $d.Controls.Add($c3)
+    # CLN-12: eigene Format-Haken, vorbelegt mit den beim Sortieren abgewaehlten Formaten
+    $fHaken = @(); $x = 40
+    foreach ($fmt in 'RX2', 'MP3', 'AIFF') {
+        $cb = New-Object System.Windows.Forms.CheckBox
+        $cb.Text = $fmt; $cb.AutoSize = $true; $cb.Location = New-Object System.Drawing.Point($x, 142)
+        $cb.Checked = ($aus -contains $fmt) -or (-not $aus.Count)
+        $d.Controls.Add($cb); $fHaken += $cb; $x += 80
+    }
+    $lf = New-Object System.Windows.Forms.Label
+    $lf.Text = 'unabhängig von den Haken unter ⚙ (die gelten nur fürs Sortieren)'
+    $lf.ForeColor = [System.Drawing.Color]::DimGray; $lf.AutoSize = $true; $lf.Location = New-Object System.Drawing.Point(290, 144)
+    $d.Controls.Add($lf)
+    $c3.Add_CheckedChanged({ foreach ($cb in $fHaken) { $cb.Enabled = $c3.Checked } })
+    foreach ($cb in $fHaken) { $cb.Enabled = $c3.Checked }
+    $c4 = New-Object System.Windows.Forms.CheckBox
+    $c4.Text = 'Originale, deren Kopie im Ziel per Prüfsumme bestätigt ist (leert die Quelle weitgehend)'
+    $c4.Location = New-Object System.Drawing.Point(18, 174); $c4.AutoSize = $true; $c4.Checked = $false
+    $d.Controls.Add($c4)
+    $l4 = New-Object System.Windows.Forms.Label
+    $l4.Text = 'Nie Kopiertes bleibt liegen (Hilfsdateien, ausgeschlossene Formate, ModX).'
+    $l4.ForeColor = [System.Drawing.Color]::DimGray; $l4.AutoSize = $true; $l4.Location = New-Object System.Drawing.Point(36, 198)
+    $d.Controls.Add($l4)
     $ok = New-Object System.Windows.Forms.Button
     $ok.Text = 'Weiter ...'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
-    $ok.Location = New-Object System.Drawing.Point(380, 156); $ok.Size = New-Object System.Drawing.Size(110, 32)
+    $ok.Location = New-Object System.Drawing.Point(380, 234); $ok.Size = New-Object System.Drawing.Size(110, 32)
     $ab = New-Object System.Windows.Forms.Button
     $ab.Text = 'Abbrechen'; $ab.FlatStyle = 'System'; $ab.DialogResult = 'Cancel'
-    $ab.Location = New-Object System.Drawing.Point(500, 156); $ab.Size = New-Object System.Drawing.Size(110, 32)
+    $ab.Location = New-Object System.Drawing.Point(500, 234); $ab.Size = New-Object System.Drawing.Size(110, 32)
     $d.Controls.Add($ok); $d.Controls.Add($ab); $d.AcceptButton = $ok; $d.CancelButton = $ab
-    $d.ClientSize = New-Object System.Drawing.Size(628, 204)
+    $d.ClientSize = New-Object System.Drawing.Size(628, 282)
     $r = $d.ShowDialog($form)
     $arg = @()
     if ($c1.Checked) { $arg += '-Duplikate' }
     if ($c2.Checked) { $arg += '-MacReste' }
-    if ($c3.Enabled -and $c3.Checked) { $arg += '-Formate' }
+    $fl = @($fHaken | Where-Object { $_.Checked } | ForEach-Object { $_.Text })
+    if ($c3.Checked -and $fl.Count) { $arg += '-Formate'; $arg += "-Formatliste '$($fl -join ',')'" }
+    if ($c4.Checked) { $arg += '-Originale' }
     $d.Dispose()
     if ($r -ne 'OK') { return }
     if (-not $arg.Count) { Show-Meldung 'Es ist nichts ausgewählt.' 'Warning'; return }

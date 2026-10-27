@@ -201,6 +201,19 @@ try {
                     $erg = Remove-Markierte @($daten.pfade)
                     Send-Text $strom 200 'OK' (ConvertTo-Json -InputObject @{ ergebnisse = @($erg) } -Depth 4 -Compress) 'application/json; charset=utf-8'
                 }
+                '/oeffnen' {
+                    # REP-09: Explorer im Ordner des Samples oeffnen und die Datei markieren (nur innerhalb des Ziels)
+                    if ($a.Methode -ne 'POST') { Send-Text $strom 405 'Method Not Allowed' 'Nur POST.'; break }
+                    $daten = $a.Body | ConvertFrom-Json
+                    $voll = Get-ZielPfad ([string]$daten.pfad)
+                    if (-not $voll) { Send-Text $strom 404 'Not Found' 'Pfad liegt nicht im Ziel.'; break }
+                    if (Test-Path -LiteralPath $voll -PathType Leaf) { $arg = "/select,`"$voll`"" }
+                    elseif (Test-Path -LiteralPath (Split-Path -Parent $voll)) { $arg = "`"$(Split-Path -Parent $voll)`"" }
+                    else { Send-Text $strom 404 'Not Found' 'Datei und Ordner gibt es nicht mehr. Bitte neue Inventur starten.'; break }
+                    if ($env:SW_KEIN_BROWSER) { Add-Content -LiteralPath (Join-Path $protokollOrdner 'oeffnen-test.txt') -Value $arg -Encoding UTF8 }
+                    else { Start-Process -FilePath 'explorer.exe' -ArgumentList $arg }
+                    Send-Text $strom 200 'OK' 'ok'
+                }
                 default { Send-Text $strom 404 'Not Found' 'Unbekannt.' }
             }
         } catch {

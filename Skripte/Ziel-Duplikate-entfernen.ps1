@@ -77,6 +77,9 @@ Write-Host "Vorschau gespeichert (zeigt nur, was passieren wuerde):" -Foreground
 Write-Host "  $vorschauPfad"
 
 if ($weg.Count -eq 0) { Write-Host ""; Write-Host "Es gibt nichts zu entfernen." -ForegroundColor Green; return }
+$warnung = Get-PapierkorbWarnung $Ziel ([long](($weg | Measure-Object GroesseMB -Sum).Sum * 1MB))
+if ($warnung) { Write-Host ""; Write-Host "ACHTUNG: $warnung" -ForegroundColor Red }
+if ($Ausfuehren -and $warnung) { Write-Host "Ohne Rueckfrage wird in diesem Fall nichts entfernt." -ForegroundColor Yellow; return }
 if (-not $Ausfuehren) {
     if ($NurVorschau) { Write-Host "Es wurde nichts entfernt."; return }
     Write-Host ""

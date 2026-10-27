@@ -10,7 +10,7 @@
 #   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
 #   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
 
-$ProgrammVersion = '2.1.0'
+$ProgrammVersion = '2.2.0'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -254,6 +254,47 @@ function Get-FormatSchluessel([string]$datei, [string]$quelle) {
     $t = @($rel -split '[\\/]')
     $pack = if ($t[0] -in $SammelOrdner -and $t.Count -gt 2) { $t[0] + '\' + $t[1] } elseif ($t.Count -gt 1) { $t[0] } else { '' }
     return ($pack + '|' + [IO.Path]::GetFileNameWithoutExtension($datei)).ToLowerInvariant()
+}
+
+# CLN-04: Passt die Menge in den Papierkorb des Laufwerks? Liefert eine Warnung (Text) oder ''.
+#   - Wechseldatentraeger und Netzlaufwerke haben keinen Papierkorb: Windows loescht dort endgueltig.
+#   - "Dateien sofort loeschen" im Papierkorb eingestellt (NukeOnDelete): ebenso.
+#   - Groesse: eingestellte Hoechstgroesse (MaxCapacity) bzw. Windows-Standard (ca. 10 % der ersten
+#     40 GB + 5 % des Rests). Der schon belegte Teil des Papierkorbs ist nicht beruecksichtigt.
+function Get-PapierkorbWarnung([string]$pfad, [long]$bytes) {
+    if ($env:SW_PAPIERKORB -or -not $pfad -or $bytes -le 0) { return '' }
+    try {
+        $wurzelLw = [IO.Path]::GetPathRoot($pfad)
+        if (-not $wurzelLw -or $wurzelLw.StartsWith('\\')) { return "Der Ordner liegt auf einem Netzlaufwerk ($wurzelLw). Dort gibt es keinen Papierkorb - Windows loescht die Dateien endgueltig." }
+        $lw = $wurzelLw.Substring(0, 2)
+        $vol = Get-CimInstance -ClassName Win32_Volume -Filter "DriveLetter='$lw'" -ErrorAction Stop | Select-Object -First 1
+        if (-not $vol) {
+            # Verbundene Netzlaufwerke (z. B. Z:) stehen nicht in Win32_Volume
+            $ld = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$lw'" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($ld -and $ld.DriveType -eq 4) { return "Laufwerk $lw ist ein Netzlaufwerk. Dort gibt es keinen Papierkorb - Windows loescht die Dateien endgueltig." }
+            if ($ld -and $ld.DriveType -eq 2) { return "Laufwerk $lw ist ein Wechseldatentraeger (z. B. USB-Stick). Dort gibt es keinen Papierkorb - Windows loescht die Dateien endgueltig." }
+            return ''
+        }
+        if ($vol.DriveType -eq 2) { return "Laufwerk $lw ist ein Wechseldatentraeger (z. B. USB-Stick). Dort gibt es keinen Papierkorb - Windows loescht die Dateien endgueltig." }
+        if ($vol.DriveType -eq 4) { return "Laufwerk $lw ist ein Netzlaufwerk. Dort gibt es keinen Papierkorb - Windows loescht die Dateien endgueltig." }
+        $grenze = $null
+        if ($vol.DeviceID -match '(\{[0-9A-Fa-f-]+\})') {
+            $schl = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\BitBucket\Volume\$($Matches[1])"
+            if (Test-Path $schl) {
+                $w = Get-ItemProperty -Path $schl -ErrorAction SilentlyContinue
+                if ($w.NukeOnDelete -eq 1) { return "Fuer Laufwerk $lw ist im Papierkorb 'Dateien sofort loeschen' eingestellt. Die Dateien wuerden endgueltig geloescht." }
+                if ($w.MaxCapacity) { $grenze = [long]$w.MaxCapacity * 1MB }
+            }
+        }
+        if (-not $grenze -and $vol.Capacity) {
+            $kap = [double]$vol.Capacity
+            $grenze = [long]([Math]::Min($kap, 40GB) * 0.10 + [Math]::Max(0, $kap - 40GB) * 0.05)
+        }
+        if ($grenze -and $bytes -gt $grenze) {
+            return ("Es sollen {0:N1} GB entfernt werden, der Papierkorb von Laufwerk {1} fasst nur etwa {2:N1} GB. Windows kann Dateien dann endgueltig loeschen statt sie in den Papierkorb zu legen. Tipp: in mehreren Schritten aufraeumen oder die Groesse des Papierkorbs erhoehen (Rechtsklick auf Papierkorb > Eigenschaften)." -f ($bytes / 1GB), $lw, ($grenze / 1GB))
+        }
+    } catch { }
+    return ''
 }
 
 # Ja/Nein-Abfrage in der Konsole, Standard ist Nein
