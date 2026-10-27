@@ -2,7 +2,7 @@
 # (c) 2026 Herbert Stoecker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Veroeffentlichung geaenderter Fassungen nur mit Zustimmung.
 <#
 .SYNOPSIS
-    Samples-Werkzeuge (Version 2): Oberfläche für Sortieren, Inventur mit Bericht, Duplikate und Einstellungen.
+    Samples-Werkzeuge (Version 2.1): Oberfläche für Sortieren, Inventur mit Bericht, Aufräumen und Einstellungen (Zahnrad).
 
 .DESCRIPTION
     Start per Doppelklick auf "GUI_Samples-Werkzeuge.cmd" im Programmordner oder über die
@@ -69,17 +69,17 @@ function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 
     }
 }
 
-# Neuesten Bericht oeffnen (fehlt die HTML-Datei, wird sie aus der Liste neu erzeugt)
+# Neuesten Bericht oeffnen: ueber den lokalen Bericht-Dienst (Loeschen aus dem Bericht, Abspielen);
+# klappt das nicht, wird die HTML-Datei direkt geoeffnet
 function Open-Bericht {
     $c = Get-NeuesteInventur 'Sample'
     if (-not $c) { Show-Meldung 'Noch keine Inventur vorhanden.' 'Warning'; return }
-    $html = [IO.Path]::ChangeExtension($c.FullName, '.html')
-    if (-not (Test-Path -LiteralPath $html)) {
-        $form.Cursor = 'WaitCursor'
-        try { Start-Process -FilePath $psExe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $skriptOrdner 'Inventur.ps1')`" -NurBericht" -WindowStyle Hidden -Wait } catch { }
-        $form.Cursor = 'Default'
+    try {
+        Start-Process -FilePath $psExe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $skriptOrdner 'Bericht-Dienst.ps1')`"" -WindowStyle Hidden -ErrorAction Stop
+    } catch {
+        $html = [IO.Path]::ChangeExtension($c.FullName, '.html')
+        if (Test-Path -LiteralPath $html) { Open-Pfad $html } else { Show-Meldung 'Der Bericht konnte nicht geöffnet werden.' 'Error' }
     }
-    if (Test-Path -LiteralPath $html) { Open-Pfad $html } else { Show-Meldung 'Der Bericht konnte nicht erzeugt werden.' 'Error' }
 }
 
 function Open-Pfad([string]$pfad) {
@@ -109,14 +109,14 @@ function New-DesktopVerknuepfung([switch]$Still) {
 function Test-OrdnerBereit([switch]$NurQuelle) {
     $e = Get-Einstellungen
     if (-not (Test-Path -LiteralPath $e.Quelle)) {
-        Show-Meldung "Der Quellordner wurde nicht gefunden:`n$($e.Quelle)`n`nBitte unter 'Einstellungen' den richtigen Ordner wählen." 'Warning'
+        Show-Meldung "Der Quellordner wurde nicht gefunden:`n$($e.Quelle)`n`nBitte über ⚙ Einstellungen den richtigen Ordner wählen." 'Warning'
         return $false
     }
     if (-not $NurQuelle) {
         $f = Test-QuelleZiel $e.Quelle $e.Ziel
-        if ($f) { Show-Meldung "$f`n`nBitte unter 'Einstellungen' korrigieren." 'Warning'; return $false }
+        if ($f) { Show-Meldung "$f`n`nBitte über ⚙ Einstellungen korrigieren." 'Warning'; return $false }
         $zs = Get-OrdnerStatus $e.Ziel
-        if ($zs.Fehlt) { Show-Meldung "Der Zielordner ist nicht erreichbar:`n$($e.Ziel)`n$($zs.Text)`n`nBitte unter 'Einstellungen' den richtigen Ordner wählen." 'Warning'; return $false }
+        if ($zs.Fehlt) { Show-Meldung "Der Zielordner ist nicht erreichbar:`n$($e.Ziel)`n$($zs.Text)`n`nBitte über ⚙ Einstellungen den richtigen Ordner wählen." 'Warning'; return $false }
     }
     return $true
 }
@@ -179,6 +179,155 @@ function Show-Begruessung {
     $d.Dispose()
     try { Set-Einstellung 'ErsterStartErledigt' $true } catch { }
     Update-Status
+}
+
+# ---------------------------------------------------------------------------
+# Dialog: Einstellungen (Zahnrad) - Ordner und zusaetzliche Formate
+# ---------------------------------------------------------------------------
+function Show-Einstellungen {
+    $d = New-Object System.Windows.Forms.Form
+    $d.Text = 'Einstellungen'
+    $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'
+    $d.MaximizeBox = $false; $d.MinimizeBox = $false
+    $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
+    $tt = New-Object System.Windows.Forms.ToolTip; $tt.AutoPopDelay = 15000
+    $w = 560; $dy = 16
+    $g1 = New-Object System.Windows.Forms.GroupBox
+    $g1.Text = 'Ordner'; $g1.Font = $schriftFett
+    $g1.Location = New-Object System.Drawing.Point(16, $dy); $g1.Width = $w - 32
+    $d.Controls.Add($g1)
+    $gy = 26
+    $felder = @{}
+    foreach ($pe in $PfadEinstellungen) {
+        $l = New-Object System.Windows.Forms.Label
+        $l.Text = "$($pe.Text):"; $l.Font = $schrift; $l.AutoSize = $true
+        $l.Location = New-Object System.Drawing.Point(12, ($gy + 4)); $tt.SetToolTip($l, $pe.Hinweis); $g1.Controls.Add($l)
+        $tb = New-Object System.Windows.Forms.TextBox
+        $tb.Font = $schrift; $tb.ReadOnly = $true; $tb.BackColor = [System.Drawing.Color]::White
+        $tb.Location = New-Object System.Drawing.Point(124, $gy); $tb.Size = New-Object System.Drawing.Size(($w - 32 - 124 - 98), 26)
+        $tb.Text = [string](Get-Einstellungen)[$pe.Name]; $tt.SetToolTip($tb, $pe.Hinweis); $g1.Controls.Add($tb)
+        $felder[$pe.Name] = $tb
+        $b = New-Object System.Windows.Forms.Button
+        $b.Text = 'Ändern ...'; $b.Font = $schrift; $b.FlatStyle = 'System'
+        $b.Location = New-Object System.Drawing.Point(($w - 32 - 92), ($gy - 2)); $b.Size = New-Object System.Drawing.Size(80, 28)
+        $b.Tag = $pe
+        $b.Add_Click({
+            param($sender, $ev)
+            $pe = $sender.Tag
+            $alt = (Get-Einstellungen)[$pe.Name]
+            $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+            $dlg.Description = "$($pe.Text): $($pe.Hinweis)"; $dlg.ShowNewFolderButton = $true
+            if ($alt -and (Test-Path -LiteralPath $alt)) { $dlg.SelectedPath = $alt }
+            if ($dlg.ShowDialog($d) -ne 'OK') { return }
+            $neu = $dlg.SelectedPath.TrimEnd('\')
+            $e = Get-Einstellungen
+            $f = if ($pe.Name -eq 'Quelle') { Test-QuelleZiel $neu $e.Ziel } elseif ($pe.Name -eq 'Ziel') { Test-QuelleZiel $e.Quelle $neu } else { '' }
+            if ($f) { Show-Meldung "$f`n`nDie Einstellung wurde nicht geändert." 'Warning'; return }
+            try { Set-Einstellung $pe.Name $neu; $felder[$pe.Name].Text = $neu } catch { Show-Meldung "Speichern fehlgeschlagen:`n$($_.Exception.Message)" 'Error' }
+        })
+        $tt.SetToolTip($b, "Ordner für '$($pe.Text)' auswählen. Die Auswahl wird gespeichert.")
+        $g1.Controls.Add($b)
+        $gy += 32
+    }
+    $lh = New-Object System.Windows.Forms.Label
+    $lh.Text = 'Downloads und Download-Archiv werden ab Version 3 (Import) genutzt.'
+    $lh.Font = $schrift; $lh.ForeColor = [System.Drawing.Color]::DimGray; $lh.AutoSize = $true
+    $lh.Location = New-Object System.Drawing.Point(12, ($gy + 2)); $g1.Controls.Add($lh)
+    $g1.Height = $gy + 30
+    $dy += $g1.Height + 12
+
+    $g2 = New-Object System.Windows.Forms.GroupBox
+    $g2.Text = 'Formate beim Sortieren (WAV ist Standard)'; $g2.Font = $schriftFett
+    $g2.Location = New-Object System.Drawing.Point(16, $dy); $g2.Width = $w - 32
+    $d.Controls.Add($g2)
+    $l2 = New-Object System.Windows.Forms.Label
+    $l2.Text = 'Zusätzlich zur WAV behalten:'; $l2.Font = $schrift; $l2.AutoSize = $true
+    $l2.Location = New-Object System.Drawing.Point(12, 30); $g2.Controls.Add($l2)
+    $haken = @()
+    $x = 200
+    foreach ($fmt in @(@('RX2', 'RX2Beibehalten'), @('MP3', 'MP3Beibehalten'), @('AIFF', 'AIFFBeibehalten'))) {
+        $cb = New-Object System.Windows.Forms.CheckBox
+        $cb.Text = $fmt[0]; $cb.Font = $schrift; $cb.AutoSize = $true; $cb.Tag = $fmt[1]
+        $cb.Location = New-Object System.Drawing.Point($x, 28); $cb.Checked = (Get-Einstellungen)[$fmt[1]]
+        $cb.Add_CheckedChanged({ param($sender, $ev) try { Set-Einstellung $sender.Tag $sender.Checked } catch { } })
+        $tt.SetToolTip($cb, "Haken: $($fmt[0])-Dateien werden mitsortiert.`nOhne Haken: Liegt im selben Ordner eine WAV mit gleichem Namen, wird die $($fmt[0])-Datei nicht kopiert (sie bleibt in der Quelle). Ohne WAV-Gegenstück wird sie immer einsortiert.")
+        $g2.Controls.Add($cb); $haken += $cb
+        $x += 80
+    }
+    $bNur = New-Object System.Windows.Forms.Button
+    $bNur.Text = 'Nur WAV'; $bNur.Font = $schrift; $bNur.FlatStyle = 'System'
+    $bNur.Location = New-Object System.Drawing.Point(200, 60); $bNur.Size = New-Object System.Drawing.Size(110, 30)
+    $bNur.Add_Click({ foreach ($c in $haken) { $c.Checked = $false } })
+    $tt.SetToolTip($bNur, 'Entfernt alle drei Haken: Gibt es eine gleichnamige WAV, kommt nur die WAV in die Bibliothek.')
+    $g2.Controls.Add($bNur)
+    $bAlle = New-Object System.Windows.Forms.Button
+    $bAlle.Text = 'Alle'; $bAlle.Font = $schrift; $bAlle.FlatStyle = 'System'
+    $bAlle.Location = New-Object System.Drawing.Point(318, 60); $bAlle.Size = New-Object System.Drawing.Size(80, 30)
+    $bAlle.Add_Click({ foreach ($c in $haken) { $c.Checked = $true } })
+    $g2.Controls.Add($bAlle)
+    $l3 = New-Object System.Windows.Forms.Label
+    $l3.Text = "Das Sortieren verändert die Quelle nie. Nicht kopierte Dateien bleiben dort,`nentfernen lassen sie sich mit 'Quelle aufräumen …'."
+    $l3.Font = $schrift; $l3.ForeColor = [System.Drawing.Color]::DimGray; $l3.AutoSize = $true
+    $l3.Location = New-Object System.Drawing.Point(12, 100); $g2.Controls.Add($l3)
+    $g2.Height = 146
+    $dy += $g2.Height + 14
+
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = 'Schließen'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
+    $ok.Location = New-Object System.Drawing.Point(($w - 16 - 110), $dy); $ok.Size = New-Object System.Drawing.Size(110, 32)
+    $d.Controls.Add($ok); $d.AcceptButton = $ok; $d.CancelButton = $ok
+    $d.ClientSize = New-Object System.Drawing.Size($w, ($dy + 48))
+    [void]$d.ShowDialog($form)
+    $d.Dispose()
+    Update-Status
+}
+
+# ---------------------------------------------------------------------------
+# Dialog: Quelle aufraeumen - Auswahl der Gruppen
+# ---------------------------------------------------------------------------
+function Show-QuelleAufraeumen {
+    if (-not (Test-OrdnerBereit -NurQuelle)) { return }
+    $e = Get-Einstellungen
+    $aus = @(@('RX2', 'RX2Beibehalten'), @('MP3', 'MP3Beibehalten'), @('AIFF', 'AIFFBeibehalten') | Where-Object { -not $e[$_[1]] } | ForEach-Object { $_[0] })
+    $d = New-Object System.Windows.Forms.Form
+    $d.Text = 'Quelle aufräumen'
+    $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'
+    $d.MaximizeBox = $false; $d.MinimizeBox = $false
+    $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
+    $l = New-Object System.Windows.Forms.Label
+    $l.Text = "Was soll aus der Quelle in den Papierkorb?`nDanach zeigt ein Fenster die Vorschau; entfernt wird erst nach 'J'."
+    $l.Location = New-Object System.Drawing.Point(16, 14); $l.AutoSize = $true
+    $d.Controls.Add($l)
+    $c1 = New-Object System.Windows.Forms.CheckBox
+    $c1.Text = 'Duplikate (beim Kopieren als doppelt erkannt, Prüfung gegen das behaltene Exemplar)'
+    $c1.Location = New-Object System.Drawing.Point(18, 60); $c1.AutoSize = $true; $c1.Checked = $true
+    $d.Controls.Add($c1)
+    $c2 = New-Object System.Windows.Forms.CheckBox
+    $c2.Text = 'macOS-Reste (._-Dateien, .DS_Store, __MACOSX – am Dateikopf erkannt)'
+    $c2.Location = New-Object System.Drawing.Point(18, 88); $c2.AutoSize = $true; $c2.Checked = $true
+    $d.Controls.Add($c2)
+    $c3 = New-Object System.Windows.Forms.CheckBox
+    $c3.Location = New-Object System.Drawing.Point(18, 116); $c3.AutoSize = $true
+    if ($aus.Count) { $c3.Text = "$($aus -join ', ') neben gleichnamiger WAV, deren Kopie im Ziel bestätigt ist"; $c3.Checked = $true }
+    else { $c3.Text = 'RX2/MP3/AIFF neben WAV (nicht verfügbar: alle Formate werden behalten, siehe ⚙)'; $c3.Enabled = $false }
+    $d.Controls.Add($c3)
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = 'Weiter ...'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
+    $ok.Location = New-Object System.Drawing.Point(380, 156); $ok.Size = New-Object System.Drawing.Size(110, 32)
+    $ab = New-Object System.Windows.Forms.Button
+    $ab.Text = 'Abbrechen'; $ab.FlatStyle = 'System'; $ab.DialogResult = 'Cancel'
+    $ab.Location = New-Object System.Drawing.Point(500, 156); $ab.Size = New-Object System.Drawing.Size(110, 32)
+    $d.Controls.Add($ok); $d.Controls.Add($ab); $d.AcceptButton = $ok; $d.CancelButton = $ab
+    $d.ClientSize = New-Object System.Drawing.Size(628, 204)
+    $r = $d.ShowDialog($form)
+    $arg = @()
+    if ($c1.Checked) { $arg += '-Duplikate' }
+    if ($c2.Checked) { $arg += '-MacReste' }
+    if ($c3.Enabled -and $c3.Checked) { $arg += '-Formate' }
+    $d.Dispose()
+    if ($r -ne 'OK') { return }
+    if (-not $arg.Count) { Show-Meldung 'Es ist nichts ausgewählt.' 'Warning'; return }
+    [void](Start-Skript 'Quelle-aufraeumen.ps1' ($arg -join ' ') 'Quelle aufräumen')
 }
 
 # ---------------------------------------------------------------------------
@@ -248,15 +397,15 @@ $gStatus = New-Gruppe 'Status'
 $lblStatus = New-Object System.Windows.Forms.Label
 $lblStatus.Font = $schrift
 $lblStatus.Location = New-Object System.Drawing.Point(14, 24)
-$lblStatus.Size = New-Object System.Drawing.Size(($breite - 36 - 28), 112)
+$lblStatus.Size = New-Object System.Drawing.Size(($breite - 36 - 28), 152)
 $gStatus.Controls.Add($lblStatus)
-Close-Gruppe $gStatus 144
+Close-Gruppe $gStatus 184
 
 # --- 1 Sortieren
 $gSort = New-Gruppe '1  Sortieren'
 $gy = 24
 $null = New-Knopf $gSort 'Samples sortieren ...' 0 $gy `
-    "Zeigt zuerst eine Vorschau (auch als CSV für Excel) und fragt dann, ob kopiert werden soll. Es wird nur kopiert, nichts gelöscht oder überschrieben. Bereits kopierte Dateien werden übersprungen." `
+    "Zeigt zuerst eine Vorschau (auch als CSV für Excel) und fragt dann, ob kopiert werden soll. Die Quelle bleibt unverändert; es wird nur kopiert, nichts überschrieben. Bereits vorhandener Inhalt wird übersprungen." `
     { if (Test-OrdnerBereit) { [void](Start-Skript 'Samples-sortieren.ps1' '' 'Samples sortieren') } }
 $btnProt = New-Knopf $gSort 'Letztes Protokoll öffnen' 1 $gy `
     "Öffnet das Protokoll des letzten Kopierlaufs (CSV, z. B. in Excel)." `
@@ -264,20 +413,7 @@ $btnProt = New-Knopf $gSort 'Letztes Protokoll öffnen' 1 $gy `
 $gy += 44
 $null = New-Knopf $gSort 'Ziel öffnen' 0 $gy "Öffnet die sortierte Sample-Bibliothek im Explorer." { Open-Pfad (Get-Einstellungen).Ziel }
 $null = New-Knopf $gSort 'Quelle öffnen' 1 $gy "Öffnet den Quellordner im Explorer." { Open-Pfad (Get-Einstellungen).Quelle }
-$gy += 42
-$cbRx2 = New-Object System.Windows.Forms.CheckBox
-$cbRx2.Text = 'RX2 beibehalten'; $cbRx2.Font = $schrift; $cbRx2.AutoSize = $true
-$cbRx2.Location = New-Object System.Drawing.Point(16, $gy)
-$cbRx2.Checked = (Get-Einstellungen).RX2Beibehalten
-$cbRx2.Add_CheckedChanged({ try { Set-Einstellung 'RX2Beibehalten' $cbRx2.Checked } catch { } })
-$tipp.SetToolTip($cbRx2, "Haken (Standard): RX2/REX-Dateien werden mitsortiert.`nOhne Haken: RX2-Dateien, zu denen es eine WAV mit gleichem Namen gibt, werden nicht kopiert und beim Sortieren in den Papierkorb verschoben. RX2 ohne WAV-Gegenstück bleiben erhalten.")
-$gSort.Controls.Add($cbRx2)
-$lMac = New-Object System.Windows.Forms.Label
-$lMac.Text = 'macOS-Reste gehen beim Sortieren in den Papierkorb.'
-$lMac.Font = $schrift; $lMac.ForeColor = [System.Drawing.Color]::DimGray; $lMac.AutoSize = $true
-$lMac.Location = New-Object System.Drawing.Point(150, ($gy + 3))
-$gSort.Controls.Add($lMac)
-$gy += 30
+$gy += 44
 Close-Gruppe $gSort ($gy + 2)
 
 # --- 2 Inventur und Bericht
@@ -287,11 +423,11 @@ $null = New-Knopf $gInv 'Inventur starten' 0 $gy `
     "Erfasst alle Samples und Packs im Ziel (Audio-Eigenschaften, BPM, Tonart, Pack-Art), sucht Duplikate, vergleicht mit der letzten Inventur und erstellt Liste und HTML-Bericht. Es wird nichts verändert." `
     {
         $zs = Get-OrdnerStatus (Get-Einstellungen).Ziel
-        if ($zs.Fehlt -or $zs.Text -ne 'vorhanden') { Show-Meldung "Der Zielordner ist nicht vorhanden:`n$((Get-Einstellungen).Ziel)`n`nBitte zuerst sortieren oder unter 'Einstellungen' den richtigen Ordner wählen." 'Warning'; return }
+        if ($zs.Fehlt -or $zs.Text -ne 'vorhanden') { Show-Meldung "Der Zielordner ist nicht vorhanden:`n$((Get-Einstellungen).Ziel)`n`nBitte zuerst sortieren oder über ⚙ Einstellungen den richtigen Ordner wählen." 'Warning'; return }
         [void](Start-Skript 'Inventur.ps1' '' 'Inventur')
     }
 $btnBericht = New-Knopf $gInv 'Bericht öffnen' 1 $gy `
-    "Öffnet den HTML-Bericht der neuesten Inventur im Browser: Samples, Packs und Duplikate mit Suche, Gliederung, Filtern und Abspielen." `
+    "Öffnet den Bericht der neuesten Inventur im Browser: Samples, Packs und Duplikate mit Suche, Gliederung, Filtern, Abspielen. In der Ansicht Duplikate lassen sich Samples markieren und in den Papierkorb verschieben." `
     { Open-Bericht }
 $gy += 44
 $btnCsv = New-Knopf $gInv 'Liste öffnen (Excel)' 0 $gy `
@@ -309,19 +445,19 @@ $null = New-Knopf $gInv 'Pack-Arten korrigieren' 0 $gy `
         Open-Pfad $packArtenPfad
     }
 $btnZielDup = New-Knopf $gInv 'Duplikate im Ziel entfernen ...' 1 $gy `
-    "Verschiebt doppelte Samples in der Bibliothek in den Papierkorb. Grundlage ist die neueste Inventur. Je Gruppe bleibt ein Exemplar, Kits bleiben vollständig. Vorher Prüfung, Vorschau und Rückfrage." `
+    "Verschiebt alle als entfernbar markierten Duplikate der Bibliothek in den Papierkorb (Grundlage: neueste Inventur; je Gruppe bleibt ein Exemplar, Kits bleiben vollständig). Einzelne Duplikate lassen sich auch im Bericht markieren und entfernen." `
     { [void](Start-Skript 'Ziel-Duplikate-entfernen.ps1' '' 'Duplikate im Ziel entfernen') }
 $gy += 44
 Close-Gruppe $gInv ($gy + 2)
 
-# --- 2 Duplikate
-$gDup = New-Gruppe '3  Duplikate in der Quelle'
+# --- 3 Quelle aufraeumen
+$gDup = New-Gruppe '3  Quelle aufräumen'
 $gy = 24
-$null = New-Knopf $gDup 'Duplikate entfernen ...' 0 $gy `
-    "Entfernt im Quellordner die Samples, die beim Kopieren als doppelt erkannt wurden. Vorher Prüfung per Hash, Vorschau und Rückfrage. Die Dateien gehen in den Papierkorb." `
-    { if (Test-OrdnerBereit -NurQuelle) { [void](Start-Skript 'Duplikate-entfernen.ps1' '' 'Duplikate entfernen') } }
+$null = New-Knopf $gDup 'Quelle aufräumen ...' 0 $gy `
+    "Entfernt bewusst Entbehrliches aus der Quelle: Duplikate, macOS-Reste und – wenn unter ⚙ abgewählt – RX2/MP3/AIFF neben einer WAV, deren Kopie im Ziel bestätigt ist. Mit Auswahl, Vorschau und Rückfrage; Papierkorb." `
+    { Show-QuelleAufraeumen }
 $null = New-Knopf $gDup 'Papierkorb öffnen' 1 $gy `
-    "Öffnet den Windows-Papierkorb. Dort lassen sich entfernte Duplikate wiederherstellen." `
+    "Öffnet den Windows-Papierkorb. Dort lässt sich alles Entfernte wiederherstellen." `
     { try { Start-Process explorer.exe 'shell:RecycleBinFolder' } catch { } }
 $gy += 44
 $null = New-Knopf $gDup 'Protokolle öffnen' 0 $gy "Öffnet den Ordner mit allen Vorschauen und Protokollen." { Open-Pfad $protokollOrdner }
@@ -329,86 +465,22 @@ $null = New-Knopf $gDup 'Programmordner öffnen' 1 $gy "Öffnet den Programmordn
 $gy += 44
 Close-Gruppe $gDup ($gy + 2)
 
-# --- 3 Einstellungen (Ordner)
-$gEin = New-Gruppe '4  Einstellungen'
-$gy = 24
-$pfadFelder = @{}
-foreach ($pe in $PfadEinstellungen) {
-    $l = New-Object System.Windows.Forms.Label
-    $l.Text = "$($pe.Text):"; $l.Font = $schrift
-    $l.Location = New-Object System.Drawing.Point(14, ($gy + 4)); $l.AutoSize = $true
-    $tipp.SetToolTip($l, $pe.Hinweis)
-    $gEin.Controls.Add($l)
-
-    $tb = New-Object System.Windows.Forms.TextBox
-    $tb.Font = $schrift; $tb.ReadOnly = $true; $tb.BackColor = [System.Drawing.Color]::White
-    $tb.Location = New-Object System.Drawing.Point(130, $gy)
-    $tb.Size = New-Object System.Drawing.Size(($breite - 36 - 130 - 100), 26)
-    $tipp.SetToolTip($tb, $pe.Hinweis)
-    $gEin.Controls.Add($tb)
-    $pfadFelder[$pe.Name] = $tb
-
-    $b = New-Object System.Windows.Forms.Button
-    $b.Text = 'Ändern ...'; $b.Font = $schrift; $b.FlatStyle = 'System'
-    $b.Location = New-Object System.Drawing.Point(($breite - 36 - 94), ($gy - 2))
-    $b.Size = New-Object System.Drawing.Size(80, 28)
-    $b.Tag = $pe
-    $b.Add_Click({
-        param($sender, $ev)
-        $pe = $sender.Tag
-        $alt = (Get-Einstellungen)[$pe.Name]
-        $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
-        $dlg.Description = "$($pe.Text): $($pe.Hinweis)"
-        $dlg.ShowNewFolderButton = $true
-        if ($alt -and (Test-Path -LiteralPath $alt)) { $dlg.SelectedPath = $alt }
-        if ($dlg.ShowDialog($form) -ne 'OK') { return }
-        $neu = $dlg.SelectedPath.TrimEnd('\')
-        $e = Get-Einstellungen
-        if ($pe.Name -eq 'Quelle') { $f = Test-QuelleZiel $neu $e.Ziel }
-        elseif ($pe.Name -eq 'Ziel') { $f = Test-QuelleZiel $e.Quelle $neu }
-        else { $f = '' }
-        if ($f) { Show-Meldung "$f`n`nDie Einstellung wurde nicht geändert." 'Warning'; return }
-        try { Set-Einstellung $pe.Name $neu } catch { Show-Meldung "Speichern fehlgeschlagen:`n$($_.Exception.Message)" 'Error' }
-        Update-Status
-    })
-    $tipp.SetToolTip($b, "Ordner für '$($pe.Text)' auswählen. Die Auswahl wird gespeichert.")
-    $gEin.Controls.Add($b)
-    $gy += 32
+# --- Unten: Verknuepfung, Einstellungen (Zahnrad), Dokumentation, Schliessen
+function New-UntenKnopf([string]$text, [int]$x, [int]$b, [string]$hinweis, [scriptblock]$aktion) {
+    $k = New-Object System.Windows.Forms.Button
+    $k.Text = $text; $k.Location = New-Object System.Drawing.Point($x, $script:y); $k.Size = New-Object System.Drawing.Size($b, 34)
+    $k.FlatStyle = 'System'; $k.Add_Click($aktion)
+    if ($hinweis) { $tipp.SetToolTip($k, $hinweis) }
+    $form.Controls.Add($k)
+    return $k
 }
-$lHinweis = New-Object System.Windows.Forms.Label
-$lHinweis.Text = 'Downloads und Download-Archiv werden ab Version 3 (Import) genutzt.'
-$lHinweis.Font = $schrift; $lHinweis.ForeColor = [System.Drawing.Color]::DimGray
-$lHinweis.Location = New-Object System.Drawing.Point(14, ($gy + 2)); $lHinweis.AutoSize = $true
-$gEin.Controls.Add($lHinweis)
-$gy += 28
-Close-Gruppe $gEin ($gy + 4)
-
-# --- Unten
-$btnLink = New-Object System.Windows.Forms.Button
-$btnLink.Location = New-Object System.Drawing.Point(18, $y)
-$btnLink.Size = New-Object System.Drawing.Size(250, 34)
-$btnLink.FlatStyle = 'System'
-$btnLink.Add_Click({ New-DesktopVerknuepfung; Update-Status })
-$tipp.SetToolTip($btnLink, "Legt die Verknüpfung `"Samples-Werkzeuge`" auf dem Desktop an bzw. lässt sie auf diese Version zeigen.")
-$form.Controls.Add($btnLink)
-
-$btnDoku = New-Object System.Windows.Forms.Button
-$btnDoku.Text = 'Dokumentation'
-$btnDoku.Location = New-Object System.Drawing.Point(278, $y)
-$btnDoku.Size = New-Object System.Drawing.Size(144, 34)
-$btnDoku.FlatStyle = 'System'
-$btnDoku.Add_Click({ Open-Pfad $dokuPfad })
-$tipp.SetToolTip($btnDoku, 'Öffnet die Dokumentation (RTF) mit allen Funktionen des Programms.')
-$form.Controls.Add($btnDoku)
-
-$btnZu = New-Object System.Windows.Forms.Button
-$btnZu.Text = 'Schließen'
-$btnZu.Location = New-Object System.Drawing.Point(($breite - 18 - 110), $y)
-$btnZu.Size = New-Object System.Drawing.Size(110, 34)
-$btnZu.FlatStyle = 'System'
-$btnZu.Add_Click({ $form.Close() })
+$btnLink = New-UntenKnopf '' 18 196 "Legt die Verknüpfung `"Samples-Werkzeuge`" auf dem Desktop an bzw. lässt sie auf diese Version zeigen." { New-DesktopVerknuepfung; Update-Status }
+$btnEin = New-UntenKnopf "$([char]0x2699) Einstellungen" 222 136 'Ordner (Quelle, Ziel, Berichte …) und Formate (RX2, MP3, AIFF zusätzlich zur WAV) einstellen.' { Show-Einstellungen }
+try { $btnEin.Font = New-Object System.Drawing.Font('Segoe UI Symbol', 9.5) } catch { }
+$null = New-UntenKnopf 'Dokumentation' 366 120 'Öffnet die Dokumentation (RTF) mit allen Funktionen des Programms.' { Open-Pfad $dokuPfad }
+$btnZu = New-UntenKnopf 'Schließen' 494 48 '' { $form.Close() }
+$btnZu.Width = $breite - 18 - 494
 $form.CancelButton = $btnZu
-$form.Controls.Add($btnZu)
 $y += 46
 
 # Fusszeile: Urheberhinweis und Programmordner
@@ -444,14 +516,14 @@ if ($maxH -gt 300 -and $y -gt $maxH) {
 # ---------------------------------------------------------------------------
 function Update-Status {
     $e = Get-Einstellungen
-    foreach ($k in @($pfadFelder.Keys)) { $pfadFelder[$k].Text = [string]$e[$k] }
-
     $zeilen = @()
-    $q = if (Test-Path -LiteralPath $e.Quelle) { 'gefunden' } else { 'NICHT GEFUNDEN - bitte unter Einstellungen wählen' }
+    $q = if (Test-Path -LiteralPath $e.Quelle) { 'gefunden' } else { "NICHT GEFUNDEN $([char]0x2013) über $([char]0x2699) Einstellungen ändern" }
     $zs = Get-OrdnerStatus $e.Ziel
-    $z = if ($zs.Fehlt) { "$($zs.Text) - bitte unter Einstellungen wählen" } else { $zs.Text }
-    $zeilen += "Quelle:  $q"
-    $zeilen += "Ziel:  $z"
+    $z = if ($zs.Fehlt) { "$($zs.Text) $([char]0x2013) über $([char]0x2699) Einstellungen ändern" } else { $zs.Text }
+    $zeilen += "Quelle:  $($e.Quelle)  $([char]0x2013)  $q"
+    $zeilen += "Ziel:  $($e.Ziel)  $([char]0x2013)  $z"
+    $zus = @(@('RX2', 'RX2Beibehalten'), @('MP3', 'MP3Beibehalten'), @('AIFF', 'AIFFBeibehalten') | Where-Object { $e[$_[1]] } | ForEach-Object { $_[0] })
+    $zeilen += "Formate:  " + $(if ($zus.Count -eq 3) { 'alle (WAV, RX2, MP3, AIFF)' } elseif ($zus.Count -eq 0) { 'nur WAV, wenn vorhanden' } else { "WAV, zusätzlich $($zus -join ', ')" })
 
     $p = Get-NeuestesProtokoll 'Protokoll_*.csv'
     if ($p) { $zeilen += "Letzter Kopierlauf:  $((Get-Protokollzeit $p).ToString('dd.MM.yyyy HH:mm'))" }
@@ -463,7 +535,7 @@ function Update-Status {
         $t = "Letzte Inventur:  $((Get-Protokollzeit $inv).ToString('dd.MM.yyyy HH:mm'))"
         try {
             $j = Get-Content -LiteralPath ([IO.Path]::ChangeExtension($inv.FullName, '.json')) -Raw -Encoding UTF8 | ConvertFrom-Json
-            $t += " - $($j.Samples) Samples in $($j.Packs) Packs, $($j.GroesseGB) GB"
+            $t += " $([char]0x2013) $($j.Samples) Samples in $($j.Packs) Packs, $($j.GroesseGB) GB"
             if ([int]$j.DuplikatDateien -gt 0) { $t += ", $($j.DuplikatDateien) Duplikate" }
         } catch { }
         $zeilen += $t
@@ -472,10 +544,10 @@ function Update-Status {
     $btnCsv.Enabled = [bool]$inv
     $btnVgl.Enabled = [bool](Get-NeuesterVergleich)
     $btnZielDup.Enabled = [bool]$inv
-    $cbRx2.Checked = $e.RX2Beibehalten
 
-    $dp = Get-NeuestesProtokoll 'Duplikate-entfernt_*.csv'
-    if ($dp) { $zeilen += "Duplikate in der Quelle zuletzt entfernt:  $((Get-Protokollzeit $dp).ToString('dd.MM.yyyy HH:mm'))" }
+    $dp = Get-NeuestesProtokoll 'Quelle-aufgeraeumt_*.csv'
+    if (-not $dp) { $dp = Get-NeuestesProtokoll 'Duplikate-entfernt_*.csv' }
+    if ($dp) { $zeilen += "Quelle zuletzt aufgeräumt:  $((Get-Protokollzeit $dp).ToString('dd.MM.yyyy HH:mm'))" }
 
     $ziel = ''
     if (Test-Path -LiteralPath $verknuepfung) {
@@ -486,10 +558,10 @@ function Update-Status {
         $btnLink.Text = 'Desktop-Verknüpfung anlegen'
     } elseif ($ziel -like "*$skriptOrdner*") {
         $zeilen += 'Desktop-Verknüpfung:  vorhanden (öffnet diese Version)'
-        $btnLink.Text = 'Desktop-Verknüpfung erneuern'
+        $btnLink.Text = 'Verknüpfung erneuern'
     } else {
         $zeilen += 'Desktop-Verknüpfung:  zeigt auf eine andere Version'
-        $btnLink.Text = "Verknüpfung auf Version $ProgrammVersion umstellen"
+        $btnLink.Text = "Verknüpfung auf $ProgrammVersion"
     }
     $lblStatus.Text = $zeilen -join "`n"
 }

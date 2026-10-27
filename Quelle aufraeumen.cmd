@@ -1,8 +1,8 @@
 @echo off
 rem (c) 2026 Herbert Stoecker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Veroeffentlichung geaenderter Fassungen nur mit Zustimmung.
-title Duplikate entfernen
-rem Zeigt eine Vorschau und fragt vor dem Verschieben in den Papierkorb nach.
-if not exist "%~dp0Skripte\Duplikate-entfernen.ps1" (
+title Quelle aufraeumen
+rem Entfernt Entbehrliches aus der Quelle (Auswahl, Vorschau, Rueckfrage, Papierkorb).
+if not exist "%~dp0Skripte\Quelle-aufraeumen.ps1" (
   echo.
   echo   Der Ordner "Skripte" wurde nicht gefunden.
   echo   Wahrscheinlich wurde die Datei direkt aus der ZIP-Datei gestartet.
@@ -13,6 +13,6 @@ if not exist "%~dp0Skripte\Duplikate-entfernen.ps1" (
   exit /b 1
 )
 cd /d "%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Skripte\Duplikate-entfernen.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Skripte\Quelle-aufraeumen.ps1"
 echo.
 pause

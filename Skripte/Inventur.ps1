@@ -53,8 +53,57 @@ $sep = [IO.Path]::DirectorySeparatorChar
 # Hilfsfunktionen
 # ----------------------------------------------------------------------------
 # Audio-Eigenschaften aus dem Dateikopf (WAV: RIFF-Chunks, AIFF: COMM-Chunk). Liefert Hashtable oder $null.
+# MP3: Dauer, Abtastrate, Bitrate und Kanaele aus dem ersten Frame (mit Xing/Info/VBRI fuer variable Bitrate)
+function Get-Mp3Info([string]$pfad) {
+    $fs = $null
+    try {
+        $fs = [IO.File]::OpenRead($pfad)
+        $laenge = $fs.Length
+        $puffer = New-Object byte[] ([int][math]::Min(131072, $laenge))
+        $n = $fs.Read($puffer, 0, $puffer.Length)
+        $start = 0
+        if ($n -ge 10 -and $puffer[0] -eq 0x49 -and $puffer[1] -eq 0x44 -and $puffer[2] -eq 0x33) {   # "ID3"
+            $groesse = (([int]$puffer[6] -band 0x7F) -shl 21) -bor (([int]$puffer[7] -band 0x7F) -shl 14) -bor (([int]$puffer[8] -band 0x7F) -shl 7) -bor ([int]$puffer[9] -band 0x7F)
+            $start = 10 + $groesse + $(if ($puffer[5] -band 0x10) { 10 } else { 0 })
+            if ($start + 4 -gt $n) {
+                $fs.Position = $start; $n = $fs.Read($puffer, 0, $puffer.Length); $basis = $start; $start = 0
+            } else { $basis = 0 }
+        } else { $basis = 0 }
+        $br1 = @(0,32,40,48,56,64,80,96,112,128,160,192,224,256,320); $br1l2 = @(0,32,48,56,64,80,96,112,128,160,192,224,256,320,384)
+        $br1l1 = @(0,32,64,96,128,160,192,224,256,288,320,352,384,416,448); $br2 = @(0,8,16,24,32,40,48,56,64,80,96,112,128,144,160)
+        $br2l1 = @(0,32,48,56,64,80,96,112,128,144,160,176,192,224,256)
+        for ($i = $start; $i -lt $n - 4; $i++) {
+            if ($puffer[$i] -ne 0xFF -or ($puffer[$i + 1] -band 0xE0) -ne 0xE0) { continue }
+            $ver = ($puffer[$i + 1] -shr 3) -band 3; $lay = ($puffer[$i + 1] -shr 1) -band 3
+            $bi = $puffer[$i + 2] -shr 4; $si = ($puffer[$i + 2] -shr 2) -band 3
+            if ($ver -eq 1 -or $lay -eq 0 -or $bi -eq 0 -or $bi -eq 15 -or $si -eq 3) { continue }
+            $mpeg1 = $ver -eq 3
+            $rate = @(@(11025,12000,8000), $null, @(22050,24000,16000), @(44100,48000,32000))[$ver][$si]
+            $kbps = if ($mpeg1) { if ($lay -eq 1) { $br1[$bi] } elseif ($lay -eq 2) { $br1l2[$bi] } else { $br1l1[$bi] } } else { if ($lay -eq 3) { $br2l1[$bi] } else { $br2[$bi] } }
+            $spf = if ($lay -eq 3) { 384 } elseif ($lay -eq 2 -or $mpeg1) { 1152 } else { 576 }
+            $mono = ($puffer[$i + 3] -shr 6) -eq 3
+            $daten = $laenge - ($basis + $i)
+            $dauer = $daten * 8 / ($kbps * 1000)
+            # Xing/Info bzw. VBRI: Anzahl der Frames fuer variable Bitrate
+            $xo = $i + 4 + $(if ($mpeg1) { if ($mono) { 17 } else { 32 } } else { if ($mono) { 9 } else { 17 } })
+            $frames = 0
+            if ($xo + 12 -le $n) {
+                $tag = [Text.Encoding]::ASCII.GetString($puffer, $xo, 4)
+                if (($tag -eq 'Xing' -or $tag -eq 'Info') -and ($puffer[$xo + 7] -band 1)) { $frames = ([uint32]$puffer[$xo + 8] -shl 24) -bor ([uint32]$puffer[$xo + 9] -shl 16) -bor ([uint32]$puffer[$xo + 10] -shl 8) -bor [uint32]$puffer[$xo + 11] }
+            }
+            $vo = $i + 36
+            if (-not $frames -and $vo + 18 -le $n -and [Text.Encoding]::ASCII.GetString($puffer, $vo, 4) -eq 'VBRI') { $frames = ([uint32]$puffer[$vo + 14] -shl 24) -bor ([uint32]$puffer[$vo + 15] -shl 16) -bor ([uint32]$puffer[$vo + 16] -shl 8) -bor [uint32]$puffer[$vo + 17] }
+            if ($frames -gt 0) { $dauer = $frames * $spf / $rate; if ($dauer -gt 0) { $kbps = [math]::Round($daten * 8 / $dauer / 1000) } }
+            return @{ Defekt = $false; Kanaele = $(if ($mono) { 1 } else { 2 }); Rate = $rate; Bits = $null; Dauer = $dauer; Bitrate = $kbps }
+        }
+        return @{ Defekt = $true }
+    } catch { return @{ Defekt = $true } }
+    finally { if ($fs) { $fs.Dispose() } }
+}
+
 function Get-AudioInfo([string]$pfad) {
     $ext = [IO.Path]::GetExtension($pfad).ToLowerInvariant()
+    if ($ext -eq '.mp3') { return (Get-Mp3Info $pfad) }
     if ($ext -notin '.wav', '.aif', '.aiff') { return $null }
     $fs = $null
     try {
@@ -214,7 +263,7 @@ foreach ($d in $dateien) {
     $teile = @($rel -split '[\\/]')
     $istAudio = $d.Name -match $RxAudio
     if (-not $istAudio -and $teile[0] -ne '11 MIDI') { continue }   # Lizenztexte usw. zaehlen nicht als Sample
-    if (Test-MacRest $d.FullName) { continue }
+    if ((Get-MacRestArt $d.FullName) -eq 'mac') { continue }
     $ein = Get-Einordnung $teile
     $basis = [IO.Path]::GetFileNameWithoutExtension($d.Name)
     $ordnerName = if ($teile.Count -ge 2) { $teile[$teile.Count - 2] } else { '' }
@@ -237,6 +286,7 @@ foreach ($d in $dateien) {
         Dauer = $dauer
         Abtastrate = $(if ($info -and -not $info.Defekt) { $info.Rate } else { $null })
         Bittiefe   = $(if ($info -and -not $info.Defekt) { $info.Bits } else { $null })
+        Bitrate    = $(if ($info -and -not $info.Defekt -and $info.Bitrate) { $info.Bitrate } else { $null })
         Kanaele    = $(if ($info -and -not $info.Defekt) { if ($info.Kanaele -eq 1) { 'mono' } elseif ($info.Kanaele -eq 2) { 'stereo' } else { [string]$info.Kanaele } } else { '' })
         BPM = (Get-Bpm $basis $ordnerName $istLoop); Tonart = (Get-Tonart $basis)
         Pfad = $rel; Ursprung = $u; 'Original in Quelle' = $orig
@@ -406,5 +456,9 @@ Write-Host ""
 Write-Host "Liste (Excel):  $csvSamples"
 Write-Host "Bericht:        $html" -ForegroundColor Green
 if ([Environment]::UserInteractive -and -not $env:SW_PAPIERKORB) {
-    if (Read-JaNein 'Bericht jetzt im Browser oeffnen?') { try { Invoke-Item -LiteralPath $html } catch { } }
+    if (Read-JaNein 'Bericht jetzt im Browser oeffnen?') {
+        $psExe = Join-Path $PSHOME 'powershell.exe'; if (-not (Test-Path -LiteralPath $psExe)) { $psExe = 'powershell.exe' }
+        try { Start-Process -FilePath $psExe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $PSScriptRoot 'Bericht-Dienst.ps1')`"" -WindowStyle Hidden -ErrorAction Stop }
+        catch { try { Invoke-Item -LiteralPath $html } catch { } }
+    }
 }

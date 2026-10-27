@@ -65,7 +65,7 @@ Write-Host ""
 Write-Host "==================== Zusammenfassung ====================" -ForegroundColor Yellow
 Write-Host ("Duplikat-Gruppen:                 {0,7}" -f @($gruppen).Count)
 $ergebnis | Group-Object Status | ForEach-Object { "{0,-45} {1,7}" -f ($_.Name + ':'), $_.Count } | Write-Host
-Write-Host ("Frei werdender Platz: {0:N1} MB" -f (($weg | Measure-Object GroesseMB -Sum).Sum))
+Write-Host ("Frei werdender Platz: {0:N1} MB" -f [double](($weg | Measure-Object GroesseMB -Sum).Sum))
 
 $vorschauPfad = Join-Path $protokollOrdner "Ziel-Duplikate-Vorschau_$Zeitstempel.csv"
 $ergebnis | Export-Csv -LiteralPath $vorschauPfad -NoTypeInformation -Delimiter ';' -Encoding UTF8

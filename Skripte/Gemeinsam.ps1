@@ -10,7 +10,7 @@
 #   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
 #   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
 
-$ProgrammVersion = '2.0.0'
+$ProgrammVersion = '2.1.0'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -28,10 +28,24 @@ $RxAudio    = '\.(wav|aiff?|mp3|flac|ogg|rx2|rex|m4a)$'
 $RxRx2      = '\.(rx2|rex)$'
 $PackArten  = @('Drum-Kit', 'One-Shot-Pack', 'Loop-Pack', 'Construction Kit', 'Melodie/Instrument', 'Vocal-Pack',
                 'Atmos/Field Recording', 'FX-Pack', 'MIDI-Pack', 'Song/Playalong', 'gemischt')
-function Test-MacRest([string]$pfad) {
+# Kandidat nach Name: ._-Datei, .DS_Store oder Inhalt eines __MACOSX-Ordners
+function Test-MacRestName([string]$pfad) {
     $n = [IO.Path]::GetFileName($pfad)
     return ($n -eq '.DS_Store' -or $n.StartsWith('._') -or $pfad -match '[\\/]__MACOSX([\\/]|$)')
 }
+# Pruefung ueber den Dateikopf: 'mac' (sicher ein macOS-Rest), 'unklar' (nur der Name passt) oder '' (kein Kandidat).
+# AppleDouble 00 05 16 07, AppleSingle 00 05 16 00, .DS_Store: 00 00 00 01 "Bud1"
+function Get-MacRestArt([string]$pfad) {
+    if (-not (Test-MacRestName $pfad)) { return '' }
+    $b = New-Object byte[] 8; $n = 0
+    try { $fs = [IO.File]::OpenRead($pfad); try { $n = $fs.Read($b, 0, 8) } finally { $fs.Dispose() } } catch { return 'unklar' }
+    if ($n -ge 4 -and $b[0] -eq 0 -and $b[1] -eq 5 -and $b[2] -eq 0x16 -and ($b[3] -eq 7 -or $b[3] -eq 0)) { return 'mac' }
+    if ($n -ge 8 -and [Text.Encoding]::ASCII.GetString($b, 4, 4) -eq 'Bud1') { return 'mac' }
+    return 'unklar'
+}
+# Zusaetzliche Formate neben der WAV (SRT-06): Dateiendung -> Einstellung "behalten"
+$FormatEinstellung = @{ '.rx2' = 'RX2Beibehalten'; '.rex' = 'RX2Beibehalten'; '.mp3' = 'MP3Beibehalten'; '.aif' = 'AIFFBeibehalten'; '.aiff' = 'AIFFBeibehalten' }
+$FormatName = @{ 'RX2Beibehalten' = 'RX2'; 'MP3Beibehalten' = 'MP3'; 'AIFFBeibehalten' = 'AIFF' }
 
 if (-not (Test-Path -LiteralPath $protokollOrdner)) { try { New-Item -ItemType Directory -Path $protokollOrdner -Force | Out-Null } catch { } }
 
@@ -69,6 +83,8 @@ function Get-StandardEinstellungen {
         DownloadArchiv      = 'E:\Samples-Archiv\Downloads'
         Berichtsordner      = $wurzel
         RX2Beibehalten      = $true
+        MP3Beibehalten      = $true
+        AIFFBeibehalten     = $true
         ErsterStartErledigt = $false
     }
 }
@@ -84,7 +100,7 @@ function Get-Einstellungen {
         } catch { Write-FehlerLog "Einstellungen nicht lesbar: $($_.Exception.Message)" }
     }
     foreach ($k in @($e.Keys)) {
-        if ($k -in 'ErsterStartErledigt', 'RX2Beibehalten') { $e[$k] = ([string]$e[$k]) -notin 'False', '0', '' }
+        if ($k -in 'ErsterStartErledigt', 'RX2Beibehalten', 'MP3Beibehalten', 'AIFFBeibehalten') { $e[$k] = ([string]$e[$k]) -notin 'False', '0', '' }
         else { $e[$k] = ([string]$e[$k]).Trim().TrimEnd('\', '/') }
     }
     return $e

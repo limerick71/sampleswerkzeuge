@@ -3,8 +3,10 @@
 
 Die Samples-Werkzeuge kopieren Sample-Packs aus einem Quellordner sortiert nach
 Instrument (Kick, Snare, Bass, Vocals …, jeweils One-Shots und Loops) in eine
-Sample-Bibliothek, erstellen eine Inventur mit HTML-Bericht und entfernen auf
-Wunsch doppelte Samples. Eine Installation ist nicht nötig.
+Sample-Bibliothek, erstellen eine Inventur mit HTML-Bericht und räumen auf
+Wunsch Quelle und Bibliothek auf. Eine Installation ist nicht nötig.
+Das Sortieren verändert die Quelle nie – gelöscht wird nur in eigenen, bewusst
+gestarteten Schritten, immer in den Papierkorb.
 
 
 1. ENTPACKEN
@@ -29,12 +31,16 @@ Erscheint eine blaue Windows-Warnung („Der Computer wurde durch Windows gesch�
 
 3. ORDNER EINSTELLEN
 ------------------------------------------------------------
-Im Bereich „4 Einstellungen“ mit „Ändern …“ die Ordner wählen:
+Unten auf „⚙ Einstellungen“ klicken und mit „Ändern …“ die Ordner wählen:
   - Quelle:   Ordner mit den unsortierten Sample-Packs (Standard E:\Sounds und Samples)
   - Ziel:     sortierte Sample-Bibliothek (Standard E:\Samples)
   - Berichte: hier entstehen Inventuren und Berichte (Standard: Programmordner)
 Downloads und Download-Archiv werden erst ab Version 3 genutzt.
-Die Auswahl wird gespeichert.
+Die Auswahl wird gespeichert. Der Status im Hauptfenster zeigt danach Quelle
+und Ziel mit Pfad und ob sie gefunden werden.
+Im selben Fenster: „Zusätzlich zur WAV behalten: RX2 / MP3 / AIFF“ (Standard:
+alle an). Ohne Haken wird z. B. eine RX2 nur dann nicht kopiert, wenn im selben
+Ordner eine WAV mit gleichem Namen liegt. „Nur WAV“ nimmt alle Haken weg.
 
 
 4. SORTIEREN
@@ -46,10 +52,8 @@ Im Bereich „1 Sortieren“ auf „Samples sortieren …“ klicken:
   - Es wird nur kopiert, nichts überschrieben. Ein zweiter Lauf kopiert nur, was
     neu dazugekommen ist – auch wenn derselbe Inhalt im Ziel unter anderem Namen
     oder in einem anderen Ordner liegt.
-  - macOS-Reste (._-Dateien, .DS_Store) in der Quelle gehen dabei in den Papierkorb.
-  - Häkchen „RX2 beibehalten“ (Standard: an). Ohne Häkchen werden RX2-Dateien,
-    zu denen es eine gleichnamige WAV gibt, nicht kopiert und in den Papierkorb
-    verschoben.
+  - macOS-Reste (._-Dateien, .DS_Store) werden nicht kopiert.
+  - Die Quelle bleibt unverändert; nicht Kopiertes bleibt dort liegen.
 
 
 5. INVENTUR UND BERICHT
@@ -60,18 +64,22 @@ Im Bereich „2 Inventur und Bericht“ auf „Inventur starten“ klicken:
     Es wird nichts verändert.
   - „Bericht öffnen“ zeigt den Bericht im Browser: Samples, Packs und Duplikate
     mit Suche, Gliederung (Pack, Instrument, BPM, Tonart …), Filtern und ▶ zum
-    Anhören.
+    Anhören. In der Ansicht „Duplikate“ lassen sich Samples ankreuzen (auch
+    „Alle markieren“) und direkt in den Papierkorb verschieben.
   - „Liste öffnen (Excel)“ öffnet die Inventur als CSV.
   - „Duplikate im Ziel entfernen …“ verschiebt doppelte Samples der Bibliothek
     nach Vorschau und Rückfrage in den Papierkorb. Danach neue Inventur starten.
 
 
-6. DUPLIKATE IN DER QUELLE ENTFERNEN (OPTIONAL)
+6. QUELLE AUFRÄUMEN (OPTIONAL)
 ------------------------------------------------------------
-Im Bereich „3 Duplikate in der Quelle“ auf „Duplikate entfernen …“ klicken:
-  - Entfernt werden nur Samples im Quellordner, die beim Kopieren als doppelt
-    erkannt wurden, nach Prüfung per Hash, Vorschau und „J“.
-  - Die Dateien gehen in den Windows-Papierkorb („Papierkorb öffnen“).
+Im Bereich „3 Quelle aufräumen“ auf „Quelle aufräumen …“ klicken und wählen:
+  - Duplikate: beim Kopieren als doppelt erkannt, Prüfung per Hash.
+  - macOS-Reste: ._-Dateien, .DS_Store, __MACOSX.
+  - Formate: RX2/MP3/AIFF neben gleichnamiger WAV (nur wenn der Haken unter
+    ⚙ Einstellungen aus ist und die WAV sicher im Ziel liegt).
+Danach zeigt ein Fenster die Vorschau; entfernt wird erst nach „J“. Die Dateien
+gehen in den Windows-Papierkorb („Papierkorb öffnen“).
 
 
 WICHTIG

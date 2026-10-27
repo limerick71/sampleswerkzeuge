@@ -23,7 +23,7 @@ function New-InventurBericht([string]$csvPfad) {
     $s = foreach ($x in $samples) {
         [ordered]@{
             d = $x.Datei; k = $x.Kategorie; i = $x.Instrument; t = $x.Typ; p = $x.Pack; a = $x.'Pack-Art'; f = $x.Format
-            s = (Zahl $x.GroesseBytes); du = (Zahl $x.Dauer); r = (Zahl $x.Abtastrate); b = (Zahl $x.Bittiefe); c = $x.Kanaele
+            s = (Zahl $x.GroesseBytes); du = (Zahl $x.Dauer); r = (Zahl $x.Abtastrate); b = (Zahl $x.Bittiefe); kb = (Zahl $x.Bitrate); c = $x.Kanaele
             bpm = (Zahl $x.BPM); key = $x.Tonart; w = $x.Pfad; u = $x.Ursprung; o = $x.'Original in Quelle'
             g = (Zahl $x.'Duplikat-Gruppe'); dr = $x.'Duplikat-Rolle'; n = $x.'Seit letzter Inventur'; h = $x.Hinweis
         }
@@ -111,6 +111,15 @@ button.play.laeuft{background:var(--akzent);color:var(--karte)}
 .leer{color:var(--leise);padding:20px}
 h2{font-size:16px;margin:24px 0 8px;color:var(--akzent)}
 footer{color:var(--leise);font-size:12px;padding:0 28px 30px}
+.legende{padding:0 28px 6px;color:var(--leise);font-size:12px}
+.aktionen{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.aktionen button{font:inherit;border:1px solid var(--linie);background:var(--karte);color:var(--text);border-radius:6px;padding:5px 10px;cursor:pointer}
+.aktionen button.gefahr{border-color:var(--rot);color:var(--rot)}
+.aktionen button:disabled{opacity:.5;cursor:default}
+tr.pack{cursor:pointer}
+tr.unterliste>td{padding:0 0 8px 24px;background:var(--bg)}
+tr.unterliste table{margin:6px 0 0}
+input.mk{width:16px;height:16px;margin:6px 6px 0 0;vertical-align:top}
 #meldung{position:fixed;bottom:18px;right:18px;background:var(--akzent);color:var(--karte);padding:8px 14px;border-radius:6px;display:none;z-index:5}
 @media print{.werkzeuge{position:static}}
 </style>
@@ -132,10 +141,11 @@ footer{color:var(--leise);font-size:12px;padding:0 28px 30px}
   <select id="fTyp"><option value="">One-Shots und Loops</option><option>One-Shot</option><option>Loop</option><option>Kit</option></select>
   <select id="fKey"><option value="">alle Tonarten</option></select>
   <select id="fFmt"><option value="">alle Formate</option></select>
-  <label class="ck"><input type="checkbox" id="fProblem"> nur Auff&#xE4;lligkeiten</label>
+  <label class="ck" title="Zeigt nur Samples mit roter oder gelber Markierung: defekt oder leer, entfernbares Duplikat, unsortiert"><input type="checkbox" id="fProblem"> nur Auff&#xE4;llige (defekt, Duplikat, unsortiert)</label>
   <span id="packChip"></span>
   <span id="anzahl" class="unter"></span>
 </div>
+<div class="legende">Markierungen: <span class="marke rot">defekt</span> leer oder Dateikopf unlesbar &nbsp;<span class="marke gelb">Duplikat</span> entfernbar &nbsp;<span class="marke gelb">unsortiert</span> keinem Instrument zugeordnet &nbsp;<span class="marke gruen">neu</span> seit der letzten Inventur &nbsp;<span class="marke blau">verschoben</span> &nbsp;<span class="marke grau">grau</span> Hinweis</div>
 <main id="inhalt"></main>
 <footer id="fuss"></footer>
 <div id="meldung"></div>
@@ -145,7 +155,9 @@ footer{color:var(--leise);font-size:12px;padding:0 28px 30px}
 (function(){
   var D = JSON.parse(document.getElementById('daten').textContent);
   var S = D.samples || [], P = D.packs || [], M = D.meta || {}, W = D.entfernt || [];
-  var ansicht = 'samples', packFilter = '', offen = {}, zeit = null;
+  var ansicht = 'samples', packFilter = '', offen = {}, zeit = null, markiert = {};
+  var DIENST = window.SW_DIENST || null;   // gesetzt, wenn der Bericht ueber den lokalen Bericht-Dienst geoeffnet wurde
+  if (DIENST) setInterval(function(){ fetch('/ping?t=' + DIENST.token).catch(function(){}); }, 20000);
   function $(id){ return document.getElementById(id); }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   function uniq(a){ var o = {}, r = []; a.forEach(function(x){ if (x && !o[x]) { o[x] = 1; r.push(x); } }); return r.sort(function(a,b){ return String(a).localeCompare(String(b),'de',{numeric:true}); }); }
@@ -177,7 +189,7 @@ footer{color:var(--leise);font-size:12px;padding:0 28px 30px}
   fuelle('fFmt', uniq(S.map(function(s){ return s.f; })));
   var GL = {
     samples: [['kat','Kategorie → Instrument'],['pack','Pack'],['art','Pack-Art'],['bpm','BPM (10er-Bereiche)'],['key','Tonart'],['keine','nicht gliedern']],
-    packs:   [['art','Pack-Art'],['keine','nicht gliedern']],
+    packs:   [['pack','Pack (alphabetisch)'],['art','Pack-Art']],
     dups:    [['gruppe','Duplikat-Gruppe']]
   };
   function setzeGliederung(){ $('gliederung').innerHTML = GL[ansicht].map(function(x){ return '<option value="' + x[0] + '">' + esc(x[1]) + '</option>'; }).join(''); }
@@ -209,7 +221,7 @@ footer{color:var(--leise);font-size:12px;padding:0 28px 30px}
   // Abspielen im Browser (WAV, MP3, OGG, FLAC, M4A; nicht AIFF und RX2)
   var spielbar = {WAV:1,MP3:1,OGG:1,FLAC:1,M4A:1};
   var player = $('player'), aktuell = null;
-  function dateiUrl(rel){ var p = (M.Ziel || '').replace(/[\\\/]+$/,'') + '\\' + rel; return 'file:///' + p.split(/[\\\/]/).map(encodeURIComponent).join('/').replace(/^([A-Za-z])%3A/, '$1:'); }
+  function dateiUrl(rel){ if (DIENST) return '/datei?t=' + DIENST.token + '&p=' + encodeURIComponent(rel); var p = (M.Ziel || '').replace(/[\\\/]+$/,'') + '\\' + rel; return 'file:///' + p.split(/[\\\/]/).map(encodeURIComponent).join('/').replace(/^([A-Za-z])%3A/, '$1:'); }
   function vollerPfad(rel){ return (M.Ziel || '').replace(/[\\\/]+$/,'') + '\\' + rel; }
   document.addEventListener('click', function(e){
     var b = e.target.closest('button.play');
@@ -224,6 +236,11 @@ footer{color:var(--leise);font-size:12px;padding:0 28px 30px}
     if (c) { kopiere(vollerPfad(c.getAttribute('data-w'))); return; }
     var pk = e.target.closest('a.pk');
     if (pk) { packFilter = pk.getAttribute('data-p'); waehle('samples'); return; }
+    if (e.target.closest('input.mk')) return;
+    var ak = e.target.closest('button[data-akt]');
+    if (ak) { aktion(ak.getAttribute('data-akt')); return; }
+    var pr = e.target.closest('tr[data-pk]');
+    if (pr) { var pid = 'pk|' + pr.getAttribute('data-pk'); offen[pid] = !offen[pid]; zeichnen(); return; }
     var g = e.target.closest('tr[data-g]');
     if (g) { var id = g.getAttribute('data-g'); offen[id] = !offen[id]; zeichnen(); }
   });
@@ -261,9 +278,10 @@ footer{color:var(--leise);font-size:12px;padding:0 28px 30px}
 
   // Tabellen
   var KOPF_S = '<tr><th></th><th>Sample</th><th>Pack</th><th>Instrument / Typ</th><th>BPM</th><th>Tonart</th><th>Dauer</th><th>Format</th><th>Größe</th><th>Pfad</th></tr>';
-  function zeileS(s, ohneDup){
-    var play = spielbar[s.f] ? '<button class="play" data-w="' + esc(s.w) + '" title="Im Browser anhören">▶</button>' : '';
-    var fmt = esc(s.f) + (s.r ? '<br><span class="klein">' + zahl(s.r/1000,1) + ' kHz · ' + esc(s.b) + ' Bit · ' + esc(s.c) + '</span>' : '');
+  function zeileS(s, ohneDup, mit){
+    var mk = mit ? (s.t === 'Kit' ? '<input type="checkbox" class="mk" disabled title="Liegt in einem Kit \u2013 wird nicht entfernt">' : '<input type="checkbox" class="mk" data-w="' + esc(s.w) + '"' + (markiert[s.w] ? ' checked' : '') + ' title="Zum Entfernen markieren">') : '';
+    var play = mk + (spielbar[s.f] ? '<button class="play" data-w="' + esc(s.w) + '" title="Im Browser anhören">▶</button>' : '');
+    var fmt = esc(s.f) + (s.r ? '<br><span class="klein">' + zahl(s.r/1000,1) + ' kHz · ' + (s.kb ? zahl(s.kb) + ' kbit/s' : esc(s.b) + ' Bit') + ' · ' + esc(s.c) + '</span>' : '');
     return '<tr><td>' + play + '</td><td class="name"><b>' + esc(s.d) + '</b><br>' + markenHtml(markenS(s, ohneDup)) + '</td>' +
       '<td><a class="pk" data-p="' + esc(s.p) + '" title="Nur dieses Pack zeigen">' + esc(s.p) + '</a><br><span class="marke grau">' + esc(s.a) + '</span></td>' +
       '<td>' + esc(s.i) + (s.t ? '<br><span class="klein">' + esc(s.t) + '</span>' : '') + '</td>' +
@@ -273,9 +291,17 @@ footer{color:var(--leise);font-size:12px;padding:0 28px 30px}
   }
   var KOPF_P = '<tr><th>Pack</th><th>Pack-Art</th><th>Samples</th><th>Größe</th><th>Instrumente</th><th>Loops</th><th>BPM</th><th>Tonarten</th><th>Formate</th><th>Original in Quelle</th></tr>';
   function zeileP(p){
-    var name = p.a === 'ausgespart' ? '<b>' + esc(p.p) + '</b>' : '<a class="pk" data-p="' + esc(p.p) + '" title="Samples dieses Packs zeigen"><b>' + esc(p.p) + '</b></a>';
-    return '<tr><td class="name">' + name + '<br>' + markenHtml(markenP(p)) + '</td><td>' + esc(p.a) + '</td><td class="z">' + zahl(p.n) + '</td><td class="z">' + mb((p.mb || 0) * 1048576) + '</td>' +
+    var auf = !!offen['pk|' + p.p], aus = p.a === 'ausgespart';
+    var name = (aus ? '' : (auf ? '\u25BE ' : '\u25B8 ')) + '<b>' + esc(p.p) + '</b>' + (aus ? '' : ' <a class="pk klein" data-p="' + esc(p.p) + '" title="In der Ansicht Samples nur dieses Pack zeigen">nur dieses Pack</a>');
+    var h = '<tr' + (aus ? '' : ' class="pack" data-pk="' + esc(p.p) + '" title="Klicken: Samples auf-/zuklappen"') + '><td class="name">' + name + '<br>' + markenHtml(markenP(p)) + '</td><td>' + esc(p.a) + '</td><td class="z">' + zahl(p.n) + '</td><td class="z">' + mb((p.mb || 0) * 1048576) + '</td>' +
       '<td class="klein">' + esc(p.i) + '</td><td class="z">' + zahl(p.l) + ' %</td><td>' + esc(p.bpm) + '</td><td class="klein">' + esc(p.key) + '</td><td>' + esc(p.f) + '</td><td>' + esc(p.o) + '</td></tr>';
+    if (auf && !aus) {
+      var L = S.filter(function(s){ return s.p === p.p; }).sort(function(a,b){ return a.w.localeCompare(b.w,'de',{numeric:true}); });
+      h += '<tr class="unterliste"><td colspan="10"><table>' + KOPF_S;
+      L.forEach(function(s){ h += zeileS(s); });
+      h += '</table></td></tr>';
+    }
+    return h;
   }
 
   function gruppenKopf(id, text, L, unter, spalten){
@@ -322,7 +348,7 @@ footer{color:var(--leise);font-size:12px;padding:0 28px 30px}
     var L = filterP().sort(function(a,b){ return a.p.localeCompare(b.p,'de',{numeric:true}); }), g = $('gliederung').value, h = '<table>' + KOPF_P;
     $('anzahl').textContent = L.length + ' von ' + P.length + ' Packs';
     if (!L.length) return '<div class="leer">Keine Packs für diese Auswahl.</div>';
-    if (g === 'keine') { L.forEach(function(p){ h += zeileP(p); }); return h + '</table>'; }
+    if (g !== 'art') { L.forEach(function(p){ h += zeileP(p); }); return h + '</table>'; }
     var grp = {}; L.forEach(function(p){ (grp[p.a] = grp[p.a] || []).push(p); });
     Object.keys(grp).sort(sortSchl).forEach(function(a){
       h += '<tr class="gruppe"><td colspan="10">' + esc(a) + '<span class="m">' + grp[a].length + ' Packs</span></td></tr>';
@@ -337,7 +363,16 @@ footer{color:var(--leise);font-size:12px;padding:0 28px 30px}
     var E = L.filter(function(s){ return s.dr === 'entfernbar'; });
     $('anzahl').textContent = ids.length + ' Gruppen · ' + E.length + ' entfernbar · ' + mb(sum(E,function(s){ return s.s; }));
     if (!ids.length) return '<div class="leer">Keine Duplikate in der Bibliothek' + (S.some(function(s){ return s.g; }) ? ' für diese Auswahl' : '') + '.</div>';
-    h += '<div class="unter" style="margin-bottom:10px">Gleicher Inhalt (Größe und Prüfsumme) an mehreren Stellen. Entfernen über „Duplikate im Ziel entfernen …“ in der Oberfläche: „entfernbar“ geht in den Papierkorb, „behalten“ bleibt.</div><table>' + KOPF_S;
+    h += '<div class="unter" style="margin-bottom:10px">Gleicher Inhalt (Größe und Prüfsumme) an mehreren Stellen. Vorschlag: \u201eentfernbar\u201c kann weg, \u201ebehalten\u201c bleibt.</div>';
+    if (DIENST) {
+      var nm = Object.keys(markiert).length;
+      h += '<div class="aktionen"><button data-akt="alle">Alle markieren</button><button data-akt="entfernbar">Nur entfernbare markieren</button><button data-akt="keine">Markierung aufheben</button>' +
+        '<button data-akt="entfernen" class="gefahr"' + (nm ? '' : ' disabled') + '>Markierte in den Papierkorb \u2026 (' + nm + ')</button>' +
+        '<span class="unter">Je Gruppe bleibt immer mindestens ein Exemplar erhalten; Kits werden nie angetastet.</span></div>';
+    } else {
+      h += '<div class="unter" style="margin-bottom:10px">Zum Entfernen direkt aus dem Bericht diesen bitte in der Oberfläche mit \u201eBericht öffnen\u201c starten. Alternativ: \u201eDuplikate im Ziel entfernen \u2026\u201c.</div>';
+    }
+    h += '<table>' + KOPF_S;
     var viele = ids.length > 60;
     if (viele) h = h.replace('</div><table>', ' Bei vielen Gruppen sind diese zugeklappt \u2013 zum \u00d6ffnen anklicken.</div><table>');
     ids.forEach(function(id){
@@ -345,9 +380,41 @@ footer{color:var(--leise);font-size:12px;padding:0 28px 30px}
       var gid = 'dup|' + id, zu = viele && !offen[gid];
       h += '<tr class="gruppe" data-g="' + gid + '"><td colspan="10">' + (viele ? (zu ? '\u25B8 ' : '\u25BE ') : '') + 'Gruppe ' + id + ': ' + esc(G[0].d) + '<span class="m">' + G.length + ' Exemplare \u00b7 je ' + mb(G[0].s) + '</span></td></tr>';
       if (zu) return;
-      G.sort(function(a,b){ return (a.dr === 'entfernbar') - (b.dr === 'entfernbar'); }).forEach(function(s){ h += zeileS(s, true).replace('<td class="name"><b>', '<td class="name"><span class="marke ' + (s.dr === 'entfernbar' ? 'gelb' : 'gruen') + '">' + esc(s.dr) + '</span><br><b>'); });
+      G.sort(function(a,b){ return (a.dr === 'entfernbar') - (b.dr === 'entfernbar'); }).forEach(function(s){ h += zeileS(s, true, !!DIENST).replace('<td class="name"><b>', '<td class="name"><span class="marke ' + (s.dr === 'entfernbar' ? 'gelb' : 'gruen') + '">' + esc(s.dr) + '</span><br><b>'); });
     });
     return h + '</table>';
+  }
+  document.addEventListener('change', function(e){
+    var c = e.target.closest('input.mk'); if (!c) return;
+    var w = c.getAttribute('data-w'); if (c.checked) markiert[w] = true; else delete markiert[w];
+    var b = document.querySelector('button[data-akt=entfernen]'); var n = Object.keys(markiert).length;
+    if (b) { b.disabled = !n; b.textContent = 'Markierte in den Papierkorb \u2026 (' + n + ')'; }
+  });
+  function sichtbareDups(){ return filterS().filter(function(s){ return s.g && s.t !== 'Kit'; }); }
+  function aktion(a){
+    if (a === 'alle') { sichtbareDups().forEach(function(s){ markiert[s.w] = true; }); zeichnen(); return; }
+    if (a === 'entfernbar') { markiert = {}; sichtbareDups().forEach(function(s){ if (s.dr === 'entfernbar') markiert[s.w] = true; }); zeichnen(); return; }
+    if (a === 'keine') { markiert = {}; zeichnen(); return; }
+    if (a !== 'entfernen' || !DIENST) return;
+    var pfade = Object.keys(markiert); if (!pfade.length) return;
+    var groesse = sum(S.filter(function(s){ return markiert[s.w]; }), function(s){ return s.s; });
+    if (!confirm(pfade.length + ' markierte Datei(en) (' + mb(groesse) + ') in den Papierkorb verschieben?\n\nVorher wird jede Datei geprüft. Ist sie das letzte Exemplar ihrer Gruppe oder liegt sie in einem Kit, bleibt sie erhalten.')) return;
+    meldung('Entferne \u2026');
+    fetch('/entfernen?t=' + DIENST.token, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pfade: pfade }) })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var ok = {}, abgelehnt = [];
+        (d.ergebnisse || []).forEach(function(x){ if (x.ok) ok[x.pfad] = true; else abgelehnt.push(x.pfad + ': ' + x.status); });
+        S = S.filter(function(s){ return !ok[s.w]; });
+        var anz = {}; S.forEach(function(s){ if (s.g) anz[s.g] = (anz[s.g] || 0) + 1; });
+        var hatBehalten = {}; S.forEach(function(s){ if (s.g && /^behalten/.test(s.dr)) hatBehalten[s.g] = true; });
+        S.forEach(function(s){ if (s.g && anz[s.g] < 2) { s.g = null; s.dr = ''; } else if (s.g && !hatBehalten[s.g]) { s.dr = 'behalten'; hatBehalten[s.g] = true; } });
+        markiert = {};
+        zeichnen();
+        meldung(Object.keys(ok).length + ' Datei(en) im Papierkorb' + (abgelehnt.length ? ', ' + abgelehnt.length + ' nicht entfernt' : ''));
+        if (abgelehnt.length) alert('Nicht entfernt:\n\n' + abgelehnt.slice(0, 15).join('\n') + (abgelehnt.length > 15 ? '\n\u2026' : ''));
+      })
+      .catch(function(){ alert('Der Bericht-Dienst antwortet nicht. Bitte den Bericht in der Oberfläche erneut mit \u201eBericht öffnen\u201c starten.'); });
   }
   function zeichnen(){
     $('packChip').innerHTML = packFilter ? '<span class="chip">Pack: ' + esc(packFilter) + ' <button id="chipZu" title="Pack-Filter aufheben">×</button></span>' : '';

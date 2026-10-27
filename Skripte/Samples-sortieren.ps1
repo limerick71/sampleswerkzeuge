@@ -204,12 +204,15 @@ foreach ($f in $alle) {
         Dedup = $true; ZielRel = ''; Hinweis = ''
     }
 
-    # --- macOS-Reste: werden nicht kopiert und mit der Bestaetigung in den Papierkorb verschoben (CLN-10)
-    if (Test-MacRest $f.FullName) {
+    # --- macOS-Reste (CLN-10): werden nicht kopiert, bleiben in der Quelle (Grundsatz: Sortieren liest die Quelle nur).
+    #     Erkennung ueber Name und Dateikopf; passt nur der Name, wird normal einsortiert und "unklar" vermerkt.
+    $macArt = Get-MacRestArt $f.FullName
+    if ($macArt -eq 'mac') {
         $eintrag.Aktion = 'Mac-Rest'; $eintrag.Kategorie = 'macOS-Rest'
-        $eintrag.Hinweis = if ($nameL -eq '.ds_store') { 'Finder-Ansichtseinstellungen (.DS_Store)' } elseif ($f.FullName -match '[\\/]__MACOSX[\\/]') { 'Inhalt eines __MACOSX-Ordners' } else { 'Finder-Zusatzinformationen zu einer Datei (._)' }
+        $eintrag.Hinweis = if ($nameL -eq '.ds_store') { 'Finder-Ansichtseinstellungen (.DS_Store)' } elseif ($f.FullName -match '[\\/]__MACOSX[\\/]') { 'Inhalt eines __MACOSX-Ordners (AppleDouble)' } else { 'Finder-Zusatzinformationen zu einer Datei (AppleDouble)' }
         $plan.Add([pscustomobject]$eintrag); continue
     }
+    if ($macArt -eq 'unklar') { $eintrag.Hinweis = 'Name wie ein macOS-Rest, Inhalt aber nicht - unklar, wird einsortiert' }
 
     # --- Ignorieren -------------------------------------------------------
     # Hilfsdateien: entstehen automatisch durch Programme oder Betriebssysteme, enthalten keinen Klang
@@ -315,16 +318,20 @@ foreach ($f in $alle) {
     $plan.Add([pscustomobject]$eintrag)
 }
 
-# RX2/REX ohne Haken "RX2 beibehalten" (SRT-04): nicht kopieren, mit der Bestaetigung in den Papierkorb.
-# Ausnahme: ohne gleichnamige WAV/AIFF im selben Ordner wird die RX2 behalten und einsortiert,
-# damit der Loop nicht ganz verloren geht.
-if (-not $einst.RX2Beibehalten) {
+# Zusaetzliche Formate (SRT-06): WAV ist Standard. Fuer RX2/MP3/AIFF ohne Haken "behalten" gilt:
+# liegt im selben Ordner eine WAV mit gleichem Namen, wird die Datei nicht kopiert (bleibt in der Quelle).
+# Ohne WAV-Gegenstueck wird sie immer einsortiert.
+$ausgeschlossen = @($FormatEinstellung.Keys | Where-Object { -not $einst[$FormatEinstellung[$_]] })
+if ($ausgeschlossen.Count -gt 0) {
     $wavNamen = @{}
-    foreach ($x in $plan) { if ($x.Quelle -match '\.(wav|aiff?)$') { $wavNamen[([IO.Path]::Combine((Split-Path -Parent $x.Quelle), [IO.Path]::GetFileNameWithoutExtension($x.Quelle))).ToLowerInvariant()] = $true } }
-    foreach ($x in @($plan | Where-Object { $_.Aktion -eq 'Kopieren' -and $_.Quelle -match $RxRx2 })) {
+    foreach ($x in $plan) { if ($x.Quelle -match '\.wav$') { $wavNamen[([IO.Path]::Combine((Split-Path -Parent $x.Quelle), [IO.Path]::GetFileNameWithoutExtension($x.Quelle))).ToLowerInvariant()] = $true } }
+    foreach ($x in @($plan | Where-Object { $_.Aktion -eq 'Kopieren' })) {
+        $ext = [IO.Path]::GetExtension($x.Quelle).ToLowerInvariant()
+        if ($ausgeschlossen -notcontains $ext) { continue }
+        $fmt = $FormatName[$FormatEinstellung[$ext]]
         $k = ([IO.Path]::Combine((Split-Path -Parent $x.Quelle), [IO.Path]::GetFileNameWithoutExtension($x.Quelle))).ToLowerInvariant()
-        if ($wavNamen.ContainsKey($k)) { $x.Aktion = 'RX2 entfernen'; $x.Kategorie = 'RX2'; $x.Hinweis = 'WAV mit gleichem Namen vorhanden' }
-        else { $x.Hinweis = 'RX2 ohne WAV mit gleichem Namen - wird behalten' }
+        if ($wavNamen.ContainsKey($k)) { $x.Aktion = 'Format ausgeschlossen'; $x.Kategorie = $fmt; $x.Hinweis = "WAV mit gleichem Namen vorhanden, Haken '$fmt' ist aus" }
+        else { $x.Hinweis = "$fmt ohne WAV mit gleichem Namen - wird einsortiert" }
     }
 }
 
@@ -432,8 +439,8 @@ $TextVorschau = @{
     'Bereits im Ziel'          = "bereits im Ziel $([char]0x2013) wird nicht kopiert"
     'Duplikat - uebersprungen' = "Duplikat in der Quelle $([char]0x2013) wird nicht kopiert"
     'Ignoriert'                = 'ignoriert (Hilfsdatei)'
-    'Mac-Rest'                 = "macOS-Rest $([char]0x2013) wird in den Papierkorb verschoben"
-    'RX2 entfernen'            = "RX2 $([char]0x2013) wird nicht kopiert und in den Papierkorb verschoben"
+    'Mac-Rest'                 = "macOS-Rest $([char]0x2013) wird nicht kopiert"
+    'Format ausgeschlossen'    = "WAV vorhanden $([char]0x2013) wird nicht kopiert"
 }
 $TextProtokoll = @{
     'Kopiert'                  = 'kopiert'
@@ -441,8 +448,8 @@ $TextProtokoll = @{
     'Bereits im Ziel'          = "bereits im Ziel $([char]0x2013) nicht kopiert"
     'Duplikat - uebersprungen' = "Duplikat in der Quelle $([char]0x2013) nicht kopiert"
     'Ignoriert'                = 'ignoriert (Hilfsdatei)'
-    'Mac-Rest'                 = "macOS-Rest $([char]0x2013) nicht entfernt"
-    'RX2 entfernen'            = "RX2 $([char]0x2013) nicht entfernt"
+    'Mac-Rest'                 = "macOS-Rest $([char]0x2013) nicht kopiert"
+    'Format ausgeschlossen'    = "WAV vorhanden $([char]0x2013) nicht kopiert"
 }
 function Export-Plan([string]$pfad, [hashtable]$texte) {
     $plan | Select-Object @{ n = 'Aktion'; e = { if ($texte.ContainsKey($_.Aktion)) { $texte[$_.Aktion] } else { $_.Aktion } } },
@@ -457,9 +464,8 @@ $kopieren = @($plan | Where-Object { $_.Aktion -eq 'Kopieren' })
 $summeGB  = [math]::Round((($kopieren | Measure-Object Bytes -Sum).Sum) / 1GB, 2)
 $nVorhanden = @($plan | Where-Object { $_.Aktion -eq 'Bereits im Ziel' }).Count
 $nIgnoriert = @($plan | Where-Object { $_.Aktion -eq 'Ignoriert' }).Count
-$entfernen  = @($plan | Where-Object { $_.Aktion -in 'Mac-Rest', 'RX2 entfernen' })
-$nMac = @($entfernen | Where-Object { $_.Aktion -eq 'Mac-Rest' }).Count
-$nRx2 = $entfernen.Count - $nMac
+$nMac = @($plan | Where-Object { $_.Aktion -eq 'Mac-Rest' }).Count
+$nFormat = @($plan | Where-Object { $_.Aktion -eq 'Format ausgeschlossen' }).Count
 $audioAnzahl = @($plan | Where-Object { $_.Aktion -notin 'Ignoriert', 'Mac-Rest' -and $_.Quelle -match $RxAudio }).Count
 
 if ($audioAnzahl -eq 0) {
@@ -480,8 +486,9 @@ if ($imZielAnzahl -gt 0) {
 }
 Write-Host ("  doppelt in der Quelle, nur 1x kopiert:  {0,7}" -f $dupAnzahl)
 Write-Host ("  Hilfsdateien, werden ignoriert:         {0,7}   (z. B. .asd, Thumbs.db - Grund in der Vorschau)" -f $nIgnoriert)
-Write-Host ("  macOS-Reste, in den Papierkorb:         {0,7}   (._-Dateien, .DS_Store, __MACOSX)" -f $nMac)
-if (-not $einst.RX2Beibehalten) { Write-Host ("  RX2 mit WAV-Gegenstueck, in Papierkorb:{0,7}   (Haken 'RX2 beibehalten' ist aus)" -f $nRx2) }
+Write-Host ("  macOS-Reste, werden nicht kopiert:     {0,7}   (._-Dateien, .DS_Store, __MACOSX)" -f $nMac)
+if ($ausgeschlossen.Count -gt 0) { Write-Host ("  RX2/MP3/AIFF neben gleichnamiger WAV:  {0,7}   werden nicht kopiert (Haken aus: {1})" -f $nFormat, ((@($ausgeschlossen | ForEach-Object { $FormatName[$FormatEinstellung[$_]] } | Select-Object -Unique)) -join ', ')) }
+Write-Host "  Die Quelle bleibt beim Sortieren unveraendert." -ForegroundColor DarkGray
 Write-Host ""
 if ($kopieren.Count -gt 0) { Write-Host "Neue Dateien nach Kategorie:" }
 $kopieren | Group-Object { ($_.ZielRel -split '[\\/]')[0] } | Sort-Object Name | ForEach-Object {
@@ -508,15 +515,14 @@ Write-Host ""
 Write-Host "Vorschau gespeichert (zeigt nur, was passieren wuerde):" -ForegroundColor Green
 Write-Host "  $vorschauPfad"
 
-if ($kopieren.Count -eq 0 -and $entfernen.Count -eq 0) { Write-Host ""; Write-Host "Nichts Neues zu kopieren. Alles ist bereits im Ziel." -ForegroundColor Green; return }
+if ($kopieren.Count -eq 0) { Write-Host ""; Write-Host "Nichts Neues zu kopieren. Alles ist bereits im Ziel." -ForegroundColor Green; return }
 if (-not $Ausfuehren) {
     if ($NurVorschau -or $zuWenigPlatz) {
         Write-Host "Es wurde nichts kopiert."
         return
     }
     Write-Host ""
-    $frage = if ($kopieren.Count -gt 0) { "Jetzt die $($kopieren.Count) neuen Dateien ($('{0:N2}' -f $summeGB) GB) nach '$Ziel' kopieren" } else { 'Nichts Neues zu kopieren. Jetzt' }
-    if ($entfernen.Count -gt 0) { $frage += $(if ($kopieren.Count -gt 0) { ' und ' } else { ' ' }) + "$($entfernen.Count) macOS-Reste/RX2-Dateien in der Quelle in den Papierkorb verschieben" }
+    $frage = "Jetzt die $($kopieren.Count) neuen Dateien ($('{0:N2}' -f $summeGB) GB) nach '$Ziel' kopieren"
     if (-not (Read-JaNein "$($frage)?")) {
         Write-Host ""
         Write-Host "Abgebrochen. Es wurde nichts kopiert." -ForegroundColor Yellow
@@ -531,7 +537,7 @@ $csvPfad = [IO.Path]::Combine($protokollOrdner, $csvName)
 # 5) Kopieren (nie ueberschreiben, nie loeschen)
 # ----------------------------------------------------------------------------
 Write-Host ""
-if ($kopieren.Count -gt 0) { Write-Host "Kopiere $($kopieren.Count) Dateien nach '$Ziel' ..." -ForegroundColor Cyan }
+Write-Host "Kopiere $($kopieren.Count) Dateien nach '$Ziel' ..." -ForegroundColor Cyan
 $ok = 0; $vorhanden = 0; $fehler = 0; $i = 0
 foreach ($x in $kopieren) {
     $i++
@@ -548,21 +554,6 @@ foreach ($x in $kopieren) {
 }
 Write-Progress -Activity 'Kopiere Samples' -Completed
 
-# macOS-Reste und RX2 (ohne Haken) in der Quelle in den Papierkorb, danach leere __MACOSX-Ordner
-$entfernt = 0
-if ($entfernen.Count -gt 0) {
-    Write-Host "Verschiebe $($entfernen.Count) macOS-Reste/RX2-Dateien in den Papierkorb ..." -ForegroundColor Cyan
-    foreach ($x in $entfernen) {
-        try {
-            if (Test-Path -LiteralPath $x.Quelle) { Send-Papierkorb $x.Quelle }
-            $x.Aktion = if ($x.Aktion -eq 'Mac-Rest') { "macOS-Rest $([char]0x2013) in den Papierkorb verschoben" } else { "RX2 $([char]0x2013) in den Papierkorb verschoben" }
-            $entfernt++
-        } catch { $x.Aktion = 'FEHLER: ' + $_.Exception.Message; $fehler++ }
-    }
-    foreach ($m in @(Get-ChildItem -LiteralPath $Quelle -Directory -Recurse -Force -Filter '__MACOSX' -ErrorAction SilentlyContinue | Sort-Object { $_.FullName.Length } -Descending)) {
-        if (@(Get-ChildItem -LiteralPath $m.FullName -Recurse -File -Force -ErrorAction SilentlyContinue).Count -eq 0) { try { Send-Papierkorb $m.FullName } catch { } }
-    }
-}
 
 Export-Plan $csvPfad $TextProtokoll
 # Protokoll zusaetzlich im Zielordner ablegen
@@ -573,7 +564,6 @@ Write-Host "Fertig." -ForegroundColor Green
 Write-Host ("  neu kopiert:                            {0,7}" -f $ok) -ForegroundColor Green
 Write-Host ("  schon im Ziel, uebersprungen:           {0,7}" -f ($nVorhanden + $vorhanden))
 Write-Host ("  doppelt in der Quelle, nur 1x kopiert:  {0,7}" -f $dupAnzahl)
-if ($entfernen.Count -gt 0) { Write-Host ("  macOS-Reste/RX2 in den Papierkorb:      {0,7}" -f $entfernt) }
 if ($fehler -gt 0) { Write-Host ("  Fehler:                                 {0,7}" -f $fehler) -ForegroundColor Red }
 Write-Host "Protokoll: $csvPfad"
 if ($fehler -gt 0) { Write-Host "Bitte die Zeilen mit 'FEHLER' in der CSV pruefen (z. B. zu lange Pfade)." -ForegroundColor Red }
