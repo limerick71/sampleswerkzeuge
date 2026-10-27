@@ -5,7 +5,7 @@
   Quelle - das Sortieren selbst veraendert die Quelle nie. Auswaehlbar:
     1  Duplikate      Dateien, die beim Kopieren als doppelt erkannt wurden (Pruefung gegen das behaltene Exemplar)
     2  macOS-Reste    ._-Dateien, .DS_Store, __MACOSX (erkannt am Dateikopf)
-    3  Formate        RX2/MP3/AIFF neben einer gleichnamigen WAV, deren Kopie im Ziel bestaetigt ist
+    3  Formate        RX2/MP3/AIFF neben einer gleichnamigen WAV im selben Pack, deren Kopie im Ziel bestaetigt ist
                       (nur Formate, deren Haken "zusaetzlich behalten" aus ist)
   Alles mit Vorschau und Rueckfrage (Standard: Nein). Die Dateien gehen in den Papierkorb.
 
@@ -125,12 +125,12 @@ if ($Formate) {
         } catch { }
     }
     $wavs = @{}
-    foreach ($f in $quellDateien) { if ($f.Extension -ieq '.wav') { $wavs[(Join-Path $f.DirectoryName $f.BaseName).ToLowerInvariant()] = $f.FullName } }
+    foreach ($f in $quellDateien) { if ($f.Extension -ieq '.wav' -and (Get-MacRestArt $f.FullName) -ne 'mac') { $wavs[(Get-FormatSchluessel $f.FullName $Quelle)] = $f.FullName } }
     foreach ($f in $quellDateien) {
         $ext = $f.Extension.ToLowerInvariant()
         if ($ausgeschlossen -notcontains $ext) { continue }
         if ((Get-MacRestArt $f.FullName) -eq 'mac') { continue }
-        $wav = $wavs[(Join-Path $f.DirectoryName $f.BaseName).ToLowerInvariant()]
+        $wav = $wavs[(Get-FormatSchluessel $f.FullName $Quelle)]
         if (-not $wav) { continue }   # ohne WAV-Gegenstueck: bleibt immer
         $zw = $zielVon[$wav.ToLowerInvariant()]
         if (-not $zw -or -not (Test-Path -LiteralPath $zw)) { Add-Eintrag 'Format' 'Uebersprungen: WAV ist (noch) nicht im Ziel' $f.FullName $wav $f.Length; continue }

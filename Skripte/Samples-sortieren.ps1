@@ -319,34 +319,41 @@ foreach ($f in $alle) {
 }
 
 # Zusaetzliche Formate (SRT-06): WAV ist Standard. Fuer RX2/MP3/AIFF ohne Haken "behalten" gilt:
-# liegt im selben Ordner eine WAV mit gleichem Namen, wird die Datei nicht kopiert (bleibt in der Quelle).
+# liegt im selben Pack eine WAV mit gleichem Namen (auch in einem anderen Unterordner, z. B. "...-Wav"
+# neben "...-Rex2"), wird die Datei nicht kopiert (bleibt in der Quelle).
 # Ohne WAV-Gegenstueck wird sie immer einsortiert.
 $ausgeschlossen = @($FormatEinstellung.Keys | Where-Object { -not $einst[$FormatEinstellung[$_]] })
 if ($ausgeschlossen.Count -gt 0) {
     $wavNamen = @{}
-    foreach ($x in $plan) { if ($x.Quelle -match '\.wav$') { $wavNamen[([IO.Path]::Combine((Split-Path -Parent $x.Quelle), [IO.Path]::GetFileNameWithoutExtension($x.Quelle))).ToLowerInvariant()] = $true } }
+    foreach ($x in $plan) { if ($x.Quelle -match '\.wav$' -and $x.Aktion -notin 'Ignoriert', 'Mac-Rest') { $wavNamen[(Get-FormatSchluessel $x.Quelle $Quelle)] = $true } }
     foreach ($x in @($plan | Where-Object { $_.Aktion -eq 'Kopieren' })) {
         $ext = [IO.Path]::GetExtension($x.Quelle).ToLowerInvariant()
         if ($ausgeschlossen -notcontains $ext) { continue }
         $fmt = $FormatName[$FormatEinstellung[$ext]]
-        $k = ([IO.Path]::Combine((Split-Path -Parent $x.Quelle), [IO.Path]::GetFileNameWithoutExtension($x.Quelle))).ToLowerInvariant()
-        if ($wavNamen.ContainsKey($k)) { $x.Aktion = 'Format ausgeschlossen'; $x.Kategorie = $fmt; $x.Hinweis = "WAV mit gleichem Namen vorhanden, Haken '$fmt' ist aus" }
-        else { $x.Hinweis = "$fmt ohne WAV mit gleichem Namen - wird einsortiert" }
+        $k = Get-FormatSchluessel $x.Quelle $Quelle
+        if ($wavNamen.ContainsKey($k)) { $x.Aktion = 'Format ausgeschlossen'; $x.Kategorie = $fmt; $x.Hinweis = "WAV mit gleichem Namen im selben Pack vorhanden, Haken '$fmt' ist aus" }
+        else { $x.Hinweis = "$fmt ohne WAV mit gleichem Namen im Pack - wird einsortiert" }
     }
 }
 
 # ----------------------------------------------------------------------------
-# 2) Doppelte Dateien erkennen (Name + Groesse, Bestaetigung per Hash)
+# 2) Doppelte Dateien erkennen: gleiche Groesse, Bestaetigung per Pruefsumme (Name egal)
 # ----------------------------------------------------------------------------
 Write-Host "Pruefe auf doppelte Dateien ..." -ForegroundColor Cyan
-$kandidaten = $plan | Where-Object { $_.Aktion -eq 'Kopieren' -and $_.Dedup }
-$gruppen = $kandidaten | Group-Object { ([IO.Path]::GetFileName($_.Quelle)).ToLowerInvariant() + '|' + $_.Bytes } | Where-Object { $_.Count -gt 1 }
+# "Format ausgeschlossen" zaehlt mit: eine umbenannte Kopie einer ausgeschlossenen RX2 wird dann ebenfalls nicht kopiert
+$kandidaten = $plan | Where-Object { $_.Aktion -in 'Kopieren', 'Format ausgeschlossen' -and $_.Dedup }
+# Audiodateien: nur Groesse + Pruefsumme (auch umbenannte Kopien wie "Loop - Kopie.wav");
+# andere Dateien (Lizenzen, Infos) wie bisher nur bei gleichem Namen; leere Dateien nie
+$gruppen = $kandidaten | Where-Object { $_.Bytes -gt 0 } |
+    Group-Object { if ($_.Quelle -match $RxAudio) { 'a|' + $_.Bytes } else { 'n|' + ([IO.Path]::GetFileName($_.Quelle)).ToLowerInvariant() + '|' + $_.Bytes } } |
+    Where-Object { $_.Count -gt 1 }
 $dupAnzahl = 0
 foreach ($g in $gruppen) {
     $nachHash = $g.Group | Sort-Object { $_.Quelle.Length }, Quelle | Group-Object { (Get-FileHash -LiteralPath $_.Quelle -Algorithm MD5).Hash }
     foreach ($h in $nachHash) {
         $erster = $h.Group[0]
         foreach ($x in ($h.Group | Select-Object -Skip 1)) {
+            if ($x.Aktion -ne 'Kopieren') { continue }
             $x.Aktion = 'Duplikat - uebersprungen'
             $x.ZielRel = "(identisch mit $($erster.Quelle))"
             $dupAnzahl++

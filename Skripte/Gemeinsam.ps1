@@ -88,10 +88,10 @@ $AlteStandardOrdner = @{ Quelle = 'E:\Sounds und Samples'; Ziel = 'E:\Samples'; 
 function Get-StandardEinstellungen {
     $dok = Get-StandardDokumente
     return [ordered]@{
-        Quelle              = (Join-Path $dok 'Quelle_Samples')
-        Ziel                = (Join-Path $dok 'Ziel_Samples')
+        Quelle              = ([IO.Path]::Combine($dok, 'Quelle_Samples'))
+        Ziel                = ([IO.Path]::Combine($dok, 'Ziel_Samples'))
         Downloads           = (Get-StandardDownloads)
-        DownloadArchiv      = (Join-Path $dok 'Z_Download_Archiv')
+        DownloadArchiv      = ([IO.Path]::Combine($dok, 'Z_Download_Archiv'))
         Berichtsordner      = $wurzel
         RX2Beibehalten      = $true
         MP3Beibehalten      = $true
@@ -241,6 +241,19 @@ function Send-Papierkorb([string]$pfad) {
     } else {
         [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($pfad, 'OnlyErrorDialogs', 'SendToRecycleBin')
     }
+}
+
+# Sammelordner in der Quelle: darin liegen die Packs eine Ebene tiefer
+$SammelOrdner = @('Drumloops', 'Lofi Sounds - Free Sample Pack', 'Vocals')
+
+# Schluessel "Pack|Dateiname ohne Endung" fuer den Formatabgleich (RX2/MP3/AIFF neben WAV):
+# gleichnamige Dateien gelten als Gegenstueck, wenn sie im selben Pack liegen - auch wenn das Pack
+# WAV und RX2 in getrennten Unterordnern liefert (z. B. "...-Wav" und "...-Rex2").
+function Get-FormatSchluessel([string]$datei, [string]$quelle) {
+    $rel = $datei.Substring([Math]::Min($quelle.TrimEnd([char]92, '/').Length, $datei.Length)).TrimStart([char]92, '/')
+    $t = @($rel -split '[\\/]')
+    $pack = if ($t[0] -in $SammelOrdner -and $t.Count -gt 2) { $t[0] + '\' + $t[1] } elseif ($t.Count -gt 1) { $t[0] } else { '' }
+    return ($pack + '|' + [IO.Path]::GetFileNameWithoutExtension($datei)).ToLowerInvariant()
 }
 
 # Ja/Nein-Abfrage in der Konsole, Standard ist Nein

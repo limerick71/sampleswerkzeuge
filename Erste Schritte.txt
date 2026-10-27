@@ -40,7 +40,8 @@ Die Auswahl wird gespeichert. Der Status im Hauptfenster zeigt danach Quelle
 und Ziel mit Pfad und ob sie gefunden werden.
 Im selben Fenster: „Zusätzlich zur WAV behalten: RX2 / MP3 / AIFF“ (Standard:
 alle an). Ohne Haken wird z. B. eine RX2 nur dann nicht kopiert, wenn im selben
-Ordner eine WAV mit gleichem Namen liegt. „Nur WAV“ nimmt alle Haken weg.
+Pack eine WAV mit gleichem Namen liegt (auch in einem Unterordner wie
+„…-Wav“ neben „…-Rex2“). „Nur WAV“ nimmt alle Haken weg.
 
 
 4. SORTIEREN

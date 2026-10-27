@@ -250,7 +250,7 @@ function Show-Einstellungen {
         $cb.Text = $fmt[0]; $cb.Font = $schrift; $cb.AutoSize = $true; $cb.Tag = $fmt[1]
         $cb.Location = New-Object System.Drawing.Point($x, 28); $cb.Checked = (Get-Einstellungen)[$fmt[1]]
         $cb.Add_CheckedChanged({ param($sender, $ev) try { Set-Einstellung $sender.Tag $sender.Checked } catch { } })
-        $tt.SetToolTip($cb, "Haken: $($fmt[0])-Dateien werden mitsortiert.`nOhne Haken: Liegt im selben Ordner eine WAV mit gleichem Namen, wird die $($fmt[0])-Datei nicht kopiert (sie bleibt in der Quelle). Ohne WAV-Gegenstück wird sie immer einsortiert.")
+        $tt.SetToolTip($cb, "Haken: $($fmt[0])-Dateien werden mitsortiert.`nOhne Haken: Liegt im selben Pack eine WAV mit gleichem Namen (auch in einem anderen Unterordner, z. B. '...-Wav' neben '...-Rex2'), wird die $($fmt[0])-Datei nicht kopiert (sie bleibt in der Quelle). Ohne WAV-Gegenstück wird sie immer einsortiert.")
         $g2.Controls.Add($cb); $haken += $cb
         $x += 80
     }
