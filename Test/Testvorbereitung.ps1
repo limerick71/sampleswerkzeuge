@@ -7,9 +7,8 @@
     3. in der Quelle den Ordner "Vocal Loops 120" entfernen (nur direkt in der Quelle, nicht in Unterordnern)
   Alles geht in den Windows-Papierkorb. Vorher Anzeige und Rueckfrage (Standard: Nein).
 
-  Ordner: Standard E:\Sounds und Samples und E:\Samples. Liegt dieses Skript im Programmordner
-  einer Version (oder daneben), werden die dort eingestellten Ordner genommen.
-  Abweichend: -Quelle <Pfad> -Ziel <Pfad>
+  Ordner: die unter "Einstellungen" eingestellten Quelle und Ziel dieser Version. Das Skript liegt
+  dazu im Unterordner "Test" des Programmordners. Abweichend fuer einen Lauf: -Quelle <Pfad> -Ziel <Pfad>
 #>
 [CmdletBinding()]
 param([string]$Quelle, [string]$Ziel)
@@ -18,20 +17,15 @@ $ErrorActionPreference = 'Stop'
 $Host.UI.RawUI.WindowTitle = 'Testvorbereitung Samples-Werkzeuge'
 $hier = $PSScriptRoot
 
-# Ordner bestimmen: Parameter > Einstellungen.json in der Naehe > Standard
-$q = 'E:\Sounds und Samples'; $z = 'E:\Samples'; $herkunft = 'Standard'
-$kandidaten = @(Join-Path $hier 'Skripte\Einstellungen.json'; Join-Path $hier '..\Skripte\Einstellungen.json')
-foreach ($k in $kandidaten) {
-    if (Test-Path -LiteralPath $k) {
-        try {
-            $e = Get-Content -LiteralPath $k -Raw -Encoding UTF8 | ConvertFrom-Json
-            if ($e.Quelle) { $q = [string]$e.Quelle }
-            if ($e.Ziel)   { $z = [string]$e.Ziel }
-            $herkunft = (Resolve-Path -LiteralPath $k).Path
-        } catch { }
-        break
-    }
+# Ordner bestimmen: Parameter > Einstellungen dieser Version (wie in der Oberflaeche)
+$gemeinsam = Join-Path $hier '..\Skripte\Gemeinsam.ps1'
+if (-not (Test-Path -LiteralPath $gemeinsam)) {
+    throw "Programmordner nicht gefunden. Das Skript muss im Ordner 'Test' der entpackten Version liegen."
 }
+. $gemeinsam
+$e = Get-Einstellungen
+$q = [string]$e.Quelle; $z = [string]$e.Ziel
+$herkunft = if (Test-Path -LiteralPath $einstellungsPfad) { "Einstellungen von Version $ProgrammVersion" } else { 'Standard (in dieser Version noch nichts eingestellt - ggf. vorher die Oberflaeche einmal starten)' }
 if ($Quelle) { $q = $Quelle; $herkunft = 'Aufruf' }
 if ($Ziel)   { $z = $Ziel;   $herkunft = 'Aufruf' }
 $q = $q.TrimEnd('\', '/'); $z = $z.TrimEnd('\', '/')

@@ -8,6 +8,7 @@ D = [
 ("li", "GUI_Samples-Werkzeuge.cmd – startet die Oberfläche."),
 ("li", "Samples sortieren.cmd, Inventur starten.cmd, Quelle aufraeumen.cmd – starten die Funktionen direkt ohne Oberfläche."),
 ("li", "Erste Schritte.txt, Dokumentation Samples-Werkzeuge.rtf – Anleitungen."),
+("li", "Test\\Testvorbereitung.cmd – nur für Tests: verschiebt den Inhalt des Ziels, das erste Pack „SINEE…“ und den Ordner „Vocal Loops 120“ (beide direkt in der Quelle) nach Anzeige und „J“ in den Papierkorb. Es gelten die unter ⚙ eingestellten Ordner. Nicht für den normalen Gebrauch."),
 ("li", "Skripte – die PowerShell-Skripte, Einstellungen.json (gewählte Ordner und Häkchen) und Pack-Arten.csv (eigene Korrekturen der Pack-Art)."),
 ("li", "Inventuren, Inventur-Vergleiche – Ergebnisse der Inventur (siehe 5). Sie liegen im Ordner „Berichte“, standardmäßig im Programmordner."),
 ("li", "Protokolle – Vorschauen und Protokolle aller Läufe als CSV (Semikolon-getrennt, für Excel)."),
