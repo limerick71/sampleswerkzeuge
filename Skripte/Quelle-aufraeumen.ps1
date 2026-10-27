@@ -203,7 +203,12 @@ if (-not $Ausfuehren) {
 
 $ok = 0; $fehler = 0
 $ordner = New-Object System.Collections.Generic.HashSet[string]
+Write-Host ""
+Write-Host "Verschiebe $($weg.Count) Dateien in den Papierkorb ..." -ForegroundColor Cyan
+$script:fortschrittZeit = Get-Date
+$i = 0
 foreach ($x in $weg) {
+    $i++; Show-Fortschritt 'In den Papierkorb' $i $weg.Count
     try {
         Send-Papierkorb $x.Datei
         $asd = $x.Datei + '.asd'
@@ -212,7 +217,9 @@ foreach ($x in $weg) {
         [void]$ordner.Add((Split-Path -Parent $x.Datei))
     } catch { $x.Status = 'FEHLER: ' + $_.Exception.Message; $fehler++ }
 }
+Write-Progress -Activity 'In den Papierkorb' -Completed
 # Leer gewordene Ordner entfernen (nie die Quelle selbst; .DS_Store zaehlt als leer, wenn macOS-Reste gewaehlt)
+Write-Host "Entferne leer gewordene Ordner ..." -ForegroundColor Cyan
 $leer = 0
 foreach ($o in ($ordner | Sort-Object { $_.Length } -Descending)) {
     $akt = $o

@@ -39,7 +39,10 @@ if ($alter.TotalHours -ge 24) { Write-Host ("Hinweis: Die Inventur ist {0:N0} Ta
 $zeilen = @(Import-Csv -LiteralPath $inv.FullName -Delimiter ';' -Encoding UTF8 | Where-Object { $_.'Duplikat-Gruppe' })
 $gruppen = $zeilen | Group-Object 'Duplikat-Gruppe'
 $ergebnis = New-Object System.Collections.Generic.List[object]
+$gNr = 0; $zeit = Get-Date
 foreach ($g in $gruppen) {
+    $gNr++
+    if (((Get-Date) - $zeit).TotalSeconds -ge 5) { Write-Host "  ... pruefe Gruppe $gNr von $(@($gruppen).Count)" -ForegroundColor DarkGray; $zeit = Get-Date }
     $behalten = @($g.Group | Where-Object { $_.'Duplikat-Rolle' -eq 'behalten' }) | Select-Object -First 1
     foreach ($x in ($g.Group | Where-Object { $_.'Duplikat-Rolle' -eq 'entfernbar' })) {
         $datei = Join-Path $Ziel $x.Pfad
@@ -84,7 +87,13 @@ if (-not $Ausfuehren) {
 
 $ok = 0; $fehler = 0
 $ordner = New-Object System.Collections.Generic.HashSet[string]
+Write-Host ""
+Write-Host "Verschiebe $($weg.Count) Dateien in den Papierkorb ..." -ForegroundColor Cyan
+$i = 0; $zeit = Get-Date
 foreach ($x in $weg) {
+    $i++
+    if ($i % 20 -eq 0 -or $i -eq $weg.Count) { Write-Progress -Activity 'In den Papierkorb' -Status "$i von $($weg.Count)" -PercentComplete ($i * 100 / $weg.Count) }
+    if (((Get-Date) - $zeit).TotalSeconds -ge 5) { Write-Host "  ... $i von $($weg.Count)" -ForegroundColor DarkGray; $zeit = Get-Date }
     $datei = Join-Path $Ziel $x.Datei
     try {
         Send-Papierkorb $datei
@@ -94,6 +103,8 @@ foreach ($x in $weg) {
         [void]$ordner.Add((Split-Path -Parent $datei))
     } catch { $x.Status = 'FEHLER: ' + $_.Exception.Message; $fehler++ }
 }
+Write-Progress -Activity 'In den Papierkorb' -Completed
+Write-Host "Entferne leer gewordene Ordner ..." -ForegroundColor Cyan
 # Leer gewordene Ordner entfernen (nie den Zielordner selbst)
 $leer = 0
 foreach ($o in ($ordner | Sort-Object { $_.Length } -Descending)) {
