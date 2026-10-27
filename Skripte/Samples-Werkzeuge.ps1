@@ -474,12 +474,12 @@ function New-UntenKnopf([string]$text, [int]$x, [int]$b, [string]$hinweis, [scri
     $form.Controls.Add($k)
     return $k
 }
-$btnLink = New-UntenKnopf '' 18 196 "Legt die Verknüpfung `"Samples-Werkzeuge`" auf dem Desktop an bzw. lässt sie auf diese Version zeigen." { New-DesktopVerknuepfung; Update-Status }
-$btnEin = New-UntenKnopf "$([char]0x2699) Einstellungen" 222 136 'Ordner (Quelle, Ziel, Berichte …) und Formate (RX2, MP3, AIFF zusätzlich zur WAV) einstellen.' { Show-Einstellungen }
+$btnLink = New-UntenKnopf '' 18 150 "Legt die Verknüpfung `"Samples-Werkzeuge`" auf dem Desktop an bzw. lässt sie auf diese Version zeigen." { New-DesktopVerknuepfung; Update-Status }
+$btnEin = New-UntenKnopf "$([char]0x2699) Einstellungen" 176 136 'Ordner (Quelle, Ziel, Berichte …) und Formate (RX2, MP3, AIFF zusätzlich zur WAV) einstellen.' { Show-Einstellungen }
 try { $btnEin.Font = New-Object System.Drawing.Font('Segoe UI Symbol', 9.5) } catch { }
-$null = New-UntenKnopf 'Dokumentation' 366 120 'Öffnet die Dokumentation (RTF) mit allen Funktionen des Programms.' { Open-Pfad $dokuPfad }
-$btnZu = New-UntenKnopf 'Schließen' 494 48 '' { $form.Close() }
-$btnZu.Width = $breite - 18 - 494
+$null = New-UntenKnopf 'Dokumentation' 320 116 'Öffnet die Dokumentation (RTF) mit allen Funktionen des Programms.' { Open-Pfad $dokuPfad }
+$btnZu = New-UntenKnopf 'Schließen' 444 98 '' { $form.Close() }
+$btnZu.Width = $breite - 18 - 444
 $form.CancelButton = $btnZu
 $y += 46
 
@@ -555,7 +555,7 @@ function Update-Status {
     }
     if (-not (Test-Path -LiteralPath $verknuepfung)) {
         $zeilen += 'Desktop-Verknüpfung:  noch nicht angelegt'
-        $btnLink.Text = 'Desktop-Verknüpfung anlegen'
+        $btnLink.Text = 'Verknüpfung anlegen'
     } elseif ($ziel -like "*$skriptOrdner*") {
         $zeilen += 'Desktop-Verknüpfung:  vorhanden (öffnet diese Version)'
         $btnLink.Text = 'Verknüpfung erneuern'
