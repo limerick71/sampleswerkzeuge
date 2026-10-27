@@ -75,12 +75,23 @@ $PfadEinstellungen = @(
     @{ Name = 'Berichtsordner'; Text = 'Berichte';         Hinweis = "Hier legt die Inventur (ab Version 2) die Unterordner Inventuren und Inventur-Vergleiche an." }
 )
 
+function Get-StandardDokumente {
+    try { $d = [Environment]::GetFolderPath('MyDocuments'); if ($d) { return $d } } catch { }
+    if ($env:USERPROFILE) { return (Join-Path $env:USERPROFILE 'Documents') }
+    return 'C:\'
+}
+
+# Standardordner ab 2.1: im Ordner Dokumente des angemeldeten Benutzers (erleichtert Tests auf
+# beliebigen Rechnern). Bis 2.0 waren es E:\Sounds und Samples, E:\Samples, E:\Samples-Archiv\Downloads.
+$AlteStandardOrdner = @{ Quelle = 'E:\Sounds und Samples'; Ziel = 'E:\Samples'; DownloadArchiv = 'E:\Samples-Archiv\Downloads' }
+
 function Get-StandardEinstellungen {
+    $dok = Get-StandardDokumente
     return [ordered]@{
-        Quelle              = 'E:\Sounds und Samples'
-        Ziel                = 'E:\Samples'
+        Quelle              = (Join-Path $dok 'Quelle_Samples')
+        Ziel                = (Join-Path $dok 'Ziel_Samples')
         Downloads           = (Get-StandardDownloads)
-        DownloadArchiv      = 'E:\Samples-Archiv\Downloads'
+        DownloadArchiv      = (Join-Path $dok 'Z_Download_Archiv')
         Berichtsordner      = $wurzel
         RX2Beibehalten      = $true
         MP3Beibehalten      = $true
@@ -97,6 +108,11 @@ function Get-Einstellungen {
             foreach ($p in $cfg.PSObject.Properties) {
                 if ($e.Contains($p.Name) -and $null -ne $p.Value -and [string]$p.Value -ne '') { $e[$p.Name] = $p.Value }
             }
+            # Einstellungen aus einer Version bis 2.0: Ordner, die dort dem alten Standard (E:) entsprachen,
+            # sind nicht gespeichert - fuer sie gilt weiter der alte Standard
+            if (-not $cfg.PSObject.Properties['Standard21']) {
+                foreach ($k in $AlteStandardOrdner.Keys) { if (-not $cfg.PSObject.Properties[$k]) { $e[$k] = $AlteStandardOrdner[$k] } }
+            }
         } catch { Write-FehlerLog "Einstellungen nicht lesbar: $($_.Exception.Message)" }
     }
     foreach ($k in @($e.Keys)) {
@@ -112,7 +128,7 @@ function Set-Einstellung([string]$name, $wert) {
     # Nur Abweichungen vom Standard speichern: so zeigt z. B. "Berichte" in einer neuen
     # Version weiter auf deren eigenen Programmordner und nicht auf den der alten Version.
     $std = Get-StandardEinstellungen
-    $obj = [ordered]@{}
+    $obj = [ordered]@{ Standard21 = $true }
     foreach ($k in @($e.Keys)) {
         if ($k -eq 'ErsterStartErledigt' -or [string]$e[$k] -ne [string]$std[$k]) { $obj[$k] = $e[$k] }
     }
