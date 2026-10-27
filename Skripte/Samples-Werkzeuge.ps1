@@ -163,7 +163,7 @@ function Show-Begruessung {
     $cb.Text = 'Verknüpfung auf dem Desktop anlegen'
     $lnkZiel = ''
     if (Test-Path -LiteralPath $verknuepfung) { try { $lnkZiel = (New-Object -ComObject WScript.Shell).CreateShortcut($verknuepfung).Arguments } catch { } }
-    $cb.Checked = -not ($lnkZiel -like "*$skriptOrdner*")
+    $cb.Checked = $true   # Standard: anlegen bzw. auf diese Version erneuern (W-01, 27.10.)
     $cb.Location = New-Object System.Drawing.Point(20, 340); $cb.AutoSize = $true
     $d.Controls.Add($cb)
 

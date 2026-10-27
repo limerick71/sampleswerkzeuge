@@ -55,6 +55,25 @@ function Add-Eintrag($gruppe, $status, $datei, $grund, $bytes) {
     $ergebnis.Add([pscustomobject]@{ Gruppe = $gruppe; Status = $status; Datei = $datei; 'Grund / Abgleich' = $grund; GroesseMB = [math]::Round([double]$bytes / 1MB, 2) })
 }
 
+# Pruefsummen nur einmal je Datei berechnen; vorher Groesse vergleichen (kostet nichts)
+$hashCache = @{}
+function Get-Pruefsumme([string]$pfad) {
+    $k = $pfad.ToLowerInvariant()
+    if (-not $hashCache.ContainsKey($k)) { $hashCache[$k] = (Get-FileHash -LiteralPath $pfad -Algorithm SHA256).Hash }
+    return $hashCache[$k]
+}
+function Test-Gleich([string]$a, [string]$b) {
+    if ((Get-Item -LiteralPath $a).Length -ne (Get-Item -LiteralPath $b).Length) { return $false }
+    return (Get-Pruefsumme $a) -eq (Get-Pruefsumme $b)
+}
+# Fortschritt: Balken oben im Fenster und alle paar Sekunden eine Zeile, damit man sieht, dass es laeuft
+$script:fortschrittZeit = [DateTime]::MinValue
+function Show-Fortschritt([string]$was, [int]$i, [int]$n) {
+    if ($n -le 0) { return }
+    if ($i % 20 -eq 0 -or $i -eq $n) { Write-Progress -Activity $was -Status "$i von $n" -PercentComplete ([Math]::Min(100, $i * 100 / $n)) }
+    if (((Get-Date) - $script:fortschrittZeit).TotalSeconds -ge 5) { Write-Host ("  ... {0}: {1} von {2}" -f $was, $i, $n) -ForegroundColor DarkGray; $script:fortschrittZeit = Get-Date }
+}
+
 # Alle Kopier-Protokolle: Quelle -> Ziel (fuer Duplikate und Formate)
 $orte = @($protokollOrdner, $Ziel, (Join-Path $Quelle '_Sortier-Skript'))
 $protos = @(foreach ($o in $orte) { if ($o -and (Test-Path -LiteralPath $o)) { Get-ChildItem -LiteralPath $o -Filter 'Protokoll_*.csv' -File -ErrorAction SilentlyContinue } }) | Sort-Object Name
@@ -68,7 +87,10 @@ if ($Duplikate) {
     if (-not $p) { Write-Host "Duplikate: kein Kopier-Protokoll gefunden - bitte zuerst 'Samples sortieren'." -ForegroundColor Yellow }
     else {
         Write-Host "Duplikate: pruefe anhand $($p.Name) ..." -ForegroundColor Cyan
-        foreach ($d in @(Import-Csv -LiteralPath $p.FullName -Delimiter ';' -Encoding UTF8 | Where-Object { $_.Aktion -like 'Duplikat*' })) {
+        $dupListe = @(Import-Csv -LiteralPath $p.FullName -Delimiter ';' -Encoding UTF8 | Where-Object { $_.Aktion -like 'Duplikat*' })
+        $i = 0
+        foreach ($d in $dupListe) {
+            $i++; Show-Fortschritt 'Duplikate pruefen' $i $dupListe.Count
             $datei = $d.Quelle; $original = ''
             if ($d.ZielRel -match '^\(identisch mit (.+)\)$') { $original = $Matches[1] }
             $bytes = 0; try { $bytes = (Get-Item -LiteralPath $datei -ErrorAction Stop).Length } catch { }
@@ -76,7 +98,7 @@ if ($Duplikate) {
             elseif ($datei -notmatch $RxAudio) { Add-Eintrag 'Duplikat' 'Uebersprungen: keine Audiodatei (bleibt im Pack)' $datei '' 0 }
             elseif (-not (Test-Path -LiteralPath $datei)) { Add-Eintrag 'Duplikat' 'Uebersprungen: Datei existiert nicht mehr' $datei '' 0 }
             elseif (-not $original -or -not (Test-Path -LiteralPath $original) -or $original -eq $datei) { Add-Eintrag 'Duplikat' 'Uebersprungen: behaltenes Exemplar nicht gefunden' $datei $original $bytes }
-            elseif ((Get-FileHash -LiteralPath $datei -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash) { Add-Eintrag 'Duplikat' 'Uebersprungen: Inhalt weicht ab' $datei $original $bytes }
+            elseif (-not (Test-Gleich $datei $original)) { Add-Eintrag 'Duplikat' 'Uebersprungen: Inhalt weicht ab' $datei $original $bytes }
             else { Add-Eintrag 'Duplikat' 'Wird entfernt' $datei "identisch mit $original" $bytes }
         }
     }
@@ -85,6 +107,7 @@ if ($Duplikate) {
 # Quelle einmal durchgehen (fuer macOS-Reste und Formate)
 $quellDateien = New-Object System.Collections.Generic.List[object]
 if ($MacReste -or $Formate) {
+    Write-Host "Lese den Quellordner ..." -ForegroundColor Cyan
     $stapel = New-Object System.Collections.Generic.Stack[string]; $stapel.Push($Quelle)
     while ($stapel.Count -gt 0) {
         $o = $stapel.Pop()
@@ -94,7 +117,7 @@ if ($MacReste -or $Formate) {
                 if ($e.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
                 if ($o -eq $Quelle -and ($e.Name -eq 'ModX' -or $e.Name -eq '_Sortier-Skript' -or $e.Name -like 'Samples-Werkzeuge*')) { continue }
                 $stapel.Push($e.FullName)
-            } else { $quellDateien.Add($e) }
+            } else { $quellDateien.Add($e); if ($quellDateien.Count % 2000 -eq 0) { Write-Host "  ... $($quellDateien.Count) Dateien gelesen" -ForegroundColor DarkGray } }
         }
     }
 }
@@ -116,25 +139,29 @@ if ($MacReste) {
 # ---------------------------------------------------------------------------
 if ($Formate) {
     Write-Host "Formate ($formatText): pruefe WAV-Gegenstuecke im Ziel ..." -ForegroundColor Cyan
-    $zielVon = @{}
+    $zielVon = @{}; $dupVon = @{}
     foreach ($p in $protos) {
         try {
             foreach ($z in (Import-Csv -LiteralPath $p.FullName -Delimiter ';' -Encoding UTF8)) {
                 if ($z.Quelle -and $z.Ziel -and ($z.Aktion -match '^(kopiert|Kopiert)$' -or $z.Aktion -like 'bereits im Ziel*')) { $zielVon[$z.Quelle.ToLowerInvariant()] = $z.Ziel }
+                elseif ($z.Quelle -and $z.Aktion -like 'Duplikat*' -and $z.ZielRel -match '^\(identisch mit (.+)\)$') { $dupVon[$z.Quelle.ToLowerInvariant()] = $Matches[1] }
             }
         } catch { }
     }
     $wavs = @{}
     foreach ($f in $quellDateien) { if ($f.Extension -ieq '.wav' -and (Get-MacRestArt $f.FullName) -ne 'mac') { $wavs[(Get-FormatSchluessel $f.FullName $Quelle)] = $f.FullName } }
-    foreach ($f in $quellDateien) {
-        $ext = $f.Extension.ToLowerInvariant()
-        if ($ausgeschlossen -notcontains $ext) { continue }
+    $kandidaten = @($quellDateien | Where-Object { $ausgeschlossen -contains $_.Extension.ToLowerInvariant() })
+    $i = 0
+    foreach ($f in $kandidaten) {
+        $i++; Show-Fortschritt 'Formate pruefen' $i $kandidaten.Count
         if ((Get-MacRestArt $f.FullName) -eq 'mac') { continue }
         $wav = $wavs[(Get-FormatSchluessel $f.FullName $Quelle)]
         if (-not $wav) { continue }   # ohne WAV-Gegenstueck: bleibt immer
         $zw = $zielVon[$wav.ToLowerInvariant()]
+        # WAV war beim Kopieren ein Duplikat: dann zaehlt die Ziel-Kopie des behaltenen Exemplars
+        if (-not $zw -and $dupVon.ContainsKey($wav.ToLowerInvariant())) { $zw = $zielVon[$dupVon[$wav.ToLowerInvariant()].ToLowerInvariant()] }
         if (-not $zw -or -not (Test-Path -LiteralPath $zw)) { Add-Eintrag 'Format' 'Uebersprungen: WAV ist (noch) nicht im Ziel' $f.FullName $wav $f.Length; continue }
-        if ((Get-FileHash -LiteralPath $wav -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $zw -Algorithm SHA256).Hash) { Add-Eintrag 'Format' 'Uebersprungen: WAV im Ziel weicht ab' $f.FullName $zw $f.Length; continue }
+        if (-not (Test-Gleich $wav $zw)) { Add-Eintrag 'Format' 'Uebersprungen: WAV im Ziel weicht ab' $f.FullName $zw $f.Length; continue }
         Add-Eintrag 'Format' 'Wird entfernt' $f.FullName "WAV im Ziel bestaetigt: $zw" $f.Length
     }
 }
@@ -142,6 +169,13 @@ if ($Formate) {
 # ---------------------------------------------------------------------------
 # Zusammenfassung, Vorschau, Rueckfrage
 # ---------------------------------------------------------------------------
+Write-Progress -Activity 'Quelle aufraeumen' -Completed
+# Eine Datei kann in zwei Gruppen auftauchen (z. B. Duplikat und Format) - nur einmal entfernen
+$gesehen = @{}
+foreach ($x in @($ergebnis | Where-Object { $_.Status -eq 'Wird entfernt' })) {
+    $k = $x.Datei.ToLowerInvariant()
+    if ($gesehen.ContainsKey($k)) { $x.Status = 'Uebersprungen: schon in anderer Gruppe enthalten' } else { $gesehen[$k] = $true }
+}
 $weg = @($ergebnis | Where-Object { $_.Status -eq 'Wird entfernt' })
 Write-Host ""
 Write-Host "==================== Zusammenfassung ====================" -ForegroundColor Yellow

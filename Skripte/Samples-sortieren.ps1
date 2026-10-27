@@ -356,6 +356,7 @@ foreach ($g in $gruppen) {
             if ($x.Aktion -ne 'Kopieren') { continue }
             $x.Aktion = 'Duplikat - uebersprungen'
             $x.ZielRel = "(identisch mit $($erster.Quelle))"
+            $x.Hinweis = if ($erster.Aktion -eq 'Format ausgeschlossen') { "gleicher Inhalt wie $([IO.Path]::GetFileName($erster.Quelle)); diese ist ausgeschlossen, weil es dazu eine WAV gibt" } else { "gleicher Inhalt wie $([IO.Path]::GetFileName($erster.Quelle))" }
             $dupAnzahl++
         }
     }
