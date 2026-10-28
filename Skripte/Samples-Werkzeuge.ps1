@@ -278,7 +278,7 @@ function Show-Einstellungen {
     $lv.Font = $schrift; $lv.Location = New-Object System.Drawing.Point(12, 26); $lv.Size = New-Object System.Drawing.Size(($gb - 24), 132)
     [void]$lv.Columns.Add('Ordner', 270); [void]$lv.Columns.Add('Art', 110); [void]$lv.Columns.Add('Herkunft', 120); [void]$lv.Columns.Add('Zustand', ($gb - 24 - 270 - 110 - 120 - 24))
     $g0.Controls.Add($lv)
-    $script:qLaedt = $false; $script:qStand = 0
+    $script:qLaedt = $false; $script:qStand = -1   # -1: beim ersten Aktivieren (Fenster sichtbar) einlesen
     # Stand der Einstellungsdatei: neu eingelesen wird nur, wenn sie sich geaendert hat (2.3.2)
     $stand = { try { (Get-Item -LiteralPath $einstellungsPfad -ErrorAction Stop).LastWriteTimeUtc.Ticks } catch { 0 } }
     $artText = { param($k) $QuellArten[$k] + '  ▾' }
@@ -301,11 +301,15 @@ function Show-Einstellungen {
         $script:qLaedt = $false
     }
     $speichern = {
-        $liste = @(foreach ($it in $lv.Items) { [pscustomobject]@{ Pfad = $it.Text; Aktiv = $it.Checked; Herkunft = $it.SubItems[2].Text; Art = [string]$it.Tag } })
+        # Liste nur speichern, wenn alle Zeilen vollstaendig gelesen werden koennen - sonst lieber nichts aendern
+        $zeilen = @($lv.Items | Where-Object { $_ -and $_.SubItems.Count -ge 3 })
+        if ($zeilen.Count -ne $lv.Items.Count) { Write-FehlerLog 'Einstellungen: Quellenliste unvollständig gelesen, nicht gespeichert'; return }
+        $liste = @(foreach ($it in $zeilen) { [pscustomobject]@{ Pfad = $it.Text; Aktiv = $it.Checked; Herkunft = $it.SubItems[2].Text; Art = [string]$it.Tag } })
         try { Set-Quellen $liste } catch { Show-Meldung "Speichern fehlgeschlagen:`n$($_.Exception.Message)" 'Error' }
         $script:qStand = & $stand
     }
-    $lv.Add_ItemChecked({ if (-not $script:qLaedt) { & $speichern } })
+    # Nur echte Klicks speichern: beim Anlegen der Liste meldet Windows die Haken ebenfalls (2.3.2)
+    $lv.Add_ItemChecked({ if (-not $script:qLaedt -and $script:qStand -ne -1 -and $lv.IsHandleCreated) { & $speichern } })
     $lv.Add_DoubleClick({ if ($lv.SelectedItems.Count) { Open-Pfad $lv.SelectedItems[0].Text } })
     $tt.SetToolTip($lv, 'Haken = aktiv: Sortieren und Aufräumen lesen alle angehakten Quellen. Klick auf die Art: Art ändern. Doppelklick öffnet den Ordner im Explorer.')
     # Art direkt in der Liste waehlen (2.3.2): Klick auf die Spalte "Art" oeffnet die Auswahl
@@ -381,7 +385,6 @@ function Show-Einstellungen {
     $dy += $g0.Height + 10
     # Nach "Fundorte suchen" (Uebernahme im Browser) neu einlesen - nur wenn sich die Einstellungen geaendert haben
     $d.Add_Activated({ if ((& $stand) -ne $script:qStand) { & $fuelle } })
-    & $fuelle
 
     # --- Ordner ---
     $g1 = New-Object System.Windows.Forms.GroupBox
@@ -680,6 +683,18 @@ function Close-Gruppe($g, [int]$innenHoehe) {
     $g.Height = $innenHoehe
     $script:y += $innenHoehe + 10
 }
+# Fehler in einer Schaltflaeche abfangen (2.3.2): Meldung mit Zeile und Eintrag in Fehler.log statt
+# des Windows-Fensters "Unbehandelte Ausnahme"
+function Invoke-Sicher([scriptblock]$aktion) {
+    try { & $aktion }
+    catch {
+        $ii = $_.InvocationInfo
+        $ort = if ($ii) { "Zeile $($ii.ScriptLineNumber) in $([IO.Path]::GetFileName($ii.ScriptName)): $(([string]$ii.Line).Trim())" } else { '' }
+        Write-FehlerLog "Oberfläche: $($_.Exception.Message) | $ort | $($_.ScriptStackTrace -replace '\r?\n', ' <- ')"
+        Show-Meldung "Es ist ein Fehler aufgetreten:`n$($_.Exception.Message)`n`n$ort`n`nDetails stehen in Skripte\Fehler.log." 'Error'
+    }
+}
+
 function New-Knopf($gruppe, [string]$text, [int]$spalte, [int]$gy, [string]$hinweis, [scriptblock]$aktion) {
     $b = New-Object System.Windows.Forms.Button
     $b.Text = $text
@@ -688,7 +703,7 @@ function New-Knopf($gruppe, [string]$text, [int]$spalte, [int]$gy, [string]$hinw
     $b.Location = New-Object System.Drawing.Point((14 + $spalte * ($bw + 14)), $gy)
     $b.Size = New-Object System.Drawing.Size($bw, 34)
     $b.FlatStyle = 'System'
-    $b.Add_Click($aktion)
+    $b.Tag = $aktion; $b.Add_Click({ param($sender, $ev) Invoke-Sicher $sender.Tag })
     if ($hinweis) { $tipp.SetToolTip($b, $hinweis) }
     $gruppe.Controls.Add($b)
     return $b
@@ -771,7 +786,7 @@ Close-Gruppe $gDup ($gy + 2)
 function New-UntenKnopf([string]$text, [int]$x, [int]$b, [string]$hinweis, [scriptblock]$aktion) {
     $k = New-Object System.Windows.Forms.Button
     $k.Text = $text; $k.Location = New-Object System.Drawing.Point($x, $script:y); $k.Size = New-Object System.Drawing.Size($b, 34)
-    $k.FlatStyle = 'System'; $k.Add_Click($aktion)
+    $k.FlatStyle = 'System'; $k.Tag = $aktion; $k.Add_Click({ param($sender, $ev) Invoke-Sicher $sender.Tag })
     if ($hinweis) { $tipp.SetToolTip($k, $hinweis) }
     $form.Controls.Add($k)
     return $k
