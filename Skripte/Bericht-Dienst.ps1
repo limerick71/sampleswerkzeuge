@@ -7,10 +7,12 @@
   - Liefert den Bericht der neuesten Inventur und die Audiodateien zum Abspielen.
   - Entfernt im Bericht markierte Duplikate: Pruefung (liegt im Ziel, ein identisches Exemplar bleibt
     erhalten), dann Papierkorb; Inventur-Liste und Bericht werden angepasst, Protokoll in "Protokolle".
+  - Mit -Fundorte <json>: liefert den Fundort-Bericht (QLN-03) und uebernimmt angehakte Fundorte als
+    Quellen, oeffnet Fundorte im Explorer und gleicht sie mit der Bibliothek ab.
   - Beendet sich, wenn der Bericht etwa 2 Minuten lang geschlossen ist.
 #>
 [CmdletBinding()]
-param()
+param([string]$Fundorte)
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Gemeinsam.ps1')
@@ -19,10 +21,86 @@ $ErrorActionPreference = 'Stop'
 $einst = Get-Einstellungen
 $Ziel = $einst.Ziel.TrimEnd('\', '/')
 $ZielVoll = [IO.Path]::GetFullPath($Ziel).TrimEnd('\', '/')
-$csv = Get-NeuesteInventur 'Sample'
-if (-not $csv) { Write-FehlerLog 'Bericht-Dienst: keine Inventur vorhanden'; exit 1 }
-$html = [IO.Path]::ChangeExtension($csv.FullName, '.html')
-if (-not (Test-Path -LiteralPath $html)) { $html = New-InventurBericht $csv.FullName }
+if ($Fundorte) {
+    if (-not (Test-Path -LiteralPath $Fundorte)) { Write-FehlerLog "Bericht-Dienst: Fundorte nicht gefunden: $Fundorte"; exit 1 }
+    $html = [IO.Path]::ChangeExtension($Fundorte, '.html')
+    $fundDaten = [IO.File]::ReadAllText($Fundorte, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    $fundPfade = @{}
+    foreach ($f in @($fundDaten.f)) { $fundPfade[([string]$f.p).ToLowerInvariant()] = [string]$f.p }
+} else {
+    $csv = Get-NeuesteInventur 'Sample'
+    if (-not $csv) { Write-FehlerLog 'Bericht-Dienst: keine Inventur vorhanden'; exit 1 }
+    $html = [IO.Path]::ChangeExtension($csv.FullName, '.html')
+    if (-not (Test-Path -LiteralPath $html)) { $html = New-InventurBericht $csv.FullName }
+}
+
+# GUI-06: Explorer-Fenster in den Vordergrund holen (Windows erlaubt das einem Hintergrund-Prozess
+# nur eingeschraenkt; der kurze Alt-Tastendruck ist der uebliche, zulaessige Weg). Klappt es nicht,
+# blinkt das Fenster in der Taskleiste.
+function Open-ExplorerVorne([string]$argument, [string]$ordner) {
+    if ($env:SW_KEIN_BROWSER) { Add-Content -LiteralPath (Join-Path $protokollOrdner 'oeffnen-test.txt') -Value $argument -Encoding UTF8; return }
+    Start-Process -FilePath 'explorer.exe' -ArgumentList $argument
+    try {
+        if (-not ('SamplesWerkzeuge.Fenster' -as [type])) {
+            Add-Type -Namespace SamplesWerkzeuge -Name Fenster -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);
+[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+[DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+'@
+        }
+        $shell = New-Object -ComObject Shell.Application
+        $ziel = $ordner.TrimEnd('\')
+        for ($v = 0; $v -lt 30; $v++) {
+            Start-Sleep -Milliseconds 150
+            foreach ($fen in @($shell.Windows())) {
+                try { $pf = $fen.Document.Folder.Self.Path } catch { continue }
+                if ($pf -and $pf.TrimEnd('\') -ieq $ziel) {
+                    $h = [IntPtr]$fen.HWND
+                    if ([SamplesWerkzeuge.Fenster]::IsIconic($h)) { [void][SamplesWerkzeuge.Fenster]::ShowWindow($h, 9) }
+                    [SamplesWerkzeuge.Fenster]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+                    [SamplesWerkzeuge.Fenster]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+                    [void][SamplesWerkzeuge.Fenster]::SetForegroundWindow($h)
+                    return
+                }
+            }
+        }
+    } catch { Write-FehlerLog "Bericht-Dienst: Explorer nicht nach vorne: $($_.Exception.Message)" }
+}
+
+# Abgleich eines Fundorts mit der Bibliothek: Anteil der Audiodateien, die schon im Ziel liegen
+$zielIndex = $null; $hashCache = @{}
+function Get-Md5([string]$p) { $k = $p.ToLowerInvariant(); if (-not $hashCache.ContainsKey($k)) { $hashCache[$k] = (Get-FileHash -LiteralPath $p -Algorithm MD5).Hash }; $hashCache[$k] }
+function Get-Abgleich([string]$ort) {
+    if (-not $script:zielIndex) {
+        $script:zielIndex = @{}
+        if (Test-Path -LiteralPath $Ziel) {
+            foreach ($z in [IO.Directory]::EnumerateFiles($Ziel, '*', 'AllDirectories')) {
+                if ($z -notmatch $RxAudio) { continue }
+                $l = ([IO.FileInfo]$z).Length
+                if (-not $script:zielIndex.ContainsKey($l)) { $script:zielIndex[$l] = New-Object System.Collections.Generic.List[string] }
+                $script:zielIndex[$l].Add($z)
+            }
+        }
+    }
+    $geprueft = 0; $vorhanden = 0; $cloud = 0
+    $stapel = New-Object System.Collections.Generic.Stack[string]; $stapel.Push($ort)
+    while ($stapel.Count) {
+        $o = $stapel.Pop()
+        try { $eintr = @((New-Object IO.DirectoryInfo $o).EnumerateFileSystemInfos()) } catch { continue }
+        foreach ($e in $eintr) {
+            if ($e.Attributes -band [IO.FileAttributes]::Directory) { if (-not ($e.Attributes -band [IO.FileAttributes]::ReparsePoint)) { $stapel.Push($e.FullName) }; continue }
+            if ($e.Name -notmatch $RxAudio -or $e.Name.StartsWith('._')) { continue }
+            if ([int]$e.Attributes -band (0x400000 -bor 0x40000 -bor 0x1000)) { $cloud++; continue }   # nicht herunterladen
+            $geprueft++
+            $kand = $script:zielIndex[$e.Length]
+            if (-not $kand) { continue }
+            $h = Get-Md5 $e.FullName
+            foreach ($z in $kand) { if ((Get-Md5 $z) -eq $h) { $vorhanden++; break } }
+        }
+    }
+    return @{ geprueft = $geprueft; vorhanden = $vorhanden; cloud = $cloud }
+}
 
 $token = [guid]::NewGuid().ToString('N')
 $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
@@ -183,6 +261,7 @@ try {
                 }
                 '/ping' { Send-Text $strom 200 'OK' 'ok' }
                 '/datei' {
+                    if ($Fundorte) { Send-Text $strom 404 'Not Found' 'Im Fundort-Bericht nicht verfügbar.'; break }
                     $voll = Get-ZielPfad $a.Abfrage['p']
                     if (-not $voll -or -not (Test-Path -LiteralPath $voll -PathType Leaf)) { Send-Text $strom 404 'Not Found' 'Datei nicht gefunden.'; break }
                     $typ = $typen[[IO.Path]::GetExtension($voll).ToLowerInvariant()]; if (-not $typ) { $typ = 'application/octet-stream' }
@@ -196,6 +275,7 @@ try {
                     } else { Send-Antwort $strom 200 'OK' $typ $alle @{ 'Accept-Ranges' = 'bytes' } }
                 }
                 '/entfernen' {
+                    if ($Fundorte) { Send-Text $strom 404 'Not Found' 'Im Fundort-Bericht nicht verfügbar.'; break }
                     if ($a.Methode -ne 'POST') { Send-Text $strom 405 'Method Not Allowed' 'Nur POST.'; break }
                     $daten = $a.Body | ConvertFrom-Json
                     $erg = Remove-Markierte @($daten.pfade)
@@ -210,9 +290,44 @@ try {
                     if (Test-Path -LiteralPath $voll -PathType Leaf) { $arg = "/select,`"$voll`"" }
                     elseif (Test-Path -LiteralPath (Split-Path -Parent $voll)) { $arg = "`"$(Split-Path -Parent $voll)`"" }
                     else { Send-Text $strom 404 'Not Found' 'Datei und Ordner gibt es nicht mehr. Bitte neue Inventur starten.'; break }
-                    if ($env:SW_KEIN_BROWSER) { Add-Content -LiteralPath (Join-Path $protokollOrdner 'oeffnen-test.txt') -Value $arg -Encoding UTF8 }
-                    else { Start-Process -FilePath 'explorer.exe' -ArgumentList $arg }
                     Send-Text $strom 200 'OK' 'ok'
+                    Open-ExplorerVorne $arg (Split-Path -Parent $voll)
+                }
+                '/oeffnen-ort' {
+                    if ($a.Methode -ne 'POST' -or -not $Fundorte) { Send-Text $strom 405 'Method Not Allowed' 'Nicht erlaubt.'; break }
+                    $pf = [string]($a.Body | ConvertFrom-Json).pfad
+                    if (-not $fundPfade.ContainsKey($pf.ToLowerInvariant()) -or -not (Test-Path -LiteralPath $pf -PathType Container)) { Send-Text $strom 404 'Not Found' 'Fundort nicht gefunden.'; break }
+                    Send-Text $strom 200 'OK' '{}' 'application/json; charset=utf-8'
+                    Open-ExplorerVorne "`"$pf`"" $pf
+                }
+                '/quellen' {
+                    if ($a.Methode -ne 'POST') { Send-Text $strom 405 'Method Not Allowed' 'Nur POST.'; break }
+                    $ql = @((Get-Einstellungen).Quellen | ForEach-Object { [string]$_.Pfad })
+                    Send-Text $strom 200 'OK' (ConvertTo-Json -InputObject @{ quellen = $ql } -Compress) 'application/json; charset=utf-8'
+                }
+                '/uebernehmen' {
+                    # QLN-03/04: angehakte Fundorte als Quellen eintragen (nur Fundorte aus diesem Bericht)
+                    if ($a.Methode -ne 'POST' -or -not $Fundorte) { Send-Text $strom 405 'Method Not Allowed' 'Nicht erlaubt.'; break }
+                    $erg = @()
+                    $herkunft = 'aus Suchlauf ' + (Get-Date).ToString('dd.MM.yyyy')
+                    foreach ($pf in @(($a.Body | ConvertFrom-Json).pfade)) {
+                        $pf = [string]$pf
+                        if (-not $fundPfade.ContainsKey($pf.ToLowerInvariant())) { $erg += @{ pfad = $pf; ok = $false; grund = 'kein Fundort aus diesem Bericht' }; continue }
+                        if (-not (Test-Path -LiteralPath $pf -PathType Container)) { $erg += @{ pfad = $pf; ok = $false; grund = 'Ordner gibt es nicht mehr' }; continue }
+                        $e2 = Get-Einstellungen
+                        $f = Test-NeueQuelle $pf $e2.Quellen $e2.Ziel
+                        if ($f) { $erg += @{ pfad = $pf; ok = $false; grund = $f }; continue }
+                        Set-Quellen (@($e2.Quellen) + [pscustomobject]@{ Pfad = $pf; Aktiv = $true; Herkunft = $herkunft })
+                        $erg += @{ pfad = $pf; ok = $true; grund = '' }
+                    }
+                    Send-Text $strom 200 'OK' (ConvertTo-Json -InputObject @{ ergebnisse = @($erg) } -Depth 4 -Compress) 'application/json; charset=utf-8'
+                }
+                '/abgleich' {
+                    if ($a.Methode -ne 'POST' -or -not $Fundorte) { Send-Text $strom 405 'Method Not Allowed' 'Nicht erlaubt.'; break }
+                    $pf = [string]($a.Body | ConvertFrom-Json).pfad
+                    if (-not $fundPfade.ContainsKey($pf.ToLowerInvariant())) { Send-Text $strom 404 'Not Found' 'Fundort nicht gefunden.'; break }
+                    $r = Get-Abgleich $pf
+                    Send-Text $strom 200 'OK' (ConvertTo-Json -InputObject $r -Compress) 'application/json; charset=utf-8'
                 }
                 default { Send-Text $strom 404 'Not Found' 'Unbekannt.' }
             }

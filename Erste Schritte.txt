@@ -31,13 +31,16 @@ Erscheint eine blaue Windows-Warnung („Der Computer wurde durch Windows gesch�
 
 3. ORDNER EINSTELLEN
 ------------------------------------------------------------
-Unten auf „⚙ Einstellungen“ klicken und mit „Ändern …“ die Ordner wählen:
-  - Quelle:   Ordner mit den unsortierten Sample-Packs (Standard: Dokumente\Quelle_Samples)
+Unten auf „⚙ Einstellungen“ klicken:
+  - Quellen:  Ordner mit unsortierten Sample-Packs. Mit „Hinzufügen …“ von Hand
+              oder mit „Fundorte suchen …“: das Programm sucht auf dem Rechner
+              nach Sample-Packs und zeigt sie im Browser; dort anhaken und
+              „In Quellenliste übernehmen“. Haken = aktiv.
   - Ziel:     sortierte Sample-Bibliothek (Standard: Dokumente\Ziel_Samples)
   - Berichte: hier entstehen Inventuren und Berichte (Standard: Programmordner)
 Downloads und Download-Archiv werden erst ab Version 3 genutzt.
-Die Auswahl wird gespeichert. Der Status im Hauptfenster zeigt danach Quelle
-und Ziel mit Pfad und ob sie gefunden werden.
+Die Auswahl wird gespeichert. Der Status im Hauptfenster zeigt danach die
+aktiven Quellen und das Ziel mit Pfad und ob sie gefunden werden.
 Im selben Fenster: „Zusätzlich zur WAV behalten: RX2 / MP3 / AIFF“ (Standard:
 alle an). Ohne Haken wird z. B. eine RX2 nur dann nicht kopiert, wenn im selben
 Pack eine WAV mit gleichem Namen liegt (auch in einem Unterordner wie
@@ -75,7 +78,8 @@ Im Bereich „2 Inventur und Bericht“ auf „Inventur starten“ klicken:
 
 6. QUELLE AUFRÄUMEN (OPTIONAL)
 ------------------------------------------------------------
-Im Bereich „3 Quelle aufräumen“ auf „Quelle aufräumen …“ klicken und wählen:
+Im Bereich „3 Quelle aufräumen“ auf „Quelle aufräumen …“ klicken und wählen
+(bei mehreren Quellen auch, welche aufgeräumt werden):
   - Duplikate: beim Kopieren als doppelt erkannt, Prüfung per Hash.
   - macOS-Reste: ._-Dateien, .DS_Store, __MACOSX.
   - Formate: RX2, MP3 und/oder AIFF neben gleichnamiger WAV im selben Pack

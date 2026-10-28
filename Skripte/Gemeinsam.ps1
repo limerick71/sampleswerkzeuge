@@ -10,7 +10,7 @@
 #   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
 #   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
 
-$ProgrammVersion = '2.2.0'
+$ProgrammVersion = '2.3.0'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -102,6 +102,7 @@ function Get-StandardEinstellungen {
 
 function Get-Einstellungen {
     $e = Get-StandardEinstellungen
+    $cfg = $null
     if (Test-Path -LiteralPath $einstellungsPfad) {
         try {
             $cfg = Get-Content -LiteralPath $einstellungsPfad -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -119,7 +120,46 @@ function Get-Einstellungen {
         if ($k -in 'ErsterStartErledigt', 'RX2Beibehalten', 'MP3Beibehalten', 'AIFFBeibehalten') { $e[$k] = ([string]$e[$k]) -notin 'False', '0', '' }
         else { $e[$k] = ([string]$e[$k]).Trim().TrimEnd('\', '/') }
     }
+    # Quellenliste (QLN-04, ab 2.3): je Eintrag Pfad, Aktiv, Herkunft. Fehlt sie (Einstellungen bis 2.2),
+    # wird die bisherige einzelne Quelle zur ersten Zeile.
+    $liste = New-Object System.Collections.Generic.List[object]
+    if ($cfg -and $cfg.PSObject.Properties['Quellen'] -and $cfg.Quellen) {
+        foreach ($q in @($cfg.Quellen)) {
+            $pf = ([string]$q.Pfad).Trim().TrimEnd('\', '/')
+            if (-not $pf) { continue }
+            $liste.Add([pscustomobject]@{ Pfad = $pf; Aktiv = (([string]$q.Aktiv) -notin 'False', '0', ''); Herkunft = $(if ($q.Herkunft) { [string]$q.Herkunft } else { 'manuell' }) })
+        }
+    }
+    if ($liste.Count -eq 0 -and $e.Quelle) { $liste.Add([pscustomobject]@{ Pfad = $e.Quelle; Aktiv = $true; Herkunft = 'manuell' }) }
+    $e.Add('Quellen', [object[]]$liste.ToArray())
+    # "Quelle" bleibt fuer aeltere Stellen: erste aktive Quelle
+    $erste = @($liste | Where-Object { $_.Aktiv }) | Select-Object -First 1
+    if ($erste) { $e.Quelle = $erste.Pfad }
     return $e
+}
+
+# Aktive Quellen als Pfadliste
+function Get-AktiveQuellen { @((Get-Einstellungen).Quellen | Where-Object { $_.Aktiv } | ForEach-Object { $_.Pfad }) }
+
+# Quellenliste speichern (Liste von Objekten mit Pfad, Aktiv, Herkunft)
+function Set-Quellen($liste) {
+    $sauber = @($liste | ForEach-Object { [ordered]@{ Pfad = [string]$_.Pfad; Aktiv = [bool]$_.Aktiv; Herkunft = [string]$_.Herkunft } })
+    Set-Einstellung 'Quellen' $sauber
+}
+
+# Prueft einen neuen Quellordner gegen Ziel und vorhandene Quellen. Liefert Fehlertext oder ''.
+function Test-NeueQuelle([string]$pfad, $quellen, [string]$ziel, [string]$ausser = '') {
+    $f = Test-QuelleZiel $pfad $ziel
+    if ($f) { return $f }
+    $n = $pfad.Replace('/', '\').TrimEnd('\') + '\'
+    foreach ($q in @($quellen)) {
+        if ($ausser -and $q.Pfad -ieq $ausser) { continue }
+        $a = ([string]$q.Pfad).Replace('/', '\').TrimEnd('\') + '\'
+        if ($a -ieq $n) { return "Dieser Ordner ist schon als Quelle eingetragen." }
+        if ($n.StartsWith($a, [StringComparison]::OrdinalIgnoreCase)) { return "Der Ordner liegt innerhalb der Quelle $($q.Pfad) und wird dort schon mitgelesen." }
+        if ($a.StartsWith($n, [StringComparison]::OrdinalIgnoreCase)) { return "Die Quelle $($q.Pfad) liegt innerhalb dieses Ordners. Bitte zuerst diese Quelle entfernen." }
+    }
+    return ''
 }
 
 function Set-Einstellung([string]$name, $wert) {
@@ -128,11 +168,17 @@ function Set-Einstellung([string]$name, $wert) {
     # Nur Abweichungen vom Standard speichern: so zeigt z. B. "Berichte" in einer neuen
     # Version weiter auf deren eigenen Programmordner und nicht auf den der alten Version.
     $std = Get-StandardEinstellungen
+    if ($name -eq 'Quellen') {
+        $erste = @($wert | Where-Object { $_.Aktiv }) | Select-Object -First 1
+        if ($erste) { $e.Quelle = [string]$erste.Pfad }
+    }
     $obj = [ordered]@{ Standard21 = $true }
     foreach ($k in @($e.Keys)) {
-        if ($k -eq 'ErsterStartErledigt' -or [string]$e[$k] -ne [string]$std[$k]) { $obj[$k] = $e[$k] }
+        # Quelle, Ziel und Quellen immer speichern, alles andere nur, wenn es vom Standard abweicht
+        if ($k -in 'ErsterStartErledigt', 'Quelle', 'Ziel', 'Quellen' -or [string]$e[$k] -ne [string]$std[$k]) { $obj[$k] = $e[$k] }
     }
-    ConvertTo-Json -InputObject $obj | Set-Content -LiteralPath $einstellungsPfad -Encoding UTF8
+    if ($obj.Contains('Quellen')) { $obj['Quellen'] = @($obj['Quellen'] | ForEach-Object { [ordered]@{ Pfad = [string]$_.Pfad; Aktiv = [bool]$_.Aktiv; Herkunft = [string]$_.Herkunft } }) }
+    ConvertTo-Json -InputObject $obj -Depth 5 | Set-Content -LiteralPath $einstellungsPfad -Encoding UTF8
 }
 
 # Neue Version ohne eigene Pack-Arten-Korrekturen: die der neuesten Nachbar-Version uebernehmen

@@ -39,18 +39,22 @@ $ErrorActionPreference = 'Stop'
 $Zeitstempel  = Get-Date -Format 'yyyy-MM-dd_HHmmss'
 
 $einst = Get-Einstellungen
-if (-not $Quelle) { $Quelle = $einst.Quelle }
+# Quellen (QLN-05): alle aktiven aus der Quellenliste, oder -Quelle fuer einen einzelnen Lauf
+$QuellListe = if ($Quelle) { @($Quelle) } else { @(Get-AktiveQuellen) }
 if (-not $Ziel)   { $Ziel   = $einst.Ziel }
 Write-Host "Samples sortieren (Samples-Werkzeuge $ProgrammVersion)" -ForegroundColor Cyan
-Write-Host "  Quelle: $Quelle"
+foreach ($q in $QuellListe) { Write-Host "  Quelle: $q" }
 Write-Host "  Ziel:   $Ziel"
 Write-Host ""
 
-if (-not (Test-Path -LiteralPath $Quelle)) { throw "Quellordner nicht gefunden: $Quelle  (in der Oberflaeche unter 'Einstellungen' aendern)" }
-$Quelle = (Resolve-Path -LiteralPath $Quelle).ProviderPath.TrimEnd('\','/')
+if (-not $QuellListe.Count) { throw "Es ist keine Quelle aktiv (in der Oberflaeche unter Einstellungen hinzufuegen oder anhaken)." }
+$QuellListe = @(foreach ($q in $QuellListe) {
+    if (-not (Test-Path -LiteralPath $q)) { throw "Quellordner nicht gefunden: $q  (in der Oberflaeche unter Einstellungen aendern)" }
+    (Resolve-Path -LiteralPath $q).ProviderPath.TrimEnd('\','/')
+})
 $Ziel   = $Ziel.TrimEnd('\','/')
-$pruef = Test-QuelleZiel $Quelle $Ziel
-if ($pruef) { throw $pruef }
+foreach ($q in $QuellListe) { $pruef = Test-QuelleZiel $q $Ziel; if ($pruef) { throw "$pruef ($q)" } }
+$Quelle = $QuellListe[0]
 $zielStatus = Get-OrdnerStatus $Ziel
 if ($zielStatus.Fehlt) { throw "Ziel nicht erreichbar: $($zielStatus.Text)  (in der Oberflaeche unter 'Einstellungen' aendern)" }
 # Programmordner und Protokolle nie mitkopieren, falls sie in der Quelle liegen
@@ -164,26 +168,29 @@ function Join-Rel([string[]]$Teile) {
 # ----------------------------------------------------------------------------
 # 1) Einlesen und klassifizieren
 # ----------------------------------------------------------------------------
-Write-Host "Lese Dateien aus '$Quelle' ..." -ForegroundColor Cyan
 # Eigene Rekursion: Ordner-Verknuepfungen (Junctions, z. B. "Anwendungsdaten") werden nicht verfolgt,
-# nicht lesbare Ordner werden gezaehlt statt das Skript abzubrechen.
+# nicht lesbare Ordner werden gezaehlt statt das Skript abzubrechen. Je Datei wird ihre Quelle gemerkt.
 $nichtLesbar = 0
 $alle = New-Object System.Collections.Generic.List[object]
-$stapel = New-Object System.Collections.Generic.Stack[string]
-$stapel.Push($Quelle)
-while ($stapel.Count -gt 0) {
-    $ordner = $stapel.Pop()
-    try { $inhalt = @(Get-ChildItem -LiteralPath $ordner -Force -ErrorAction Stop) }
-    catch { $nichtLesbar++; continue }
-    foreach ($e in $inhalt) {
-        if ($e.PSIsContainer) {
-            if ($e.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
-            if ($ordner -eq $Quelle -and $e.Name -eq 'ModX') { continue }
-            $stapel.Push($e.FullName)
-        } else { $alle.Add($e) }
+$wurzelVon = @{}
+foreach ($QWurzel in $QuellListe) {
+    Write-Host "Lese Dateien aus '$QWurzel' ..." -ForegroundColor Cyan
+    $stapel = New-Object System.Collections.Generic.Stack[string]
+    $stapel.Push($QWurzel)
+    while ($stapel.Count -gt 0) {
+        $ordner = $stapel.Pop()
+        try { $inhalt = @(Get-ChildItem -LiteralPath $ordner -Force -ErrorAction Stop) }
+        catch { $nichtLesbar++; continue }
+        foreach ($e in $inhalt) {
+            if ($e.PSIsContainer) {
+                if ($e.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+                if ($ordner -eq $QWurzel -and $e.Name -eq 'ModX') { continue }
+                $stapel.Push($e.FullName)
+            } else { $alle.Add($e); $wurzelVon[$e.FullName] = $QWurzel }
+        }
     }
+    if (Test-Path -LiteralPath (Join-Path $QWurzel 'ModX')) { Write-Host "Hinweis: Der Ordner 'ModX' (Yamaha-Bibliotheken) in $QWurzel wird ausgespart." -ForegroundColor DarkGray }
 }
-if (Test-Path -LiteralPath (Join-Path $Quelle 'ModX')) { Write-Host "Hinweis: Der Ordner 'ModX' (Yamaha-Bibliotheken) wird ausgespart." -ForegroundColor DarkGray }
 if ($nichtLesbar -gt 0) { Write-Host "Hinweis: $nichtLesbar Ordner waren nicht lesbar und wurden ausgelassen." -ForegroundColor Yellow }
 $plan = New-Object System.Collections.Generic.List[object]
 
@@ -192,7 +199,8 @@ $alle = @($alle | Where-Object {
     -not @($Ausnahmen | Where-Object { $voll.StartsWith($_ + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) }).Count
 })
 foreach ($f in $alle) {
-    $rel   = $f.FullName.Substring($Quelle.Length).TrimStart('\','/')
+    $QWurzel = $wurzelVon[$f.FullName]
+    $rel   = $f.FullName.Substring($QWurzel.Length).TrimStart('\','/')
     $teile = $rel -split '[\\/]'
     $name  = $f.Name
     $nameL = $name.ToLowerInvariant()
@@ -201,7 +209,7 @@ foreach ($f in $alle) {
     $eintrag = [ordered]@{
         Aktion = 'Kopieren'; Kategorie = ''; Quelle = $f.FullName; Ziel = ''
         GroesseMB = [math]::Round($f.Length / 1MB, 2); Bytes = $f.Length
-        Dedup = $true; ZielRel = ''; Hinweis = ''
+        Dedup = $true; ZielRel = ''; Hinweis = ''; Quellordner = $QWurzel
     }
 
     # --- macOS-Reste (CLN-10): werden nicht kopiert, bleiben in der Quelle (Grundsatz: Sortieren liest die Quelle nur).
@@ -325,12 +333,12 @@ foreach ($f in $alle) {
 $ausgeschlossen = @($FormatEinstellung.Keys | Where-Object { -not $einst[$FormatEinstellung[$_]] })
 if ($ausgeschlossen.Count -gt 0) {
     $wavNamen = @{}
-    foreach ($x in $plan) { if ($x.Quelle -match '\.wav$' -and $x.Aktion -notin 'Ignoriert', 'Mac-Rest') { $wavNamen[(Get-FormatSchluessel $x.Quelle $Quelle)] = $true } }
+    foreach ($x in $plan) { if ($x.Quelle -match '\.wav$' -and $x.Aktion -notin 'Ignoriert', 'Mac-Rest') { $wavNamen[(Get-FormatSchluessel $x.Quelle $x.Quellordner)] = $true } }
     foreach ($x in @($plan | Where-Object { $_.Aktion -eq 'Kopieren' })) {
         $ext = [IO.Path]::GetExtension($x.Quelle).ToLowerInvariant()
         if ($ausgeschlossen -notcontains $ext) { continue }
         $fmt = $FormatName[$FormatEinstellung[$ext]]
-        $k = Get-FormatSchluessel $x.Quelle $Quelle
+        $k = Get-FormatSchluessel $x.Quelle $x.Quellordner
         if ($wavNamen.ContainsKey($k)) { $x.Aktion = 'Format ausgeschlossen'; $x.Kategorie = $fmt; $x.Hinweis = "WAV mit gleichem Namen im selben Pack vorhanden, Haken '$fmt' ist aus" }
         else { $x.Hinweis = "$fmt ohne WAV mit gleichem Namen im Pack - wird einsortiert" }
     }
@@ -461,7 +469,7 @@ $TextProtokoll = @{
 }
 function Export-Plan([string]$pfad, [hashtable]$texte) {
     $plan | Select-Object @{ n = 'Aktion'; e = { if ($texte.ContainsKey($_.Aktion)) { $texte[$_.Aktion] } else { $_.Aktion } } },
-        Kategorie, Quelle, Ziel, ZielRel, GroesseMB, Hinweis |
+        Kategorie, Quelle, Ziel, ZielRel, GroesseMB, Hinweis, Quellordner |
         Export-Csv -LiteralPath $pfad -NoTypeInformation -Delimiter ';' -Encoding UTF8
 }
 

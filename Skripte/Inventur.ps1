@@ -370,7 +370,8 @@ foreach ($g in ($samples | Group-Object Pack | Sort-Object Name)) {
 }
 
 # Ausgesparte Bereiche der Quelle (z. B. ModX) als eigener Eintrag
-$modx = Join-Path $einst.Quelle 'ModX'
+$modx = @(Get-AktiveQuellen | ForEach-Object { Join-Path $_ 'ModX' } | Where-Object { Test-Path -LiteralPath $_ }) | Select-Object -First 1
+if (-not $modx) { $modx = Join-Path $einst.Quelle 'ModX' }
 if (Test-Path -LiteralPath $modx) {
     $mb = 0; try { $mb = [math]::Round(((Get-ChildItem -LiteralPath $modx -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum) / 1MB, 1) } catch { }
     $packs.Add([pscustomobject][ordered]@{

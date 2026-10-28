@@ -13,6 +13,7 @@
 .BENUTZUNG
     -Duplikate -MacReste -Formate -Originale   Gruppen waehlen (ohne Angabe: Auswahl in der Konsole)
     -Formatliste "RX2,MP3"          Formate fuer Gruppe 3 (ohne Angabe: die beim Sortieren abgewaehlten)
+    -Quellen "C:\A|D:\B"            nur diese Quellen aufraeumen (ohne Angabe: alle aktiven)
     -NurVorschau                    nur Vorschau, keine Frage
     -Ausfuehren                     ohne Frage entfernen
 #>
@@ -23,6 +24,7 @@ param(
     [switch]$Formate,
     [switch]$Originale,
     [string]$Formatliste,
+    [string]$Quellen,
     [switch]$NurVorschau,
     [switch]$Ausfuehren
 )
@@ -31,12 +33,24 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Gemeinsam.ps1')
 $Zeitstempel = Get-Date -Format 'yyyy-MM-dd_HHmmss'
 $einst = Get-Einstellungen
-$Quelle = $einst.Quelle.TrimEnd('\', '/')
 $Ziel   = $einst.Ziel.TrimEnd('\', '/')
+# Quellen (QLN-05): gewaehlte oder alle aktiven; nicht gefundene werden uebersprungen
+$QuellListe = if ($Quellen) { @($Quellen -split '\|' | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim().TrimEnd('\', '/') }) } else { @(Get-AktiveQuellen) }
 Write-Host "Quelle aufraeumen (Samples-Werkzeuge $ProgrammVersion)" -ForegroundColor Cyan
-Write-Host "  Quelle: $Quelle"
+$QuellListe = @(foreach ($q in $QuellListe) {
+    if (Test-Path -LiteralPath $q) { Write-Host "  Quelle: $q"; $q } else { Write-Host "  Quelle nicht gefunden, wird uebersprungen: $q" -ForegroundColor Yellow }
+})
 Write-Host ""
-if (-not (Test-Path -LiteralPath $Quelle)) { throw "Quellordner nicht gefunden: $Quelle" }
+if (-not $QuellListe.Count) { throw "Keine Quelle gefunden (in der Oberflaeche unter Einstellungen pruefen)." }
+$Quelle = $QuellListe[0]
+# Zu welcher Quelle gehoert ein Pfad? (laengste passende Quelle, sonst '')
+function Get-QuellWurzel([string]$pfad) {
+    $treffer = ''
+    foreach ($q in $QuellListe) {
+        if ($pfad.StartsWith($q + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -and $q.Length -gt $treffer.Length) { $treffer = $q }
+    }
+    return $treffer
+}
 
 # Formate fuer Gruppe 3 (CLN-12): eigene Auswahl, unabhaengig von den Sortier-Haken
 function Get-FormatEndungen([string]$liste) {
@@ -90,7 +104,7 @@ function Show-Fortschritt([string]$was, [int]$i, [int]$n) {
 }
 
 # Alle Kopier-Protokolle: Quelle -> Ziel (fuer Duplikate und Formate)
-$orte = @($protokollOrdner, $Ziel, (Join-Path $Quelle '_Sortier-Skript'))
+$orte = @($protokollOrdner, $Ziel) + @($QuellListe | ForEach-Object { Join-Path $_ '_Sortier-Skript' })
 $protos = @(foreach ($o in $orte) { if ($o -and (Test-Path -LiteralPath $o)) { Get-ChildItem -LiteralPath $o -Filter 'Protokoll_*.csv' -File -ErrorAction SilentlyContinue } }) | Sort-Object Name
 
 # ---------------------------------------------------------------------------
@@ -109,7 +123,7 @@ if ($Duplikate) {
             $datei = $d.Quelle; $original = ''
             if ($d.ZielRel -match '^\(identisch mit (.+)\)$') { $original = $Matches[1] }
             $bytes = 0; try { $bytes = (Get-Item -LiteralPath $datei -ErrorAction Stop).Length } catch { }
-            if (-not $datei.StartsWith($Quelle, [StringComparison]::OrdinalIgnoreCase)) { Add-Eintrag 'Duplikat' 'Uebersprungen: liegt nicht im Quellordner' $datei '' 0 }
+            if (-not (Get-QuellWurzel $datei)) { Add-Eintrag 'Duplikat' 'Uebersprungen: liegt nicht in einer gewaehlten Quelle' $datei '' 0 }
             elseif ($datei -notmatch $RxAudio) { Add-Eintrag 'Duplikat' 'Uebersprungen: keine Audiodatei (bleibt im Pack)' $datei '' 0 }
             elseif (-not (Test-Path -LiteralPath $datei)) { Add-Eintrag 'Duplikat' 'Uebersprungen: Datei existiert nicht mehr' $datei '' 0 }
             elseif (-not $original -or -not (Test-Path -LiteralPath $original) -or $original -eq $datei) { Add-Eintrag 'Duplikat' 'Uebersprungen: behaltenes Exemplar nicht gefunden' $datei $original $bytes }
@@ -122,17 +136,19 @@ if ($Duplikate) {
 # Quelle einmal durchgehen (fuer macOS-Reste, Formate und Originale)
 $quellDateien = New-Object System.Collections.Generic.List[object]
 if ($MacReste -or $Formate -or $Originale) {
-    Write-Host "Lese den Quellordner ..." -ForegroundColor Cyan
-    $stapel = New-Object System.Collections.Generic.Stack[string]; $stapel.Push($Quelle)
-    while ($stapel.Count -gt 0) {
-        $o = $stapel.Pop()
-        try { $inh = @(Get-ChildItem -LiteralPath $o -Force -ErrorAction Stop) } catch { continue }
-        foreach ($e in $inh) {
-            if ($e.PSIsContainer) {
-                if ($e.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
-                if ($o -eq $Quelle -and ($e.Name -eq 'ModX' -or $e.Name -eq '_Sortier-Skript' -or $e.Name -like 'Samples-Werkzeuge*')) { continue }
-                $stapel.Push($e.FullName)
-            } else { $quellDateien.Add($e); if ($quellDateien.Count % 2000 -eq 0) { Write-Host "  ... $($quellDateien.Count) Dateien gelesen" -ForegroundColor DarkGray } }
+    foreach ($QWurzel in $QuellListe) {
+        Write-Host "Lese $QWurzel ..." -ForegroundColor Cyan
+        $stapel = New-Object System.Collections.Generic.Stack[string]; $stapel.Push($QWurzel)
+        while ($stapel.Count -gt 0) {
+            $o = $stapel.Pop()
+            try { $inh = @(Get-ChildItem -LiteralPath $o -Force -ErrorAction Stop) } catch { continue }
+            foreach ($e in $inh) {
+                if ($e.PSIsContainer) {
+                    if ($e.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+                    if ($o -eq $QWurzel -and ($e.Name -eq 'ModX' -or $e.Name -eq '_Sortier-Skript' -or $e.Name -like 'Samples-Werkzeuge*')) { continue }
+                    $stapel.Push($e.FullName)
+                } else { $quellDateien.Add($e); if ($quellDateien.Count % 2000 -eq 0) { Write-Host "  ... $($quellDateien.Count) Dateien gelesen" -ForegroundColor DarkGray } }
+            }
         }
     }
 }
@@ -168,13 +184,13 @@ if ($Formate -or $Originale) {
 if ($Formate) {
     Write-Host "Formate ($formatText): pruefe WAV-Gegenstuecke im Ziel ..." -ForegroundColor Cyan
     $wavs = @{}
-    foreach ($f in $quellDateien) { if ($f.Extension -ieq '.wav' -and (Get-MacRestArt $f.FullName) -ne 'mac') { $wavs[(Get-FormatSchluessel $f.FullName $Quelle)] = $f.FullName } }
+    foreach ($f in $quellDateien) { if ($f.Extension -ieq '.wav' -and (Get-MacRestArt $f.FullName) -ne 'mac') { $wavs[(Get-FormatSchluessel $f.FullName (Get-QuellWurzel $f.FullName))] = $f.FullName } }
     $kandidaten = @($quellDateien | Where-Object { $ausgeschlossen -contains $_.Extension.ToLowerInvariant() })
     $i = 0
     foreach ($f in $kandidaten) {
         $i++; Show-Fortschritt 'Formate pruefen' $i $kandidaten.Count
         if ((Get-MacRestArt $f.FullName) -eq 'mac') { continue }
-        $wav = $wavs[(Get-FormatSchluessel $f.FullName $Quelle)]
+        $wav = $wavs[(Get-FormatSchluessel $f.FullName (Get-QuellWurzel $f.FullName))]
         if (-not $wav) { continue }   # ohne WAV-Gegenstueck: bleibt immer
         $zw = $zielVon[$wav.ToLowerInvariant()]
         # WAV war beim Kopieren ein Duplikat: dann zaehlt die Ziel-Kopie des behaltenen Exemplars
@@ -220,11 +236,18 @@ foreach ($x in @($ergebnis | Where-Object { $_.Status -eq 'Wird entfernt' })) {
 $weg = @($ergebnis | Where-Object { $_.Status -eq 'Wird entfernt' })
 Write-Host ""
 Write-Host "==================== Zusammenfassung ====================" -ForegroundColor Yellow
-foreach ($g in ($ergebnis | Group-Object Gruppe)) {
-    Write-Host ("{0}:" -f $g.Name)
-    $g.Group | Group-Object Status | ForEach-Object { "  {0,-55} {1,6}" -f $_.Name, $_.Count } | Write-Host
+# Alle gewaehlten Gruppen zeigen, auch ohne Treffer (GUI-06)
+$gewaehlt = @()
+if ($Duplikate) { $gewaehlt += @{ N = 'Duplikat'; Leer = 'keine als doppelt erkannten Dateien' } }
+if ($MacReste)  { $gewaehlt += @{ N = 'macOS-Rest'; Leer = 'keine macOS-Reste gefunden' } }
+if ($Formate)   { $gewaehlt += @{ N = 'Format'; Leer = "keine $formatText neben gleichnamiger WAV" } }
+if ($Originale) { $gewaehlt += @{ N = 'Original'; Leer = 'keine Datei mit bestaetigter Kopie im Ziel' } }
+foreach ($gw in $gewaehlt) {
+    $grp = @($ergebnis | Where-Object { $_.Gruppe -eq $gw.N })
+    if (-not $grp.Count) { Write-Host ("{0}:  0 - {1}" -f $gw.N, $gw.Leer); continue }
+    Write-Host ("{0}:" -f $gw.N)
+    $grp | Group-Object Status | ForEach-Object { "  {0,-55} {1,6}" -f $_.Name, $_.Count } | Write-Host
 }
-if (-not $ergebnis.Count) { Write-Host "Nichts gefunden." }
 Write-Host ("Frei werdender Platz: {0:N1} MB" -f [double](($weg | Measure-Object GroesseMB -Sum).Sum))
 $vorschauPfad = Join-Path $protokollOrdner "Quelle-aufraeumen-Vorschau_$Zeitstempel.csv"
 if ($ergebnis.Count) {
@@ -234,8 +257,12 @@ if ($ergebnis.Count) {
     Write-Host "  $vorschauPfad"
 }
 if ($weg.Count -eq 0) { Write-Host ""; Write-Host "Es gibt nichts zu entfernen." -ForegroundColor Green; return }
-$warnung = Get-PapierkorbWarnung $Quelle ([long](($weg | Measure-Object GroesseMB -Sum).Sum * 1MB))
-if ($warnung) { Write-Host ""; Write-Host "ACHTUNG: $warnung" -ForegroundColor Red }
+# Papierkorb-Warnung je Laufwerk (Quellen koennen auf verschiedenen Laufwerken liegen)
+$warnung = ''
+foreach ($lg in ($weg | Group-Object { [IO.Path]::GetPathRoot($_.Datei) })) {
+    $w = Get-PapierkorbWarnung $lg.Group[0].Datei ([long](($lg.Group | Measure-Object GroesseMB -Sum).Sum * 1MB))
+    if ($w) { Write-Host ""; Write-Host "ACHTUNG: $w" -ForegroundColor Red; $warnung = $w }
+}
 if ($Ausfuehren -and $warnung) { Write-Host "Ohne Rueckfrage wird in diesem Fall nichts entfernt." -ForegroundColor Yellow; return }
 if (-not $Ausfuehren) {
     if ($NurVorschau) { Write-Host "Es wurde nichts entfernt."; return }
@@ -265,15 +292,22 @@ Write-Progress -Activity 'In den Papierkorb' -Completed
 # Leer gewordene Ordner entfernen (nie die Quelle selbst; .DS_Store zaehlt als leer, wenn macOS-Reste gewaehlt)
 Write-Host "Entferne leer gewordene Ordner ..." -ForegroundColor Cyan
 $leer = 0
-foreach ($o in ($ordner | Sort-Object { $_.Length } -Descending)) {
+$ordnerListe = @($ordner | Sort-Object { $_.Length } -Descending)
+$script:fortschrittZeit = Get-Date
+$i = 0
+foreach ($o in $ordnerListe) {
+    $i++; Show-Fortschritt 'Leere Ordner pruefen' $i $ordnerListe.Count   # GUI-06: Bewegung auf dem Bildschirm
+    $wr = Get-QuellWurzel $o
+    if (-not $wr) { continue }
     $akt = $o
-    while ($akt -and $akt.Length -gt $Quelle.Length -and (Test-Path -LiteralPath $akt)) {
+    while ($akt -and $akt.Length -gt $wr.Length -and (Test-Path -LiteralPath $akt)) {
         $rest = @(Get-ChildItem -LiteralPath $akt -Force | Where-Object { -not ($MacReste -and $_.Name -eq '.DS_Store') })
         if ($rest.Count -gt 0) { break }
         try { Send-Papierkorb $akt; $leer++ } catch { break }
         $akt = Split-Path -Parent $akt
     }
 }
+Write-Progress -Activity 'Leere Ordner pruefen' -Completed
 $csvPfad = Join-Path $protokollOrdner "Quelle-aufgeraeumt_$Zeitstempel.csv"
 $ergebnis | Export-Csv -LiteralPath $csvPfad -NoTypeInformation -Delimiter ';' -Encoding UTF8
 Write-Host ""

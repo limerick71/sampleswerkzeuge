@@ -110,7 +110,12 @@ Write-Progress -Activity 'In den Papierkorb' -Completed
 Write-Host "Entferne leer gewordene Ordner ..." -ForegroundColor Cyan
 # Leer gewordene Ordner entfernen (nie den Zielordner selbst)
 $leer = 0
-foreach ($o in ($ordner | Sort-Object { $_.Length } -Descending)) {
+$ordnerListe = @($ordner | Sort-Object { $_.Length } -Descending)
+$i = 0; $zeit = Get-Date
+foreach ($o in $ordnerListe) {
+    $i++
+    if ($i % 20 -eq 0 -or $i -eq $ordnerListe.Count) { Write-Progress -Activity 'Leere Ordner pruefen' -Status "$i von $($ordnerListe.Count)" -PercentComplete ($i * 100 / $ordnerListe.Count) }
+    if (((Get-Date) - $zeit).TotalSeconds -ge 5) { Write-Host "  ... Leere Ordner pruefen: $i von $($ordnerListe.Count)" -ForegroundColor DarkGray; $zeit = Get-Date }
     $akt = $o
     while ($akt -and $akt.Length -gt $Ziel.Length -and (Test-Path -LiteralPath $akt)) {
         if (@(Get-ChildItem -LiteralPath $akt -Force).Count -gt 0) { break }
@@ -118,6 +123,7 @@ foreach ($o in ($ordner | Sort-Object { $_.Length } -Descending)) {
         $akt = Split-Path -Parent $akt
     }
 }
+Write-Progress -Activity 'Leere Ordner pruefen' -Completed
 $csvPfad = Join-Path $protokollOrdner "Ziel-Duplikate-entfernt_$Zeitstempel.csv"
 $ergebnis | Export-Csv -LiteralPath $csvPfad -NoTypeInformation -Delimiter ';' -Encoding UTF8
 Write-Host ""
