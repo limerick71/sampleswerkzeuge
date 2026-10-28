@@ -12,11 +12,17 @@
   - Vorschau und Rueckfrage (Standard: Nein). Leer gewordene Ordner werden mit entfernt.
 
 .BENUTZUNG
+    -Duplikate                 inhaltsgleiche Dateien (Standard, wenn keine Gruppe angegeben ist)
+    -Formate -Formatliste "RX2,MP3,AIFF"
+                               RX2/MP3/AIFF neben einer gleichnamigen WAV im selben Pack (2.3.3)
     -NurVorschau   nur Vorschau, keine Frage
     -Ausfuehren    ohne Frage entfernen
 #>
 [CmdletBinding()]
 param(
+    [switch]$Duplikate,
+    [switch]$Formate,
+    [string]$Formatliste = 'RX2,MP3,AIFF',
     [switch]$NurVorschau,
     [switch]$Ausfuehren
 )
@@ -26,7 +32,7 @@ $ErrorActionPreference = 'Stop'
 $Zeitstempel = Get-Date -Format 'yyyy-MM-dd_HHmmss'
 $einst = Get-Einstellungen
 $Ziel = $einst.Ziel.TrimEnd('\', '/')
-Write-Host "Duplikate im Ziel entfernen (Samples-Werkzeuge $ProgrammVersion)" -ForegroundColor Cyan
+Write-Host "Ziel aufraeumen: Duplikate und Formate (Samples-Werkzeuge $ProgrammVersion)" -ForegroundColor Cyan
 Write-Host "  Bibliothek (Ziel): $Ziel"
 Write-Host ""
 
@@ -36,8 +42,10 @@ Write-Host "Grundlage: $($inv.Name)"
 $alter = (Get-Date) - $inv.LastWriteTime
 if ($alter.TotalHours -ge 24) { Write-Host ("Hinweis: Die Inventur ist {0:N0} Tage alt. Fuer ein genaues Ergebnis vorher eine neue Inventur starten." -f $alter.TotalDays) -ForegroundColor Yellow }
 
-$zeilen = @(Import-Csv -LiteralPath $inv.FullName -Delimiter ';' -Encoding UTF8 | Where-Object { $_.'Duplikat-Gruppe' })
-$gruppen = $zeilen | Group-Object 'Duplikat-Gruppe'
+if (-not $Duplikate -and -not $Formate) { $Duplikate = $true }
+$alleZeilen = @(Import-Csv -LiteralPath $inv.FullName -Delimiter ';' -Encoding UTF8)
+$zeilen = @($alleZeilen | Where-Object { $_.'Duplikat-Gruppe' })
+$gruppen = @(); if ($Duplikate) { $gruppen = @($zeilen | Group-Object 'Duplikat-Gruppe') }
 $ergebnis = New-Object System.Collections.Generic.List[object]
 $gNr = 0; $zeit = Get-Date
 foreach ($g in $gruppen) {
@@ -49,16 +57,40 @@ foreach ($g in $gruppen) {
         $orig  = if ($behalten) { Join-Path $Ziel $behalten.Pfad } else { '' }
         $status = ''
         if ($x.Typ -eq 'Kit') { $status = 'Uebersprungen: liegt in einem Kit' }
-        elseif (-not (Test-Path -LiteralPath $datei)) { $status = 'Uebersprungen: Datei existiert nicht mehr' }
-        elseif (-not $orig -or -not (Test-Path -LiteralPath $orig)) { $status = 'Uebersprungen: behaltenes Exemplar nicht gefunden' }
+        elseif (-not (Test-Datei $datei)) { $status = 'Uebersprungen: Datei existiert nicht mehr' }
+        elseif (-not $orig -or -not (Test-Datei $orig)) { $status = 'Uebersprungen: behaltenes Exemplar nicht gefunden' }
         else {
-            $h1 = (Get-FileHash -LiteralPath $datei -Algorithm SHA256).Hash
-            $h2 = (Get-FileHash -LiteralPath $orig -Algorithm SHA256).Hash
+            $h1 = Get-DateiPruefsumme $datei 'SHA256'
+            $h2 = Get-DateiPruefsumme $orig 'SHA256'
             $status = if ($h1 -eq $h2) { 'Wird entfernt' } else { 'Uebersprungen: Inhalt weicht inzwischen ab' }
         }
         $ergebnis.Add([pscustomobject]@{
-            Status = $status; Gruppe = $g.Name; Datei = $x.Pfad; Pack = $x.Pack; 'Behalten wird' = $(if ($behalten) { $behalten.Pfad } else { '' })
+            Status = $status; Art = 'Duplikat'; Gruppe = $g.Name; Datei = $x.Pfad; Pack = $x.Pack; 'Behalten wird' = $(if ($behalten) { $behalten.Pfad } else { '' })
             GroesseMB = [math]::Round([double]$x.GroesseBytes / 1MB, 2)
+        })
+    }
+}
+
+# 2.3.3: Formate - RX2/MP3/AIFF neben einer gleichnamigen WAV im selben Pack (Kits ausgenommen)
+$fmtEndungen = @()
+if ($Formate) {
+    foreach ($f in ($Formatliste -split '[,; ]+' | Where-Object { $_ })) {
+        switch ($f.ToUpperInvariant()) { 'RX2' { $fmtEndungen += 'RX2', 'REX' } 'MP3' { $fmtEndungen += 'MP3' } 'AIFF' { $fmtEndungen += 'AIF', 'AIFF' } }
+    }
+    $wavs = @{}
+    foreach ($z in $alleZeilen) { if ($z.Format -eq 'WAV') { $wavs[($z.Pack + '|' + [IO.Path]::GetFileNameWithoutExtension($z.Datei)).ToLowerInvariant()] = $z } }
+    foreach ($z in $alleZeilen) {
+        if ($fmtEndungen -notcontains ([string]$z.Format).ToUpperInvariant()) { continue }
+        $w = $wavs[($z.Pack + '|' + [IO.Path]::GetFileNameWithoutExtension($z.Datei)).ToLowerInvariant()]
+        if (-not $w) { continue }
+        $datei = Join-Path $Ziel $z.Pfad; $wav = Join-Path $Ziel $w.Pfad
+        $status = if ($z.Typ -eq 'Kit') { 'Uebersprungen: liegt in einem Kit' }
+                  elseif (-not (Test-Datei $datei)) { 'Uebersprungen: Datei existiert nicht mehr' }
+                  elseif (-not (Test-Datei $wav)) { 'Uebersprungen: WAV nicht (mehr) vorhanden' }
+                  else { 'Wird entfernt' }
+        $ergebnis.Add([pscustomobject]@{
+            Status = $status; Art = 'Format'; Gruppe = $z.Format; Datei = $z.Pfad; Pack = $z.Pack; 'Behalten wird' = $w.Pfad
+            GroesseMB = [math]::Round([double]$z.GroesseBytes / 1MB, 2)
         })
     }
 }
@@ -66,8 +98,10 @@ foreach ($g in $gruppen) {
 $weg = @($ergebnis | Where-Object { $_.Status -eq 'Wird entfernt' })
 Write-Host ""
 Write-Host "==================== Zusammenfassung ====================" -ForegroundColor Yellow
-Write-Host ("Duplikat-Gruppen:                 {0,7}" -f @($gruppen).Count)
-$ergebnis | Group-Object Status | ForEach-Object { "{0,-45} {1,7}" -f ($_.Name + ':'), $_.Count } | Write-Host
+if ($Duplikate) { Write-Host ("Duplikat-Gruppen:                 {0,7}" -f @($gruppen).Count) }
+if ($Formate) { Write-Host ("Formate neben gleichnamiger WAV:  {0,7}   ({1})" -f @($ergebnis | Where-Object { $_.Art -eq 'Format' }).Count, $Formatliste) }
+if (-not $ergebnis.Count) { Write-Host "  0 - nichts gefunden" }
+$ergebnis | Group-Object Art, Status | Sort-Object Name | ForEach-Object { "{0,-55} {1,7}" -f ($_.Name.Replace(', ', ': ') + ':'), $_.Count } | Write-Host
 Write-Host ("Frei werdender Platz: {0:N1} MB" -f [double](($weg | Measure-Object GroesseMB -Sum).Sum))
 
 $vorschauPfad = Join-Path $protokollOrdner "Ziel-Duplikate-Vorschau_$Zeitstempel.csv"
@@ -83,7 +117,8 @@ if ($Ausfuehren -and $warnung) { Write-Host "Ohne Rueckfrage wird in diesem Fall
 if (-not $Ausfuehren) {
     if ($NurVorschau) { Write-Host "Es wurde nichts entfernt."; return }
     Write-Host ""
-    if (-not (Read-JaNein "Jetzt $($weg.Count) doppelte Dateien aus der Bibliothek in den Papierkorb verschieben?")) {
+    $nD = @($weg | Where-Object { $_.Art -eq 'Duplikat' }).Count; $nF = @($weg | Where-Object { $_.Art -eq 'Format' }).Count
+    if (-not (Read-JaNein "Jetzt $($weg.Count) Dateien ($nD Duplikate, $nF Formate neben WAV) aus der Bibliothek in den Papierkorb verschieben?")) {
         Write-Host ""; Write-Host "Abgebrochen. Es wurde nichts entfernt." -ForegroundColor Yellow; return
     }
 }
@@ -101,7 +136,7 @@ foreach ($x in $weg) {
     try {
         Send-Papierkorb $datei
         $asd = $datei + '.asd'
-        if (Test-Path -LiteralPath $asd) { Send-Papierkorb $asd }
+        if (Test-Datei $asd) { Send-Papierkorb $asd }
         $x.Status = 'In Papierkorb verschoben'; $ok++
         [void]$ordner.Add((Split-Path -Parent $datei))
     } catch { $x.Status = 'FEHLER: ' + $_.Exception.Message; $fehler++ }
@@ -117,8 +152,8 @@ foreach ($o in $ordnerListe) {
     if ($i % 20 -eq 0 -or $i -eq $ordnerListe.Count) { Write-Progress -Activity 'Leere Ordner pruefen' -Status "$i von $($ordnerListe.Count)" -PercentComplete ($i * 100 / $ordnerListe.Count) }
     if (((Get-Date) - $zeit).TotalSeconds -ge 5) { Write-Host "  ... Leere Ordner pruefen: $i von $($ordnerListe.Count)" -ForegroundColor DarkGray; $zeit = Get-Date }
     $akt = $o
-    while ($akt -and $akt.Length -gt $Ziel.Length -and (Test-Path -LiteralPath $akt)) {
-        if (@(Get-ChildItem -LiteralPath $akt -Force).Count -gt 0) { break }
+    while ($akt -and $akt.Length -gt $Ziel.Length -and (Test-Ordner $akt)) {
+        try { if (@([IO.Directory]::EnumerateFileSystemEntries((Get-LangPfad $akt))).Count -gt 0) { break } } catch { break }
         try { Send-Papierkorb $akt; $leer++ } catch { break }
         $akt = Split-Path -Parent $akt
     }

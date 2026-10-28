@@ -68,7 +68,7 @@ tr.weg td{opacity:.55}
  <div class="erkl">Abgleich: prüft für die angehakten Fundorte über Größe und Prüfsumme, wie viele Audiodateien schon im Ziel-Ordner liegen (<span id="zielname"></span>). Es wird nichts verändert; bei großen Fundorten dauert es etwas.</div>
 </div>
 <main><table><thead><tr><th></th><th>Fundort</th><th>Einschätzung</th><th class="z">Audiodateien</th><th class="z">Größe</th><th>Formate</th><th>Letzte Änderung</th><th></th></tr></thead><tbody id="liste"></tbody></table>
-<p class="leise" style="font-size:12px">Ein Klick auf eine Zeile zeigt Unterordner, Archive und Beispieldateien. Vorausgewählt sind Sample-Packs, die noch keine Quelle sind. Instrument-Bibliotheken gehören zu Plugins (z. B. Kontakt, Spitfire), die Ableton-Library zu Ableton – beides besser dort lassen; DAW-Projekte enthalten eigene Aufnahmen. Archive werden nur angesehen (Inhaltsverzeichnis), nicht entpackt.</p></main>
+<p class="leise" style="font-size:12px">Ein Klick auf eine Zeile zeigt Unterordner, Archive und Beispieldateien. Vorausgewählt sind Sample-Packs, die noch keine Quelle sind. Instrument-Bibliotheken gehören zu Plugins (z. B. Kontakt, Spitfire), die Ableton-Library zu Ableton – beides besser dort lassen; DAW-Projekte enthalten eigene Aufnahmen. Archive werden nur angesehen (Inhaltsverzeichnis), nicht entpackt. Gezählt werden nur Audiodateien: Programme, Installer, Plugin-Inhalte und Archive bleiben beim Sortieren liegen; bei „Nur lose Dateien“ werden nur Audio- und MIDI-Dateien übernommen.</p></main>
 <div id="meldung"></div>
 <script id="daten" type="application/json">__DATEN__</script>
 <script>
@@ -110,7 +110,8 @@ tr.weg td{opacity:.55}
       var w = waehlbar(f), hw = [];
       if (f.weg) hw.push('<span class="hw rot">Ordner gibt es nicht mehr</span>');
       if (f.st) hw.push('<span class="hw' + stKlasse(f.st) + '">' + esc(f.st) + '</span>');
-      if (f.pk > 1 && f.qa === 'Sammlung') hw.push('<span class="hw">' + f.pk + ' Packs (Unterordner mit Audio)</span>');
+      if (f.pk > 1 && f.qa === 'Sammlung') { var pn = (f.u || []).filter(function(x){ return x.a > 0; }).map(function(x){ return x.n; });
+        hw.push('<span class="hw">Sammlung mit ' + f.pk + ' Packs: ' + esc(pn.slice(0, 3).join(', ')) + (f.pk > 3 ? ' und ' + (f.pk - 3) + ' weitere' : '') + '</span>'); }
       if (f.lose && f.pk) hw.push('<span class="hw">' + n(f.lose) + ' Dateien direkt im Ordner</span>');
       if (f.nl && f.a) hw.push('<span class="hw">nur die Dateien direkt in diesem Ordner, ohne Unterordner</span>');
       if (f.za) hw.push('<span class="hw rot">' + n(f.za) + ' Audiodateien in Archiven (' + mb(f.zb) + ' entpackt' + (f.zf ? ', ' + esc(f.zf) : '') + ') – vor dem Übernehmen entpacken (ab Version 3 übernimmt das der Import)</span>');
@@ -151,7 +152,10 @@ tr.weg td{opacity:.55}
     var tr = e.target.closest('tr.f'); if (tr) { var i = tr.getAttribute('data-i'); offen[i] = !offen[i]; zeichnen(); }
   });
   $('klein').addEventListener('change', zeichnen); $('andere').addEventListener('change', zeichnen);
-  document.addEventListener('change', function(e){ var s = e.target.closest('select.qa'); if (s) F[s.getAttribute('data-i')].qa = s.value; });
+  document.addEventListener('change', function(e){ var s = e.target.closest('select.qa'); if (!s) return; var f = F[s.getAttribute('data-i')];
+    // 2.3.3: Sammelordner (Downloads, Dokumente ...) nur als "Nur lose Dateien" - sonst wird alles darin als Pack gelesen
+    if (f.nl && s.value !== 'Lose' && !confirm(f.p + ' ist ein Sammelordner (z. B. Downloads). Als „' + s.options[s.selectedIndex].text + '“ würde das Sortieren alles darin lesen – auch Programme, Dokumente und fremde Unterordner – und unter einem Namen einsortieren.\n\nRichtig ist „Nur lose Dateien“; Packs darin bitte einzeln übernehmen.\n\nTrotzdem ändern?')) { s.value = f.qa; return; }
+    f.qa = s.value; });
   document.addEventListener('sw-getrennt', function(){ getrennt = true; zeichnen(); });
   function post(pfad, daten){
     return fetch(pfad + '?t=' + DIENST.token, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(daten) })

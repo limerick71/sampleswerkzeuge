@@ -57,7 +57,7 @@ $sep = [IO.Path]::DirectorySeparatorChar
 function Get-Mp3Info([string]$pfad) {
     $fs = $null
     try {
-        $fs = [IO.File]::OpenRead($pfad)
+        $fs = [IO.File]::OpenRead((Get-LangPfad $pfad))
         $laenge = $fs.Length
         $puffer = New-Object byte[] ([int][math]::Min(131072, $laenge))
         $n = $fs.Read($puffer, 0, $puffer.Length)
@@ -107,7 +107,7 @@ function Get-AudioInfo([string]$pfad) {
     if ($ext -notin '.wav', '.aif', '.aiff') { return $null }
     $fs = $null
     try {
-        $fs = [IO.File]::OpenRead($pfad)
+        $fs = [IO.File]::OpenRead((Get-LangPfad $pfad))
         $br = New-Object IO.BinaryReader($fs)
         if ($fs.Length -lt 12) { return @{ Defekt = $true } }
         $id = [Text.Encoding]::ASCII.GetString($br.ReadBytes(4))
@@ -276,7 +276,7 @@ foreach ($d in $dateien) {
     elseif ($info -and $info.Defekt) { $hinweis += 'Dateikopf nicht lesbar (defekt?)' }
     if ($ein.KatOrdner -eq '_Unsortiert') { $hinweis += 'unsortiert' }
     $u = $ursprung[$d.FullName.ToLowerInvariant()]
-    $orig = if (-not $u) { 'unbekannt' } elseif (Test-Path -LiteralPath $u) { 'ja' } else { 'nein' }
+    $orig = if (-not $u) { 'unbekannt' } elseif (Test-Datei $u) { 'ja' } else { 'nein' }
     $geaendert = $d.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')
     $a = $alt[$rel.ToLowerInvariant()]
     $hash = if ($a -and $a.Hash -and [string]$a.GroesseBytes -eq [string]$d.Length -and $a.Geaendert -eq $geaendert) { $a.Hash } else { '' }
@@ -307,7 +307,7 @@ $dupDateien = 0; $dupBytes = 0
 $kandidaten = @($samples | Where-Object { $_.GroesseBytes -gt 0 } | Group-Object GroesseBytes | Where-Object { $_.Count -gt 1 })
 foreach ($g in $kandidaten) {
     foreach ($s in $g.Group) {
-        if (-not $s.Hash) { try { $s.Hash = (Get-FileHash -LiteralPath (Join-Path $Ziel $s.Pfad) -Algorithm MD5).Hash } catch { $s.Hash = '' } }
+        if (-not $s.Hash) { try { $s.Hash = Get-DateiPruefsumme (Join-Path $Ziel $s.Pfad) } catch { $s.Hash = '' } }
     }
     foreach ($h in ($g.Group | Where-Object { $_.Hash } | Group-Object Hash | Where-Object { $_.Count -gt 1 })) {
         $gruppenNr++

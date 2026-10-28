@@ -83,7 +83,7 @@ if ($PSVersionTable.PSEdition -ne 'Core') {
     $verweise = @([System.IO.Compression.ZipArchive], [System.Diagnostics.Process], [System.Collections.Generic.HashSet[string]] |
         ForEach-Object { $_.Assembly.Location } | Where-Object { $_ } | Select-Object -Unique)
 }
-if (-not ('SamplesWerkzeuge.FundortScanner232' -as [type])) {
+if (-not ('SamplesWerkzeuge.FundortScanner233' -as [type])) {
     $atArg = @{ Language = 'CSharp' }; if ($verweise.Count) { $atArg.ReferencedAssemblies = $verweise }
     Add-Type @atArg -TypeDefinition @'
 using System;
@@ -93,7 +93,7 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Collections.Generic;
 namespace SamplesWerkzeuge {
-    public class OrdnerInfo232 {
+    public class OrdnerInfo233 {
         public string Pfad; public int Audio; public long Bytes; public int Archive; public int Projekt; public int Instrument;
         public int Cloud; public DateTime Neu; public string Formate; public string Beispiele;
         // Archive (2.3.2): nur Archive mit Audiodateien, nicht lesbare und verschachtelte zaehlen in "Archive"
@@ -101,7 +101,7 @@ namespace SamplesWerkzeuge {
         public string ZFormate; public string ZListe;
     }
     public class ArchivInhalt { public bool Gelesen; public int Audio; public long Bytes; public int Archive; public SortedSet<string> Formate = new SortedSet<string>(); }
-    public static class FundortScanner232 {
+    public static class FundortScanner233 {
         public static int Ordner; public static int NichtLesbar; public static int ArchiveGelesen;
         public static bool ArchiveLesen = true; public static bool TarLesen = false;
         public static readonly HashSet<string> AudioExt = new HashSet<string>(new string[] { ".wav", ".aif", ".aiff", ".mp3", ".flac", ".ogg", ".rx2", ".rex", ".m4a" }, StringComparer.OrdinalIgnoreCase);
@@ -111,6 +111,16 @@ namespace SamplesWerkzeuge {
         const FileAttributes CloudBits = (FileAttributes)0x400000 | (FileAttributes)0x40000 | FileAttributes.Offline;
         static readonly Regex TarZeile = new Regex(@"^(\S)\S*\s+\d+\s+\S+\s+\S+\s+(\d+)\s+\S+\s+\d+\s+\S+\s+(.+)$");
 
+        // Lange Pfade (2.3.3): Windows PowerShell 5.1 braucht den Vorsatz \\?\ ab etwa 260 Zeichen
+        static string L(string p) {
+            if (Path.DirectorySeparatorChar != '\\' || p.Length < 240 || p.StartsWith(@"\\?\")) return p;
+            return p.StartsWith(@"\\") ? @"\\?\UNC\" + p.Substring(2) : @"\\?\" + p;
+        }
+        static string K(string p) {
+            if (p.StartsWith(@"\\?\UNC\")) return @"\\" + p.Substring(8);
+            if (p.StartsWith(@"\\?\")) return p.Substring(4);
+            return p;
+        }
         static bool Ausgeschlossen(string pfad, string[] aus) {
             foreach (string a in aus) {
                 if (string.Equals(pfad, a, StringComparison.OrdinalIgnoreCase)) return true;
@@ -133,7 +143,7 @@ namespace SamplesWerkzeuge {
             string ext = Path.GetExtension(pfad);
             try {
                 if (string.Equals(ext, ".zip", StringComparison.OrdinalIgnoreCase)) {
-                    using (FileStream fs = new FileStream(pfad, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    using (FileStream fs = new FileStream(L(pfad), FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                     using (ZipArchive z = new ZipArchive(fs, ZipArchiveMode.Read)) {
                         foreach (ZipArchiveEntry e in z.Entries) Zaehle(r, e.FullName, e.Length);
                     }
@@ -159,8 +169,8 @@ namespace SamplesWerkzeuge {
             return r;
         }
 
-        public static List<OrdnerInfo232> Suche(string[] wurzeln, string[] aus) {
-            List<OrdnerInfo232> erg = new List<OrdnerInfo232>();
+        public static List<OrdnerInfo233> Suche(string[] wurzeln, string[] aus) {
+            List<OrdnerInfo233> erg = new List<OrdnerInfo233>();
             Ordner = 0; NichtLesbar = 0; ArchiveGelesen = 0;
             Stack<string> stapel = new Stack<string>();
             foreach (string w in wurzeln) stapel.Push(w);
@@ -169,20 +179,20 @@ namespace SamplesWerkzeuge {
                 string d = stapel.Pop();
                 Ordner++;
                 if ((DateTime.Now - letzte).TotalSeconds >= 5) { Console.WriteLine("  ... " + Ordner.ToString("N0") + " Ordner durchsucht" + (ArchiveGelesen > 0 ? ", " + ArchiveGelesen.ToString("N0") + " Archive angesehen" : "")); letzte = DateTime.Now; }
-                OrdnerInfo232 oi = new OrdnerInfo232(); oi.Pfad = d; oi.Neu = DateTime.MinValue;
+                OrdnerInfo233 oi = new OrdnerInfo233(); oi.Pfad = d; oi.Neu = DateTime.MinValue;
                 SortedSet<string> formate = new SortedSet<string>();
                 SortedSet<string> zformate = new SortedSet<string>();
                 List<string> beisp = new List<string>();
                 List<string> zliste = new List<string>();
                 try {
-                    foreach (FileSystemInfo e in new DirectoryInfo(d).EnumerateFileSystemInfos()) {
+                    foreach (FileSystemInfo e in new DirectoryInfo(L(d)).EnumerateFileSystemInfos()) {
                         FileAttributes at = e.Attributes;
                         if ((at & FileAttributes.Directory) != 0) {
                             if ((at & FileAttributes.ReparsePoint) != 0) continue;
                             // Ableton-Projekt (2.3.2): Ordner "Ableton Project Info" kennzeichnet ein Projekt
                             if (string.Equals(e.Name, "Ableton Project Info", StringComparison.OrdinalIgnoreCase)) { oi.Projekt++; continue; }
-                            if (Ausgeschlossen(e.FullName, aus)) continue;
-                            stapel.Push(e.FullName);
+                            if (Ausgeschlossen(K(e.FullName), aus)) continue;
+                            stapel.Push(K(e.FullName));
                             continue;
                         }
                         string ext = Path.GetExtension(e.Name);
@@ -203,7 +213,7 @@ namespace SamplesWerkzeuge {
                             else if (!ArchiveLesen) { oi.ZOffen++; oi.Archive++; zeile = e.Name + "|o|0|0"; }
                             else {
                                 ArchiveGelesen++;
-                                ArchivInhalt r = LeseArchiv(e.FullName);
+                                ArchivInhalt r = LeseArchiv(K(e.FullName));
                                 if (!r.Gelesen) { oi.ZOffen++; oi.Archive++; zeile = e.Name + "|o|0|0"; }
                                 else if (r.Audio == 0 && r.Archive == 0) { oi.ZOhneAudio++; }
                                 else {
@@ -233,16 +243,16 @@ namespace SamplesWerkzeuge {
 '@
 }
 # RAR und 7z: nur mit dem in Windows 11 eingebauten tar (bsdtar/libarchive); sonst "Inhalt nicht geprueft"
-[SamplesWerkzeuge.FundortScanner232]::ArchiveLesen = -not $OhneArchivinhalt
+[SamplesWerkzeuge.FundortScanner233]::ArchiveLesen = -not $OhneArchivinhalt
 $tarOk = $false
 if (-not $OhneArchivinhalt -and (Get-Command tar -ErrorAction SilentlyContinue)) { try { $tarOk = [bool]((& tar --version 2>$null | Out-String) -match 'bsdtar|libarchive') } catch { } }
-[SamplesWerkzeuge.FundortScanner232]::TarLesen = $tarOk
+[SamplesWerkzeuge.FundortScanner233]::TarLesen = $tarOk
 Write-Host ("Durchsuche Ordner (es werden nur Namen und Groessen gelesen{0}) ..." -f $(if ($OhneArchivinhalt) { "" } elseif ($tarOk) { ", bei ZIP/RAR/7z das Inhaltsverzeichnis" } else { ", bei ZIP das Inhaltsverzeichnis" })) -ForegroundColor Cyan
-$treffer = [SamplesWerkzeuge.FundortScanner232]::Suche([string[]]$wurzeln, [string[]]$aus)
-$ordnerZahl = [SamplesWerkzeuge.FundortScanner232]::Ordner
-$nichtLesbar = [SamplesWerkzeuge.FundortScanner232]::NichtLesbar
+$treffer = [SamplesWerkzeuge.FundortScanner233]::Suche([string[]]$wurzeln, [string[]]$aus)
+$ordnerZahl = [SamplesWerkzeuge.FundortScanner233]::Ordner
+$nichtLesbar = [SamplesWerkzeuge.FundortScanner233]::NichtLesbar
 Write-Host ("  {0:N0} Ordner durchsucht, {1:N0} mit Audiodateien, Projekten oder Archiven" -f $ordnerZahl, $treffer.Count)
-$archivZahl = [SamplesWerkzeuge.FundortScanner232]::ArchiveGelesen
+$archivZahl = [SamplesWerkzeuge.FundortScanner233]::ArchiveGelesen
 if ($archivZahl) { Write-Host ("  {0:N0} Archive angesehen (nur Inhaltsverzeichnis)" -f $archivZahl) }
 if ($nichtLesbar) { Write-Host "  $nichtLesbar Ordner waren nicht lesbar und wurden ausgelassen." -ForegroundColor DarkGray }
 
@@ -320,7 +330,23 @@ function Test-Behaelter([string]$p) {
 
 # Fundorte von oben nach unten bestimmen
 $fundorte = New-Object System.Collections.Generic.List[object]
-function Add-Fundort($n) { $fundorte.Add($n) }
+# 2.3.3: Ebene, auf der die Packs liegen. Hat ein Fundort nur einen Unterordner mit Inhalt (und selbst keine
+# Audiodateien), wird bis zur Verzweigung hinabgegangen (z. B. Splice -> Samples -> packs). Sind die Ordner dort
+# eigenstaendige Pack-Namen, ist diese Ebene der Fundort (Sammlung); sonst bleibt es beim Ordner selbst
+# (ein Pack mit Innenordnern wie "...-WAV", "Loops", "One Shots").
+function Get-PackKnoten($n) {
+    $w = $n
+    for ($i = 0; $i -lt 6; $i++) {
+        $k = @($w.Kinder.Values | ForEach-Object { $knoten[$_.ToLowerInvariant()] } | Where-Object { $_ -and $_.Audio -gt 0 })
+        if ($w.Eigen.Audio -gt 0 -or $k.Count -ne 1) { break }
+        $w = $k[0]
+    }
+    if ($w -eq $n) { return $n }
+    $namen = @($w.Kinder.Values | ForEach-Object { [IO.Path]::GetFileName($_) })
+    if ($namen.Count -ge 2 -and (Get-QuellArtVorschlag $namen $w.Eigen.Audio) -eq 'Sammlung') { return $w }
+    return $n
+}
+function Add-Fundort($n) { $fundorte.Add((Get-PackKnoten $n)) }
 function Find-Fundorte([string]$p, [bool]$unterBehaelter = $false) {
     $n = $knoten[$p.ToLowerInvariant()]
     if (-not $n) { return }

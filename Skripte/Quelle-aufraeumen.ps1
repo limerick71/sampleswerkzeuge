@@ -99,11 +99,11 @@ function Add-Eintrag($gruppe, $status, $datei, $grund, $bytes) {
 $hashCache = @{}
 function Get-Pruefsumme([string]$pfad) {
     $k = $pfad.ToLowerInvariant()
-    if (-not $hashCache.ContainsKey($k)) { $hashCache[$k] = (Get-FileHash -LiteralPath $pfad -Algorithm SHA256).Hash }
+    if (-not $hashCache.ContainsKey($k)) { $hashCache[$k] = Get-DateiPruefsumme $pfad 'SHA256' }
     return $hashCache[$k]
 }
 function Test-Gleich([string]$a, [string]$b) {
-    if (([IO.FileInfo]$a).Length -ne ([IO.FileInfo]$b).Length) { return $false }   # auch versteckte Dateien
+    if (([IO.FileInfo](Get-LangPfad $a)).Length -ne ([IO.FileInfo](Get-LangPfad $b)).Length) { return $false }   # auch versteckte Dateien
     return (Get-Pruefsumme $a) -eq (Get-Pruefsumme $b)
 }
 # Fortschritt: Balken oben im Fenster und alle paar Sekunden eine Zeile, damit man sieht, dass es laeuft
@@ -136,8 +136,8 @@ if ($Duplikate) {
             $bytes = 0; try { $bytes = (Get-Item -LiteralPath $datei -ErrorAction Stop).Length } catch { }
             if (-not (Get-QuellWurzel $datei)) { Add-Eintrag 'Duplikat' 'Uebersprungen: liegt nicht in einer gewaehlten Quelle' $datei '' 0 }
             elseif ($datei -notmatch $RxAudio) { Add-Eintrag 'Duplikat' 'Uebersprungen: keine Audiodatei (bleibt im Pack)' $datei '' 0 }
-            elseif (-not (Test-Path -LiteralPath $datei)) { Add-Eintrag 'Duplikat' 'Uebersprungen: Datei existiert nicht mehr' $datei '' 0 }
-            elseif (-not $original -or -not (Test-Path -LiteralPath $original) -or $original -eq $datei) { Add-Eintrag 'Duplikat' 'Uebersprungen: behaltenes Exemplar nicht gefunden' $datei $original $bytes }
+            elseif (-not (Test-Datei $datei)) { Add-Eintrag 'Duplikat' 'Uebersprungen: Datei existiert nicht mehr' $datei '' 0 }
+            elseif (-not $original -or -not (Test-Datei $original) -or $original -eq $datei) { Add-Eintrag 'Duplikat' 'Uebersprungen: behaltenes Exemplar nicht gefunden' $datei $original $bytes }
             elseif (-not (Test-Gleich $datei $original)) { Add-Eintrag 'Duplikat' 'Uebersprungen: Inhalt weicht ab' $datei $original $bytes }
             else { Add-Eintrag 'Duplikat' 'Wird entfernt' $datei "identisch mit $original" $bytes }
         }
@@ -207,7 +207,7 @@ if ($Formate) {
         $zw = $zielVon[$wav.ToLowerInvariant()]
         # WAV war beim Kopieren ein Duplikat: dann zaehlt die Ziel-Kopie des behaltenen Exemplars
         if (-not $zw -and $dupVon.ContainsKey($wav.ToLowerInvariant())) { $zw = $zielVon[$dupVon[$wav.ToLowerInvariant()].ToLowerInvariant()] }
-        if (-not $zw -or -not (Test-Path -LiteralPath $zw)) { Add-Eintrag 'Format' 'Uebersprungen: WAV ist (noch) nicht im Ziel' $f.FullName $wav $f.Length; continue }
+        if (-not $zw -or -not (Test-Datei $zw)) { Add-Eintrag 'Format' 'Uebersprungen: WAV ist (noch) nicht im Ziel' $f.FullName $wav $f.Length; continue }
         if (-not (Test-Gleich $wav $zw)) { Add-Eintrag 'Format' 'Uebersprungen: WAV im Ziel weicht ab' $f.FullName $zw $f.Length; continue }
         Add-Eintrag 'Format' 'Wird entfernt' $f.FullName "WAV im Ziel bestaetigt: $zw" $f.Length
     }
@@ -227,7 +227,7 @@ if ($Originale) {
         $i++; Show-Fortschritt 'Originale pruefen' $i $kandidaten.Count
         $zw = $zielVon[$f.FullName.ToLowerInvariant()]
         if (-not $zw.StartsWith($Ziel, [StringComparison]::OrdinalIgnoreCase)) { Add-Eintrag 'Original' 'Uebersprungen: Kopie liegt nicht im eingestellten Ziel' $f.FullName $zw $f.Length; continue }
-        if (-not (Test-Path -LiteralPath $zw -PathType Leaf)) { Add-Eintrag 'Original' 'Uebersprungen: Kopie im Ziel nicht (mehr) vorhanden' $f.FullName $zw $f.Length; continue }
+        if (-not (Test-Datei $zw)) { Add-Eintrag 'Original' 'Uebersprungen: Kopie im Ziel nicht (mehr) vorhanden' $f.FullName $zw $f.Length; continue }
         if (-not (Test-Gleich $f.FullName $zw)) { Add-Eintrag 'Original' 'Uebersprungen: Kopie im Ziel weicht ab' $f.FullName $zw $f.Length; continue }
         Add-Eintrag 'Original' 'Wird entfernt' $f.FullName "Kopie im Ziel bestaetigt: $zw" $f.Length
     }
@@ -295,7 +295,7 @@ foreach ($x in $weg) {
     try {
         Send-Papierkorb $x.Datei
         $asd = $x.Datei + '.asd'
-        if ($x.Gruppe -ne 'macOS-Rest' -and (Test-Path -LiteralPath $asd)) { Send-Papierkorb $asd }
+        if ($x.Gruppe -ne 'macOS-Rest' -and (Test-Datei $asd)) { Send-Papierkorb $asd }
         $x.Status = 'In Papierkorb verschoben'; $ok++
         [void]$ordner.Add((Split-Path -Parent $x.Datei))
     } catch { $x.Status = 'FEHLER: ' + $_.Exception.Message; $fehler++ }
@@ -312,8 +312,8 @@ foreach ($o in $ordnerListe) {
     $wr = Get-QuellWurzel $o
     if (-not $wr) { continue }
     $akt = $o
-    while ($akt -and $akt.Length -gt $wr.Length -and (Test-Path -LiteralPath $akt)) {
-        $rest = @(Get-ChildItem -LiteralPath $akt -Force | Where-Object { -not ($MacReste -and $_.Name -eq '.DS_Store') })
+    while ($akt -and $akt.Length -gt $wr.Length -and (Test-Ordner $akt)) {
+        try { $rest = @([IO.Directory]::EnumerateFileSystemEntries((Get-LangPfad $akt)) | Where-Object { -not ($MacReste -and [IO.Path]::GetFileName($_) -eq '.DS_Store') }) } catch { break }
         if ($rest.Count -gt 0) { break }
         try { Send-Papierkorb $akt; $leer++ } catch { break }
         $akt = Split-Path -Parent $akt

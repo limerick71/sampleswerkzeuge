@@ -89,7 +89,9 @@ $K = @{
     Perc      = '02 Percussion\Diverse Percs'
     Foley     = '02 Percussion\Foley'
     Bass      = '03 Bass'
-    Keys      = '04 Keys & Synth'
+    Keys      = '04 Keys & Synth\Keys'
+    Synth     = '04 Keys & Synth\Synth'
+    Melodic   = '04 Keys & Synth\Melodic'
     Guitar    = '05 Guitar'
     Brass     = '06 Brass & Sax'
     Vocals    = '07 Vocals'
@@ -98,12 +100,13 @@ $K = @{
     Kits      = '10 Construction Kits'
     MIDI      = '11 MIDI'
     Songs     = '12 Songs & Playalongs'
+    Strings   = '13 Strings & Orchestra'
     Infos     = '_Lizenzen & Infos'
     Sonstiges = '_Sonstiges'
     Unsortiert= '_Unsortiert'
 }
 # Kategorien mit Unterteilung One-Shots / Loops
-$MitTyp = @('Kick','Snare','Clap','HiHat','Cymbals','Toms','Shaker','Conga','Perc','Foley','Bass')
+$MitTyp = @('Kick','Snare','Clap','HiHat','Cymbals','Toms','Shaker','Conga','Perc','Foley','Bass','Guitar','Keys','Synth','Melodic','Strings','Brass')
 
 # Instrument-Erkennung: Reihenfolge = Prioritaet (erster Treffer gewinnt)
 $Instrumente = @(
@@ -115,11 +118,19 @@ $Instrumente = @(
     @('Kick',      'kick|(?<![a-z])bd(?![a-z])|bassdrum'),
     @('Shaker',    'shak|tamb|(?<![a-z])sh(?![a-z])'),
     @('Conga',     'conga|bongo|(?<![a-z])cong(?![a-z])|djemb|timbal'),
-    @('Foley',     'foley|stapler|coins'),
-    @('Perc',      'perc|(?<![a-z])pc(?![a-z])|cowbell|(?<![a-z])cb\d*(?![a-z])|clave|(?<![a-z])wood|block'),
-    @('FX',        'noise|(?<![a-z])fx(?![a-z])|riser|sweep|impact|transition'),
+    @('Foley',     'foley|stapler|coins|door|knock|footstep'),
+    @('Perc',      'perc|(?<![a-z])pc(?![a-z])|cowbell|(?<![a-z])cb\d*(?![a-z])|clave|(?<![a-z])wood(?!wind)|block'),
+    @('FX',        'noise|(?<![a-z])fx(?![a-z])|riser|sweep|impact|transition|gunshot|explosion|whoosh|swoosh|applause|crowd|laser'),
     @('Bass',      'bass|(?<![a-z])303(?![0-9])|(?<![a-z])acd'),
-    @('Atmos',     'ambient|ambience|atmo|field'),
+    # 2.3.3: melodische Instrumente und Vocals aus dem Dateinamen (vorher nur ueber einzelne Packs)
+    @('Vocals',    'vocal|(?<![a-z])vox(?![a-z])|acapella|a ?cappella|adlib|ad-lib|choir|chant|(?<![a-z])vocs?(?![a-z])'),
+    @('Brass',     'trumpet|(?<![a-z])sax|brass|(?<![a-z])horns?(?![a-z])|trombone|tuba|flute|clarinet|woodwind|flugel|oboe'),
+    @('Strings',   '(?<![a-z])strings?(?![a-z])|violin|viola|cello|orchestr|ensemble|pizz|(?<![a-z])harp(?![a-z])|staccato|spiccato|legato|tremolo'),
+    @('Guitar',    'guitar|(?<![a-z])gtr|strum|nylon|ukulele|banjo|sitar|(?<![a-z])oud(?![a-z])|baglama|bou?zou?ki|buzuki|tumbi|gayageum|koto|mandolin|dobro'),
+    @('Keys',      'piano|(?<![a-z])keys(?![a-z])|rhodes|e-?piano|organ(?!ic)|wurli|clavinet|kalimba|mallet|marimba|vibraphone|xylophone|glockenspiel|celesta|music ?box|(?<![a-z])bells?(?![a-z])'),
+    @('Synth',     'synth|(?<![a-z])leads?(?![a-z])|(?<![a-z])arps?(?![a-z])|arpegg|(?<![a-z])pads?(?![a-z])|chords?|(?<![a-z])stabs?(?![a-z])|pluck|moog'),
+    @('Melodic',   'melod|song ?[_-]?starter|music ?[_-]?loop'),
+    @('Atmos',     'ambient|ambience|atmo|field|(?<![a-z])rain(?![a-z])|street|nature|forest|(?<![a-z])birds?(?![a-z])'),
     @('DrumLoops', 'drum|beat|groove|full|top ?loop|brush|break|rhythm')
 )
 # Fallback je Pack, wenn weder Datei- noch Ordnername etwas hergeben
@@ -131,11 +142,15 @@ $RxOneShot = 'one ?-?shot|oneshot|(?<![a-z])shots(?![a-z])'
 $RxLoop    = 'loop|bpm|(?<![a-z])(groove|beat|fill)s?(?![a-z])'
 $RxDoku    = '\.(pdf|txt|rtf|nfo|png|jpe?g|gif|bmp|html?|url|docx?)$'
 $RxAudio   = '\.(wav|aiff?|mp3|flac|ogg|rx2|rex|m4a)$'
+# 2.3.3: werden nie kopiert
+$ExtProgramm = @('.exe', '.msi', '.dmg', '.pkg', '.app', '.bat', '.cmd', '.ps1', '.iso', '.appx', '.msix', '.apk', '.jar', '.deb', '.dll', '.vst3', '.component', '.aaxplugin', '.clap')
+$ExtPlugin   = @('.vstsound', '.nki', '.nkx', '.nkc', '.nkr', '.nicnt', '.ncw', '.nkm', '.nkb', '.nksn', '.ens', '.exs', '.gig', '.sf2', '.ufs', '.zmulti', '.hsb', '.vstpreset', '.fxp', '.fxb', '.h2p', '.nmsv')
+$ExtArchiv   = @('.zip', '.rar', '.7z', '.alp', '.tar', '.gz', '.tgz', '.bz2', '.xz')
 
 function Get-WavSekunden([string]$Pfad, [long]$Groesse) {
     if ($Pfad -notmatch '\.wav$') { return -1 }
     try {
-        $fs = [IO.File]::OpenRead($Pfad)
+        $fs = [IO.File]::OpenRead((Get-LangPfad $Pfad))
         try {
             $buf = New-Object byte[] 64
             $n = $fs.Read($buf, 0, 64)
@@ -165,6 +180,7 @@ function Get-Typ([string]$Datei, [string[]]$Ordner, [string]$Pfad, [long]$Groess
     }
     if ($StandardLoop) { return 'Loops' }
     if ($Instrument -eq 'Cymbals') { return 'One-Shots' }
+    if ($Pfad -match '\.(rx2|rex)$') { return 'Loops' }   # 2.3.3: REX/RX2 sind geschnittene Loops
     $sek = Get-WavSekunden $Pfad $Groesse
     if ($sek -ge 6) { return 'Loops' }
     return 'One-Shots'
@@ -245,6 +261,17 @@ foreach ($f in $alle) {
     elseif ($nameL -eq 'desktop.ini')   { $grund = 'Windows-Ordnereinstellungen' }
     if ($grund) {
         $eintrag.Aktion = 'Ignoriert'; $eintrag.Kategorie = 'Hilfsdatei'; $eintrag.Hinweis = $grund
+        $plan.Add([pscustomobject]$eintrag); continue
+    }
+    # 2.3.3: Programme, Installer, Plugin-Inhalte und Archive werden nie kopiert (bleiben in der Quelle);
+    # bei "Nur lose Dateien" nur Audio- und MIDI-Dateien
+    $endung = [IO.Path]::GetExtension($nameL)
+    if ($endung -in $ExtProgramm) { $grund = 'Programm oder Installer' }
+    elseif ($endung -in $ExtPlugin) { $grund = 'Plugin- oder Instrument-Inhalt (gehoert zum Plugin)' }
+    elseif ($endung -in $ExtArchiv) { $grund = 'Archiv - vorher entpacken (ab Version 3 uebernimmt das der Import)' }
+    elseif ($artVon[$QWurzel] -eq 'Lose' -and $nameL -notmatch $RxAudio -and $nameL -notmatch '\.midi?$') { $grund = 'keine Audio- oder MIDI-Datei (bei Nur lose Dateien werden nur diese uebernommen)' }
+    if ($grund) {
+        $eintrag.Aktion = 'Kein Sample'; $eintrag.Kategorie = 'kein Sample'; $eintrag.Hinweis = $grund
         $plan.Add([pscustomobject]$eintrag); continue
     }
 
@@ -328,7 +355,7 @@ foreach ($f in $alle) {
             $kat = 'Unsortiert'; $zr = Join-Rel @($K.Unsortiert, $pack, $name)
         } else {
             $kat = $inst
-            $stdLoop = ($pack -match 'Hard Mechanical Rhythms') -or ($inst -eq 'DrumLoops')
+            $stdLoop = ($pack -match 'Hard Mechanical Rhythms') -or ($inst -in 'DrumLoops', 'Melodic')
             if ($MitTyp -contains $inst) {
                 $typ = Get-Typ $basis $packOrdner $f.FullName $f.Length $inst $stdLoop
                 $zr = Join-Rel @($K[$inst], $typ, $pack, $name)
@@ -341,6 +368,25 @@ foreach ($f in $alle) {
     $eintrag.Kategorie = $kat
     $eintrag.ZielRel   = $zr
     $plan.Add([pscustomobject]$eintrag)
+}
+
+# 2.3.3: RX2/MP3/AIFF mit gleichnamiger WAV im selben Pack kommen in denselben Zielordner wie die WAV
+# (Construction Kits und Drum-Kits ausgenommen: dort bleibt der Aufbau des Packs erhalten)
+$wavZiel = @{}
+foreach ($x in $plan) {
+    if ($x.Aktion -eq 'Kopieren' -and $x.Quelle -match '\.wav$' -and $x.ZielRel -and $x.Kategorie -notin 'Kits', 'DrumKits') {
+        $k = Get-FormatSchluessel $x.Quelle $x.PackWurzel; if (-not $wavZiel.ContainsKey($k)) { $wavZiel[$k] = $x }
+    }
+}
+foreach ($x in $plan) {
+    if ($x.Aktion -ne 'Kopieren' -or $x.Quelle -notmatch '\.(rx2|rex|mp3|aiff?)$' -or $x.Kategorie -in 'Kits', 'DrumKits') { continue }
+    $w = $wavZiel[(Get-FormatSchluessel $x.Quelle $x.PackWurzel)]
+    if (-not $w) { continue }
+    $neu = Join-Rel @([IO.Path]::GetDirectoryName($w.ZielRel), [IO.Path]::GetFileName($x.Quelle))
+    if ($neu -ne $x.ZielRel) {
+        $x.ZielRel = $neu; $x.Kategorie = $w.Kategorie
+        $x.Hinweis = (@($x.Hinweis, 'wie die gleichnamige WAV einsortiert') | Where-Object { $_ }) -join '; '
+    }
 }
 
 # Zusaetzliche Formate (SRT-06): WAV ist Standard. Fuer RX2/MP3/AIFF ohne Haken "behalten" gilt:
@@ -374,7 +420,7 @@ $gruppen = $kandidaten | Where-Object { $_.Bytes -gt 0 } |
     Where-Object { $_.Count -gt 1 }
 $dupAnzahl = 0
 foreach ($g in $gruppen) {
-    $nachHash = $g.Group | Sort-Object { $_.Quelle.Length }, Quelle | Group-Object { (Get-FileHash -LiteralPath $_.Quelle -Algorithm MD5).Hash }
+    $nachHash = $g.Group | Sort-Object { $_.Quelle.Length }, Quelle | Group-Object { Get-DateiPruefsumme $_.Quelle }
     foreach ($h in $nachHash) {
         $erster = $h.Group[0]
         foreach ($x in ($h.Group | Select-Object -Skip 1)) {
@@ -410,7 +456,7 @@ for ($runde = 1; $runde -le 2; $runde++) {
 foreach ($x in $plan) {
     if ($x.Aktion -eq 'Kopieren') {
         $x.Ziel = [IO.Path]::Combine($Ziel, $x.ZielRel)
-        if (Test-Path -LiteralPath $x.Ziel) { $x.Aktion = 'Bereits im Ziel'; $x.Hinweis = 'gleicher Pfad im Ziel' }
+        if (Test-Datei $x.Ziel) { $x.Aktion = 'Bereits im Ziel'; $x.Hinweis = 'gleicher Pfad im Ziel' }
     }
 }
 
@@ -447,10 +493,10 @@ if ($pruefKandidaten.Count -gt 0 -and (Test-Path -LiteralPath $Ziel)) {
         $k = [string]$x.Bytes
         if (-not $nachGroesse.ContainsKey($k)) { continue }
         if ($i % 20 -eq 0) { Write-Progress -Activity 'Inhaltsabgleich mit dem Ziel' -Status "$i / $($pruefKandidaten.Count)" -PercentComplete ($i * 100 / $pruefKandidaten.Count) }
-        try { $h = (Get-FileHash -LiteralPath $x.Quelle -Algorithm MD5 -ErrorAction Stop).Hash } catch { continue }
+        try { $h = Get-DateiPruefsumme $x.Quelle } catch { continue }
         foreach ($z in $nachGroesse[$k]) {
             if (-not $zielHash.ContainsKey($z.FullName)) {
-                try { $zielHash[$z.FullName] = (Get-FileHash -LiteralPath $z.FullName -Algorithm MD5 -ErrorAction Stop).Hash } catch { $zielHash[$z.FullName] = '' }
+                try { $zielHash[$z.FullName] = Get-DateiPruefsumme $z.FullName } catch { $zielHash[$z.FullName] = '' }
             }
             if ($zielHash[$z.FullName] -eq $h) {
                 $x.Aktion = 'Bereits im Ziel'
@@ -474,6 +520,7 @@ $TextVorschau = @{
     'Ignoriert'                = 'ignoriert (Hilfsdatei)'
     'Mac-Rest'                 = "macOS-Rest $([char]0x2013) wird nicht kopiert"
     'Format ausgeschlossen'    = "WAV vorhanden $([char]0x2013) wird nicht kopiert"
+    'Kein Sample'              = "kein Sample $([char]0x2013) wird nicht kopiert"
 }
 $TextProtokoll = @{
     'Kopiert'                  = 'kopiert'
@@ -483,6 +530,7 @@ $TextProtokoll = @{
     'Ignoriert'                = 'ignoriert (Hilfsdatei)'
     'Mac-Rest'                 = "macOS-Rest $([char]0x2013) nicht kopiert"
     'Format ausgeschlossen'    = "WAV vorhanden $([char]0x2013) nicht kopiert"
+    'Kein Sample'              = "kein Sample $([char]0x2013) nicht kopiert"
 }
 function Export-Plan([string]$pfad, [hashtable]$texte) {
     $plan | Select-Object @{ n = 'Aktion'; e = { if ($texte.ContainsKey($_.Aktion)) { $texte[$_.Aktion] } else { $_.Aktion } } },
@@ -499,7 +547,8 @@ $nVorhanden = @($plan | Where-Object { $_.Aktion -eq 'Bereits im Ziel' }).Count
 $nIgnoriert = @($plan | Where-Object { $_.Aktion -eq 'Ignoriert' }).Count
 $nMac = @($plan | Where-Object { $_.Aktion -eq 'Mac-Rest' }).Count
 $nFormat = @($plan | Where-Object { $_.Aktion -eq 'Format ausgeschlossen' }).Count
-$audioAnzahl = @($plan | Where-Object { $_.Aktion -notin 'Ignoriert', 'Mac-Rest' -and $_.Quelle -match $RxAudio }).Count
+$nKein = @($plan | Where-Object { $_.Aktion -eq 'Kein Sample' }).Count
+$audioAnzahl = @($plan | Where-Object { $_.Aktion -notin 'Ignoriert', 'Mac-Rest', 'Kein Sample' -and $_.Quelle -match $RxAudio }).Count
 
 if ($audioAnzahl -eq 0) {
     Write-Host ""
@@ -520,6 +569,7 @@ if ($imZielAnzahl -gt 0) {
 Write-Host ("  doppelt in der Quelle, nur 1x kopiert:  {0,7}" -f $dupAnzahl)
 Write-Host ("  Hilfsdateien, werden ignoriert:         {0,7}   (z. B. .asd, Thumbs.db - Grund in der Vorschau)" -f $nIgnoriert)
 Write-Host ("  macOS-Reste, werden nicht kopiert:     {0,7}   (._-Dateien, .DS_Store, __MACOSX)" -f $nMac)
+Write-Host ("  kein Sample, bleibt liegen:             {0,7}   (Programme, Installer, Plugin-Inhalte, Archive - Grund in der Vorschau)" -f $nKein)
 if ($ausgeschlossen.Count -gt 0) { Write-Host ("  RX2/MP3/AIFF neben gleichnamiger WAV:  {0,7}   werden nicht kopiert (Haken aus: {1})" -f $nFormat, ((@($ausgeschlossen | ForEach-Object { $FormatName[$FormatEinstellung[$_]] } | Select-Object -Unique)) -join ', ')) }
 Write-Host "  Die Quelle bleibt beim Sortieren unveraendert." -ForegroundColor DarkGray
 Write-Host ""
@@ -527,6 +577,8 @@ if ($kopieren.Count -gt 0) { Write-Host "Neue Dateien nach Kategorie:" }
 $kopieren | Group-Object { ($_.ZielRel -split '[\\/]')[0] } | Sort-Object Name | ForEach-Object {
     "{0,-36} {1,7} Dateien {2,10:N1} MB" -f $_.Name, $_.Count, (($_.Group | Measure-Object Bytes -Sum).Sum / 1MB)
 } | Write-Host
+$lange = @($kopieren | Where-Object { $_.Ziel.Length -ge 260 }).Count
+if ($lange -gt 0) { Write-Host "Hinweis: $lange Zielpfad(e) sind laenger als 259 Zeichen. Sie werden kopiert, manche Programme (z. B. DAW, Explorer) koennen damit aber Probleme haben." -ForegroundColor Yellow }
 $unsort = @($kopieren | Where-Object { $_.Kategorie -eq 'Unsortiert' }).Count
 if ($unsort -gt 0) { Write-Host "Hinweis: $unsort Datei(en) landen in '_Unsortiert' (bitte in der CSV pruefen)." -ForegroundColor Yellow }
 
@@ -576,10 +628,8 @@ foreach ($x in $kopieren) {
     $i++
     if ($i % 50 -eq 0) { Write-Progress -Activity 'Kopiere Samples' -Status "$i / $($kopieren.Count)" -PercentComplete ($i * 100 / $kopieren.Count) }
     try {
-        if (Test-Path -LiteralPath $x.Ziel) { $x.Aktion = 'Bereits im Ziel'; $x.Hinweis = 'gleicher Pfad im Ziel'; $vorhanden++; continue }
-        $zielDir = Split-Path -Parent $x.Ziel
-        if (-not (Test-Path -LiteralPath $zielDir)) { New-Item -ItemType Directory -Path $zielDir -Force | Out-Null }
-        Copy-Item -LiteralPath $x.Quelle -Destination $x.Ziel
+        if (Test-Datei $x.Ziel) { $x.Aktion = 'Bereits im Ziel'; $x.Hinweis = 'gleicher Pfad im Ziel'; $vorhanden++; continue }
+        Copy-Datei $x.Quelle $x.Ziel   # 2.3.3: auch Pfade ueber 259 Zeichen
         $x.Aktion = 'Kopiert'; $ok++
     } catch {
         $x.Aktion = 'FEHLER: ' + $_.Exception.Message; $fehler++

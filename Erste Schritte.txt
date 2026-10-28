@@ -40,7 +40,8 @@ Unten auf „⚙ Einstellungen“ klicken:
               „Ein Pack“ (alles unter dem Ordnernamen, auch unsortiert),
               „Nur lose Dateien“ (ohne Unterordner, z. B. lose WAVs in Downloads).
               Zum Ändern in der Liste auf die Art klicken; ⓘ zeigt am
-              markierten Ordner, was jede Art bewirkt.
+              markierten Ordner, was jede Art bewirkt. Downloads, Dokumente
+              usw. immer als „Nur lose Dateien“, Packs darin einzeln.
   - Ziel:     sortierte Sample-Bibliothek (Standard: Dokumente\Ziel_Samples)
   - Berichte: hier entstehen Inventuren und Berichte (Standard: Programmordner)
 Downloads und Download-Archiv werden erst ab Version 3 genutzt.
@@ -77,8 +78,9 @@ Im Bereich „2 Inventur und Bericht“ auf „Inventur starten“ klicken:
     „Alle markieren“) und direkt in den Papierkorb verschieben. „Ordner öffnen“
     zeigt das Sample im Explorer, z. B. zum Ziehen in die DAW.
   - „Liste öffnen (Excel)“ öffnet die Inventur als CSV.
-  - „Duplikate im Ziel entfernen …“ verschiebt doppelte Samples der Bibliothek
-    nach Vorschau und Rückfrage in den Papierkorb. Danach neue Inventur starten.
+  - „Duplikate/Formate im Ziel …“ verschiebt doppelte Samples der Bibliothek
+    und auf Wunsch RX2/MP3/AIFF neben einer gleichnamigen WAV nach Vorschau
+    und Rückfrage in den Papierkorb. Danach neue Inventur starten.
 
 
 6. QUELLE AUFRÄUMEN (OPTIONAL)

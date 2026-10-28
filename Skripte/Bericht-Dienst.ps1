@@ -75,14 +75,14 @@ function Open-ExplorerVorne([string]$argument, [string]$ordner) {
 
 # Abgleich eines Fundorts mit der Bibliothek: Anteil der Audiodateien, die schon im Ziel liegen
 $zielIndex = $null; $hashCache = @{}
-function Get-Md5([string]$p) { $k = $p.ToLowerInvariant(); if (-not $hashCache.ContainsKey($k)) { $hashCache[$k] = (Get-FileHash -LiteralPath $p -Algorithm MD5).Hash }; $hashCache[$k] }
+function Get-Md5([string]$p) { $k = $p.ToLowerInvariant(); if (-not $hashCache.ContainsKey($k)) { $hashCache[$k] = Get-DateiPruefsumme $p }; $hashCache[$k] }
 function Get-Abgleich([string]$ort, [bool]$nurDirekt = $false) {
     if (-not $script:zielIndex) {
         $script:zielIndex = @{}
         if (Test-Path -LiteralPath $Ziel) {
             foreach ($z in [IO.Directory]::EnumerateFiles($Ziel, '*', 'AllDirectories')) {
                 if ($z -notmatch $RxAudio) { continue }
-                $l = ([IO.FileInfo]$z).Length
+                $l = ([IO.FileInfo](Get-LangPfad $z)).Length
                 if (-not $script:zielIndex.ContainsKey($l)) { $script:zielIndex[$l] = New-Object System.Collections.Generic.List[string] }
                 $script:zielIndex[$l].Add($z)
             }
@@ -168,19 +168,19 @@ function Remove-Markierte([string[]]$pfade) {
         if (-not $voll) { $status = 'abgelehnt: liegt nicht im Ziel' }
         elseif (-not $z -or -not $z.'Duplikat-Gruppe') { $status = 'abgelehnt: kein Duplikat laut Inventur' }
         elseif ($z.Typ -eq 'Kit') { $status = 'abgelehnt: liegt in einem Kit' }
-        elseif (-not (Test-Path -LiteralPath $voll)) { $status = 'nicht mehr vorhanden'; $ok = $true; $weg[$rel.ToLowerInvariant()] = $true }
+        elseif (-not (Test-Datei $voll)) { $status = 'nicht mehr vorhanden'; $ok = $true; $weg[$rel.ToLowerInvariant()] = $true }
         else {
-            $h = (Get-FileHash -LiteralPath $voll -Algorithm SHA256).Hash
+            $h = Get-DateiPruefsumme $voll 'SHA256'
             $bleibt = $null
             foreach ($a in ($zeilen | Where-Object { $_.'Duplikat-Gruppe' -eq $z.'Duplikat-Gruppe' -and $_.Pfad -ne $z.Pfad -and -not $weg.ContainsKey($_.Pfad.ToLowerInvariant()) })) {
                 $av = Get-ZielPfad $a.Pfad
-                if ($av -and (Test-Path -LiteralPath $av) -and (Get-FileHash -LiteralPath $av -Algorithm SHA256).Hash -eq $h) { $bleibt = $a.Pfad; break }
+                if ($av -and (Test-Datei $av) -and (Get-DateiPruefsumme $av 'SHA256') -eq $h) { $bleibt = $a.Pfad; break }
             }
             if (-not $bleibt) { $status = 'abgelehnt: waere das letzte Exemplar' }
             else {
                 try {
                     Send-Papierkorb $voll
-                    if (Test-Path -LiteralPath ($voll + '.asd')) { Send-Papierkorb ($voll + '.asd') }
+                    if (Test-Datei ($voll + '.asd')) { Send-Papierkorb ($voll + '.asd') }
                     $status = 'in den Papierkorb verschoben'; $ok = $true; $weg[$rel.ToLowerInvariant()] = $true
                     # leer gewordene Ordner entfernen
                     $o = Split-Path -Parent $voll
@@ -286,9 +286,9 @@ try {
                 '/datei' {
                     if ($Fundorte) { Send-Text $strom 404 'Not Found' 'Im Fundort-Bericht nicht verfügbar.'; break }
                     $voll = Get-ZielPfad $a.Abfrage['p']
-                    if (-not $voll -or -not (Test-Path -LiteralPath $voll -PathType Leaf)) { Send-Text $strom 404 'Not Found' 'Datei nicht gefunden.'; break }
+                    if (-not $voll -or -not (Test-Datei $voll)) { Send-Text $strom 404 'Not Found' 'Datei nicht gefunden.'; break }
                     $typ = $typen[[IO.Path]::GetExtension($voll).ToLowerInvariant()]; if (-not $typ) { $typ = 'application/octet-stream' }
-                    $alle = [IO.File]::ReadAllBytes($voll)
+                    $alle = [IO.File]::ReadAllBytes((Get-LangPfad $voll))
                     $bereich = $a.Kopf['range']
                     if ($bereich -match '^bytes=(\d*)-(\d*)$' -and $alle.Length -gt 0) {
                         $von = if ($Matches[1]) { [long]$Matches[1] } else { 0 }
@@ -310,7 +310,7 @@ try {
                     $daten = $a.Body | ConvertFrom-Json
                     $voll = Get-ZielPfad ([string]$daten.pfad)
                     if (-not $voll) { Send-Text $strom 404 'Not Found' 'Pfad liegt nicht im Ziel.'; break }
-                    if (Test-Path -LiteralPath $voll -PathType Leaf) { $arg = "/select,`"$voll`"" }
+                    if (Test-Datei $voll) { $arg = "/select,`"$voll`"" }
                     elseif (Test-Path -LiteralPath (Split-Path -Parent $voll)) { $arg = "`"$(Split-Path -Parent $voll)`"" }
                     else { Send-Text $strom 404 'Not Found' 'Datei und Ordner gibt es nicht mehr. Bitte neue Inventur starten.'; break }
                     Send-Text $strom 200 'OK' 'ok'

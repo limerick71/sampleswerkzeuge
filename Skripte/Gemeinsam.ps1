@@ -10,7 +10,7 @@
 #   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
 #   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
 
-$ProgrammVersion = '2.3.2'
+$ProgrammVersion = '2.3.3'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -28,6 +28,32 @@ $RxAudio    = '\.(wav|aiff?|mp3|flac|ogg|rx2|rex|m4a)$'
 $RxRx2      = '\.(rx2|rex)$'
 $PackArten  = @('Drum-Kit', 'One-Shot-Pack', 'Loop-Pack', 'Construction Kit', 'Melodie/Instrument', 'Vocal-Pack',
                 'Atmos/Field Recording', 'FX-Pack', 'MIDI-Pack', 'Song/Playalong', 'gemischt')
+# ---------------------------------------------------------------------------
+# Lange Pfade (2.3.3): Windows PowerShell 5.1 oeffnet ohne Zusatz nur Pfade bis 259 Zeichen.
+# Mit dem Vorsatz \\?\ (bzw. \\?\UNC\ fuer Netzwerkpfade) geht es bis etwa 32.000 Zeichen.
+# ---------------------------------------------------------------------------
+$LangerPfad = 240
+function Get-LangPfad([string]$p) {
+    if (-not $p -or $p.StartsWith('\\?\') -or [IO.Path]::DirectorySeparatorChar -ne [char]92 -or $p.Length -lt $LangerPfad) { return $p }
+    if ($p.StartsWith('\\')) { return '\\?\UNC\' + $p.Substring(2) }
+    return '\\?\' + $p
+}
+function Test-Datei([string]$p) { return [IO.File]::Exists((Get-LangPfad $p)) }
+function Test-Ordner([string]$p) { return [IO.Directory]::Exists((Get-LangPfad $p)) }
+# Pruefsumme wie Get-FileHash (Hex, Grossbuchstaben), auch fuer lange Pfade
+function Get-DateiPruefsumme([string]$p, [string]$algo = 'MD5') {
+    $s = [IO.File]::Open((Get-LangPfad $p), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+    try {
+        $h = if ($algo -eq 'SHA256') { [Security.Cryptography.SHA256]::Create() } else { [Security.Cryptography.MD5]::Create() }
+        try { return ([BitConverter]::ToString($h.ComputeHash($s))).Replace('-', '') } finally { $h.Dispose() }
+    } finally { $s.Dispose() }
+}
+# Kopieren ohne Ueberschreiben; legt den Zielordner an
+function Copy-Datei([string]$von, [string]$nach) {
+    [void][IO.Directory]::CreateDirectory((Get-LangPfad ([IO.Path]::GetDirectoryName($nach))))
+    [IO.File]::Copy((Get-LangPfad $von), (Get-LangPfad $nach), $false)
+}
+
 # Kandidat nach Name: ._-Datei, .DS_Store oder Inhalt eines __MACOSX-Ordners
 function Test-MacRestName([string]$pfad) {
     $n = [IO.Path]::GetFileName($pfad)
@@ -38,7 +64,7 @@ function Test-MacRestName([string]$pfad) {
 function Get-MacRestArt([string]$pfad) {
     if (-not (Test-MacRestName $pfad)) { return '' }
     $b = New-Object byte[] 8; $n = 0
-    try { $fs = [IO.File]::OpenRead($pfad); try { $n = $fs.Read($b, 0, 8) } finally { $fs.Dispose() } } catch { return 'unklar' }
+    try { $fs = [IO.File]::OpenRead((Get-LangPfad $pfad)); try { $n = $fs.Read($b, 0, 8) } finally { $fs.Dispose() } } catch { return 'unklar' }
     if ($n -ge 4 -and $b[0] -eq 0 -and $b[1] -eq 5 -and $b[2] -eq 0x16 -and ($b[3] -eq 7 -or $b[3] -eq 0)) { return 'mac' }
     if ($n -ge 8 -and [Text.Encoding]::ASCII.GetString($b, 4, 4) -eq 'Bud1') { return 'mac' }
     return 'unklar'
@@ -154,12 +180,55 @@ $RxPackNeutral = '^(licen[cs]es?|readme|info|infos|artwork|cover|documentation|d
 function Get-QuellArtVorschlag([string[]]$kinder, [int]$eigeneDateien = 0) {
     $relevant = @($kinder | Where-Object { $_ -and $_.ToLowerInvariant() -notmatch $RxPackNeutral })
     if (-not $relevant.Count) { return 'Pack' }
+    if ($eigeneDateien -gt 0 -and $relevant.Count -eq 1) { return 'Pack' }   # 2.3.3: eigene Dateien plus ein Unterordner = ein Pack
     $innen = @($relevant | Where-Object { $_.ToLowerInvariant() -match $RxPackInnen }).Count
     if ($innen * 2 -ge $relevant.Count) { return 'Pack' }
     return 'Sammlung'
 }
 # Vorschlag direkt fuer einen vorhandenen Ordner
+# Sammelordner (2.3.3): Laufwerke, Benutzerordner, Dokumente, Downloads, Desktop, Musik, Bilder, Videos,
+# OneDrive. Darin liegt Verschiedenes - als Quelle passt nur "Nur lose Dateien" (Packs einzeln eintragen).
+function Test-Sammelordner([string]$p) {
+    if (-not $p) { return $false }
+    $n = $p.TrimEnd('\', '/')
+    if ([IO.Path]::GetPathRoot($p) -ieq $p -or $n.Length -le 2) { return $true }
+    foreach ($v in @($env:USERPROFILE, [Environment]::GetFolderPath('MyDocuments'), [Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('MyMusic'),
+                     [Environment]::GetFolderPath('MyPictures'), [Environment]::GetFolderPath('MyVideos'), (Get-StandardDownloads), $env:OneDrive, $env:OneDriveConsumer, $env:OneDriveCommercial)) {
+        if ($v -and $v.TrimEnd('\', '/') -ieq $n) { return $true }
+    }
+    return $false
+}
+# Ordner mit Audiodateien (irgendwo darin)? Bricht beim ersten Treffer ab.
+function Test-HatAudio([string]$p) {
+    $stapel = New-Object System.Collections.Generic.Stack[string]; $stapel.Push($p); $n = 0
+    while ($stapel.Count -and $n -lt 5000) {
+        $o = $stapel.Pop(); $n++
+        try {
+            foreach ($f in [IO.Directory]::EnumerateFiles((Get-LangPfad $o))) { if ($f -match $RxAudio) { return $true } }
+            foreach ($u in [IO.Directory]::EnumerateDirectories((Get-LangPfad $o))) { $stapel.Push(($u -replace '^\\\\\?\\', '')) }
+        } catch { }
+    }
+    return $false
+}
+# Ebene, auf der die Packs liegen (2.3.3): durch Ordner mit nur einem Unterordner (mit Audio) hinab bis zur
+# Verzweigung, z. B. Splice -> Samples -> packs. Sind die Ordner dort eigenstaendige Pack-Namen (nicht
+# Loops, One Shots, ...-WAV), liefert sie diesen Pfad, sonst $null (der Ordner selbst ist dann ein Pack).
+function Get-PackEbene([string]$pfad) {
+    $w = $pfad.TrimEnd('\', '/')
+    for ($i = 0; $i -lt 6; $i++) {
+        $kinder = @(); $eigen = 0
+        try { $kinder = @([IO.Directory]::EnumerateDirectories($w) | Where-Object { [IO.Path]::GetFileName($_).ToLowerInvariant() -notmatch $RxPackNeutral -and (Test-HatAudio $_) }) } catch { break }
+        try { $eigen = @([IO.Directory]::EnumerateFiles($w) | Where-Object { $_ -match $RxAudio }).Count } catch { }
+        if ($eigen -gt 0 -or $kinder.Count -ne 1) { break }
+        $w = $kinder[0]
+    }
+    if ($w -eq $pfad.TrimEnd('\', '/')) { return $null }
+    $namen = @(); try { $namen = @([IO.Directory]::EnumerateDirectories($w) | ForEach-Object { [IO.Path]::GetFileName($_) }) } catch { }
+    if ($namen.Count -ge 2 -and (Get-QuellArtVorschlag $namen 0) -eq 'Sammlung') { return $w }
+    return $null
+}
 function Get-QuellArtFuerOrdner([string]$pfad) {
+    if (Test-Sammelordner $pfad) { return 'Lose' }   # 2.3.3
     $k = @(); $n = 0
     try { $k = @(Get-ChildItem -LiteralPath $pfad -Directory -Force -ErrorAction Stop | ForEach-Object { $_.Name }) } catch { }
     try { $n = @(Get-ChildItem -LiteralPath $pfad -File -Force -ErrorAction Stop | Where-Object { $_.Name -match $RxAudio }).Count } catch { }
@@ -198,7 +267,9 @@ function Get-ArtVorschau([string]$pfad) {
     $erg | Add-Member NoteProperty Packs ([object[]]$packs.ToArray())
     $erg | Add-Member NoteProperty InUnterordnern $inUnter
     $erg | Add-Member NoteProperty Gesamt ($direkt.Count + $inUnter)
-    $erg | Add-Member NoteProperty Empfehlung (Get-QuellArtVorschlag $kinder $direkt.Count)
+    $erg | Add-Member NoteProperty Empfehlung $(if (Test-Sammelordner $pfad) { 'Lose' } else { Get-QuellArtVorschlag $kinder $direkt.Count })
+    $erg | Add-Member NoteProperty Sammelordner (Test-Sammelordner $pfad)
+    $erg | Add-Member NoteProperty PackEbene $(if (Test-Sammelordner $pfad) { $null } else { Get-PackEbene $pfad })
     $erg | Add-Member NoteProperty Unvollstaendig ($gezaehlt -ge 50000)
     return $erg
 }
@@ -378,6 +449,21 @@ function Send-Papierkorb([string]$pfad) {
         return
     }
     Add-Type -AssemblyName Microsoft.VisualBasic
+    if ($pfad.Length -ge $LangerPfad -and [IO.Path]::DirectorySeparatorChar -eq [char]92) {
+        # 2.3.3: Der Papierkorb nimmt keine langen Pfade an. Datei zuerst auf demselben Laufwerk in einen
+        # kurzen Hilfsordner verschieben (kein Kopieren, nichts geht verloren), dann in den Papierkorb.
+        # Leere Ordner mit langem Pfad werden direkt entfernt (sie enthalten nichts).
+        $lang = Get-LangPfad $pfad
+        if ([IO.Directory]::Exists($lang)) { [IO.Directory]::Delete($lang, $false); return }
+        $hilf = Join-Path ([IO.Path]::GetPathRoot($pfad)) '_Samples-Werkzeuge_Papierkorb'
+        [void][IO.Directory]::CreateDirectory($hilf)
+        $name = [IO.Path]::GetFileName($pfad); if ($name.Length -gt 120) { $name = $name.Substring(0, 110) + [IO.Path]::GetExtension($name) }
+        $kurz = Join-Path $hilf ([guid]::NewGuid().ToString('N').Substring(0, 8) + '_' + $name)
+        [IO.File]::Move($lang, $kurz)
+        [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($kurz, 'OnlyErrorDialogs', 'SendToRecycleBin')
+        try { if (-not @([IO.Directory]::EnumerateFileSystemEntries($hilf)).Count) { [IO.Directory]::Delete($hilf) } } catch { }
+        return
+    }
     if (Test-Path -LiteralPath $pfad -PathType Container) {
         [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($pfad, 'OnlyErrorDialogs', 'SendToRecycleBin')
     } else {

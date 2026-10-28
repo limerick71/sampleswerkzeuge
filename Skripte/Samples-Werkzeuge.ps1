@@ -242,6 +242,8 @@ function Show-ArtInfo($zeile) {
             foreach ($z in $a.Zeilen) { & $schreibe ("     $z`n") $false $null }
             & $schreibe "`n" $false $null
         }
+        if ($v.Sammelordner) { & $schreibe "Das ist ein Sammelordner (z. B. Downloads, Dokumente): Hier passt nur 'Nur lose Dateien'. Packs darin bitte einzeln als 'Ein Pack' eintragen – oder über 'Fundorte suchen ...', das macht es in einem Schritt.`n" $true ([System.Drawing.Color]::FromArgb(138, 90, 0)) }
+        if ($v.PackEbene) { & $schreibe ("Tipp: Die Packs liegen erst in " + $v.PackEbene + ". Diesen Ordner als 'Sammlung' eintragen, dann behält jedes Pack seinen Namen.`n") $true ([System.Drawing.Color]::FromArgb(138, 90, 0)) }
         if ($v.Unvollstaendig) { & $schreibe "Sehr großer Ordner: gezählt wurden die ersten 50.000 Audiodateien.`n" $false ([System.Drawing.Color]::DimGray) }
         $d.Cursor = 'Default'
     }
@@ -322,6 +324,10 @@ function Show-Einstellungen {
         $it = $script:artZeile; if (-not $it) { return }
         $neuArt = [string]$ev.ClickedItem.Tag
         if ($neuArt -eq [string]$it.Tag) { return }
+        if ($neuArt -ne 'Lose' -and (Test-Sammelordner $it.Text)) {
+            $artMenue.Close()
+            if (-not (Show-Frage ("$($it.Text) ist ein Sammelordner (z. B. Downloads, Dokumente).`n`nAls '$($QuellArten[$neuArt])' würde das Sortieren alles darin lesen - auch Programme, Dokumente und fremde Unterordner - und unter einem Namen einsortieren. Richtig ist 'Nur lose Dateien'; Packs darin bitte einzeln hinzufügen.`n`nTrotzdem ändern?"))) { return }
+        }
         $e = Get-Einstellungen
         $f = Test-NeueQuelle $it.Text $e.Quellen $e.Ziel $it.Text $neuArt
         if ($f) { $artMenue.Close(); Show-Meldung "$f`n`nDie Art wurde nicht geändert." 'Warning'; return }
@@ -347,6 +353,11 @@ function Show-Einstellungen {
         $neu = $dlg.SelectedPath.TrimEnd('\')
         $e = Get-Einstellungen
         $art = Get-QuellArtFuerOrdner $neu
+        # 2.3.3: Liegen die Packs erst tiefer (z. B. Splice\Samples\packs), diese Ebene als Sammlung vorschlagen
+        if ($art -ne 'Lose') {
+            $ebene = Get-PackEbene $neu
+            if ($ebene -and (Show-Frage "Die Packs in diesem Ordner liegen erst in`n$ebene`n`nDiesen Ordner als 'Sammlung' eintragen (empfohlen)? Dann behält jedes Pack im Ziel seinen Namen.`n`nNein: $neu wird so eingetragen, wie gewählt.")) { $neu = $ebene; $art = 'Sammlung' }
+        }
         $f = Test-NeueQuelle $neu $e.Quellen $e.Ziel '' $art
         if ($f) { Show-Meldung "$f`n`nDie Quelle wurde nicht hinzugefügt." 'Warning'; return }
         Set-Quellen (@($e.Quellen) + [pscustomobject]@{ Pfad = $neu; Aktiv = $true; Herkunft = 'manuell'; Art = $art })
@@ -561,6 +572,56 @@ function Show-FundorteSuchen {
 }
 
 # ---------------------------------------------------------------------------
+# Dialog: Ziel aufraeumen (2.3.3) - Duplikate und Formate neben gleichnamiger WAV
+# ---------------------------------------------------------------------------
+function Show-ZielAufraeumen {
+    $w = 640; $innen = $w - 32
+    $d = New-Object System.Windows.Forms.Form
+    $d.Text = 'Duplikate und Formate im Ziel entfernen'
+    $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'
+    $d.MaximizeBox = $false; $d.MinimizeBox = $false
+    $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
+    $y = 14
+    $l = New-Hinweis $d "Was soll aus der Bibliothek (Ziel) in den Papierkorb? Grundlage ist die neueste Inventur. Danach zeigt ein Fenster die Vorschau; entfernt wird erst nach 'J'." 16 $y $innen
+    $l.ForeColor = [System.Drawing.Color]::Black
+    $y += $l.PreferredHeight + 14
+    $c1 = New-Object System.Windows.Forms.CheckBox
+    $c1.Text = 'Duplikate (inhaltsgleich; je Gruppe bleibt ein Exemplar, Kits bleiben vollständig)'; $c1.AutoSize = $true; $c1.Checked = $true
+    $c1.Location = New-Object System.Drawing.Point(18, $y); $d.Controls.Add($c1); $y += 28
+    $c2 = New-Object System.Windows.Forms.CheckBox
+    $c2.Text = 'Formate neben einer gleichnamigen WAV aus demselben Pack:'; $c2.AutoSize = $true; $c2.Checked = $false
+    $c2.Location = New-Object System.Drawing.Point(18, $y); $d.Controls.Add($c2); $y += 26
+    $fHaken = @(); $x = 40
+    foreach ($fmt in 'RX2', 'MP3', 'AIFF') {
+        $c = New-Object System.Windows.Forms.CheckBox
+        $c.Text = $fmt; $c.AutoSize = $true; $c.Checked = $true; $c.Enabled = $false
+        $c.Location = New-Object System.Drawing.Point($x, $y); $d.Controls.Add($c); $fHaken += $c; $x += 90
+    }
+    $y += 28
+    $lf = New-Hinweis $d 'Entfernt wird nur, wenn die WAV wirklich da ist. Nützlich, wenn beim Sortieren der Haken „Zusätzlich zur WAV behalten“ noch gesetzt war.' 40 $y ($innen - 30)
+    $y += $lf.PreferredHeight + 14
+    $c2.Add_CheckedChanged({ foreach ($cb in $fHaken) { $cb.Enabled = $c2.Checked } })
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = 'Weiter ...'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
+    $ok.Location = New-Object System.Drawing.Point(($w - 16 - 230), $y); $ok.Size = New-Object System.Drawing.Size(110, 32)
+    $ab = New-Object System.Windows.Forms.Button
+    $ab.Text = 'Abbrechen'; $ab.FlatStyle = 'System'; $ab.DialogResult = 'Cancel'
+    $ab.Location = New-Object System.Drawing.Point(($w - 16 - 110), $y); $ab.Size = New-Object System.Drawing.Size(110, 32)
+    $d.Controls.Add($ok); $d.Controls.Add($ab); $d.AcceptButton = $ok; $d.CancelButton = $ab
+    $d.ClientSize = New-Object System.Drawing.Size($w, ($y + 48))
+    $d.Add_Shown({ $ok.Focus() })
+    $r = $d.ShowDialog($form)
+    $arg = @()
+    if ($c1.Checked) { $arg += '-Duplikate' }
+    $fl = @($fHaken | Where-Object { $_.Checked } | ForEach-Object { $_.Text })
+    if ($c2.Checked -and $fl.Count) { $arg += '-Formate'; $arg += "-Formatliste '$($fl -join ',')'" }
+    $d.Dispose()
+    if ($r -ne 'OK') { return }
+    if (-not $arg.Count) { Show-Meldung 'Es ist nichts ausgewählt.' 'Warning'; return }
+    [void](Start-Skript 'Ziel-Duplikate-entfernen.ps1' ($arg -join ' ') 'Duplikate und Formate im Ziel entfernen')
+}
+
+# ---------------------------------------------------------------------------
 # Dialog: Quelle aufraeumen - Auswahl der Gruppen
 # ---------------------------------------------------------------------------
 function Show-QuelleAufraeumen {
@@ -761,9 +822,9 @@ $null = New-Knopf $gInv 'Pack-Arten korrigieren' 0 $gy `
         Show-Meldung ("Eine Zeile je Pack: Name des Packs (wie im Bericht), Semikolon, Pack-Art.`nBeispiel:  Lofi Forest;Atmos/Field Recording`n`nMögliche Pack-Arten:`n" + ($PackArten -join ', ') + "`n`nDie Korrektur gilt ab der nächsten Inventur.")
         Open-Pfad $packArtenPfad
     }
-$btnZielDup = New-Knopf $gInv 'Duplikate im Ziel entfernen ...' 1 $gy `
-    "Verschiebt alle als entfernbar markierten Duplikate der Bibliothek in den Papierkorb (Grundlage: neueste Inventur; je Gruppe bleibt ein Exemplar, Kits bleiben vollständig). Einzelne Duplikate lassen sich auch im Bericht markieren und entfernen." `
-    { [void](Start-Skript 'Ziel-Duplikate-entfernen.ps1' '' 'Duplikate im Ziel entfernen') }
+$btnZielDup = New-Knopf $gInv 'Duplikate/Formate im Ziel ...' 1 $gy `
+    "Verschiebt Duplikate der Bibliothek (je Gruppe bleibt ein Exemplar, Kits bleiben vollständig) und auf Wunsch RX2/MP3/AIFF neben einer gleichnamigen WAV in den Papierkorb. Grundlage: neueste Inventur; Vorschau und Rückfrage. Einzelne Duplikate lassen sich auch im Bericht markieren und entfernen." `
+    { Show-ZielAufraeumen }
 $gy += 44
 Close-Gruppe $gInv ($gy + 2)
 
