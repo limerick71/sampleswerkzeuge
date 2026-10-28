@@ -39,6 +39,8 @@ Unten auf „⚙ Einstellungen“ klicken:
               Art je Quelle: „Sammlung“ (jeder Unterordner ein Pack),
               „Ein Pack“ (alles unter dem Ordnernamen, auch unsortiert),
               „Nur lose Dateien“ (ohne Unterordner, z. B. lose WAVs in Downloads).
+              Zum Ändern in der Liste auf die Art klicken; ⓘ zeigt am
+              markierten Ordner, was jede Art bewirkt.
   - Ziel:     sortierte Sample-Bibliothek (Standard: Dokumente\Ziel_Samples)
   - Berichte: hier entstehen Inventuren und Berichte (Standard: Programmordner)
 Downloads und Download-Archiv werden erst ab Version 3 genutzt.

@@ -14,7 +14,7 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 | `Samples sortieren.cmd`, `Inventur starten.cmd`, `Quelle aufraeumen.cmd` | Starten die Funktionen ohne Oberfläche |
 | `Erste Schritte.txt`, `Dokumentation Samples-Werkzeuge.rtf` | Anleitungen |
 | `Test/` | `Testvorbereitung.cmd/.ps1` – nur für Tests: Ziel leeren, erstes Pack „SINEE…“ und „Vocal Loops 120“ in der Quelle in den Papierkorb |
-| `Skripte/` | `Gemeinsam.ps1` (Pfade, Einstellungen), `Samples-Werkzeuge.ps1` (Oberfläche), `Samples-sortieren.ps1`, `Inventur.ps1`, `Bericht.ps1` (HTML-Bericht), `Bericht-Dienst.ps1` (lokaler Dienst für Abspielen, Löschen und Ordner öffnen aus dem Bericht sowie für den Fundort-Bericht), `Fundorte-suchen.ps1` (Suchlauf nach Sample-Packs), `Ziel-Duplikate-entfernen.ps1`, `Quelle-aufraeumen.ps1`; zur Laufzeit `Einstellungen.json` und `Pack-Arten.csv` |
+| `Skripte/` | `Gemeinsam.ps1` (Pfade, Einstellungen), `Samples-Werkzeuge.ps1` (Oberfläche), `Samples-sortieren.ps1`, `Inventur.ps1`, `Bericht.ps1` (HTML-Bericht), `Bericht-Dienst.ps1` (lokaler Dienst für Abspielen, Löschen und Ordner öffnen aus dem Bericht sowie für den Fundort-Bericht), `Fundorte-suchen.ps1` (Suchlauf nach Sample-Packs), `Fundorte-Bericht.ps1` (Seite des Fundort-Berichts), `Ziel-Duplikate-entfernen.ps1`, `Quelle-aufraeumen.ps1`; zur Laufzeit `Einstellungen.json` und `Pack-Arten.csv` |
 | `Inventuren/`, `Inventur-Vergleiche/` | entstehen zur Laufzeit im Berichtsordner: Inventur (CSV, JSON), HTML-Bericht, Vergleiche |
 | `Protokolle/` | entsteht zur Laufzeit: Vorschauen und Protokolle (CSV) |
 | `tools/` | nur im Repository: erzeugt die RTF-Dokumentation (`python3 tools/dokumentation.py`) |
@@ -23,6 +23,7 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 
 | Version | Datum | Inhalt |
 |---|---|---|
+| 2.3.2 | 28.10.2026 | Befunde aus dem Test der 2.3.1: Entfernen in den Einstellungen, Art in der Liste mit Erklärung ⓘ, Vocals über Ordnernamen, „Einzeldateien (…)“ bei losen Dateien; Fundort-Bericht mit ZIP-Inhalt, Ableton-Erkennung, „Letzten Bericht öffnen“, Abgleich mit dem Ziel-Ordner auch für Quellen |
 | 2.3.1 | 28.10.2026 | Art einer Quelle (Sammlung, Ein Pack, Nur lose Dateien); richtiger Pack-Name bei einzelnen Packs; lose Dateien in Downloads übernehmbar |
 | 2.3.0 | 28.10.2026 | Fundorte suchen (Suchlauf, Bericht, Übernahme als Quellen); Quellenliste statt einer Quelle; Sortieren und Aufräumen über mehrere Quellen; Befunde aus dem Test der 2.2 |
 | 2.2.0 | 27.10.2026 | „Ordner öffnen“ im Bericht; Formate in „Quelle aufräumen“ eigens wählbar; Gruppe „Originale“ (Kopie im Ziel per Prüfsumme bestätigt); Warnung, wenn die Menge nicht in den Papierkorb passt |

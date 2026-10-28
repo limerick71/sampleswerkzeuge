@@ -29,6 +29,7 @@ try {
 
 # Gemeinsame Pfade und Einstellungen (siehe Gemeinsam.ps1)
 . (Join-Path $PSScriptRoot 'Gemeinsam.ps1')
+. (Join-Path $PSScriptRoot 'Fundorte-Bericht.ps1')
 $basis = $wurzel
 
 # Internet-Markierung (heruntergeladene ZIP-Datei) von allen Dateien entfernen
@@ -199,6 +200,65 @@ function New-Hinweis($eltern, [string]$text, [int]$x, [int]$y, [int]$breiteMax) 
     return $l
 }
 
+# ---------------------------------------------------------------------------
+# Infobox "Art einer Quelle" (2.3.2): erklaert die drei Arten am markierten Ordner
+# ---------------------------------------------------------------------------
+function Show-ArtInfo($zeile) {
+    $w = 640
+    $d = New-Object System.Windows.Forms.Form
+    $d.Text = 'Art einer Quelle'
+    $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'
+    $d.MaximizeBox = $false; $d.MinimizeBox = $false
+    $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
+    $rt = New-Object System.Windows.Forms.RichTextBox
+    $rt.ReadOnly = $true; $rt.BorderStyle = 'None'; $rt.BackColor = [System.Drawing.Color]::White; $rt.Font = $schrift
+    $rt.Location = New-Object System.Drawing.Point(16, 14); $rt.Size = New-Object System.Drawing.Size(($w - 32), 380)
+    $rt.DetectUrls = $false; $rt.TabStop = $false; $rt.ScrollBars = 'Vertical'
+    $d.Controls.Add($rt)
+    $fett = New-Object System.Drawing.Font($schrift, [System.Drawing.FontStyle]::Bold)
+    $schreibe = { param($text, $istFett, $farbe)
+        $rt.SelectionStart = $rt.TextLength; $rt.SelectionLength = 0
+        $rt.SelectionFont = $(if ($istFett) { $fett } else { $schrift })
+        $rt.SelectionColor = $(if ($farbe) { $farbe } else { [System.Drawing.Color]::Black })
+        $rt.AppendText($text)
+    }
+    & $schreibe ('Die Art legt fest, wie beim Sortieren die Packs im Ordner erkannt werden. Der Packname wird im Ziel zum Unterordner unter dem Instrument, z. B. 01 Drums\Kick\One-Shots\<Packname>\Datei.wav.' + "`n`n") $false ([System.Drawing.Color]::DimGray)
+    if (-not $zeile) {
+        & $schreibe ("Sammlung – jeder Unterordner ist ein eigener Pack (z. B. Quelle_Samples).`nEin Pack – alles im Ordner gehört zu einem Pack, Packname = Ordnername (z. B. ein heruntergeladenes Pack).`nNur lose Dateien – nur die Dateien direkt im Ordner, Unterordner werden übergangen (z. B. Downloads).`n`n") $false $null
+        & $schreibe 'Tipp: Eine Quelle in der Liste anklicken und dann ⓘ wählen – dann zeigt diese Box am Ordner selbst, was jede Art bewirkt.' $false ([System.Drawing.Color]::DimGray)
+    } elseif (-not (Test-Path -LiteralPath $zeile.Text -PathType Container)) {
+        & $schreibe "Der Ordner $($zeile.Text) wurde nicht gefunden." $true ([System.Drawing.Color]::Firebrick)
+    } else {
+        $d.Cursor = 'WaitCursor'
+        $v = Get-ArtVorschau $zeile.Text
+        $empf = $v.Empfehlung; $jetzt = [string]$zeile.Tag
+        & $schreibe ('So würde der Ordner „' + $v.Name + '“ gelesen' + "`n") $true $null
+        & $schreibe ('(… steht für den Instrument-Ordner im Ziel, z. B. 07 Vocals oder 01 Drums\Kick\One-Shots)' + "`n`n") $false ([System.Drawing.Color]::DimGray)
+        foreach ($a in (Get-ArtVorschauAbschnitte $v)) {
+            $marke = @(); if ($a.Art -eq $jetzt) { $marke += 'eingestellt' }; if ($a.Art -eq $empf) { $marke += 'empfohlen' }
+            & $schreibe $a.Titel $true $(if ($a.Art -eq $jetzt) { [System.Drawing.Color]::FromArgb(31, 78, 121) } else { $null })
+            if ($marke.Count) { & $schreibe ('   ◀ ' + ($marke -join ', ')) $true ([System.Drawing.Color]::FromArgb(26, 127, 55)) }
+            & $schreibe "`n" $false $null
+            foreach ($z in $a.Zeilen) { & $schreibe ("     $z`n") $false $null }
+            & $schreibe "`n" $false $null
+        }
+        if ($v.Unvollstaendig) { & $schreibe "Sehr großer Ordner: gezählt wurden die ersten 50.000 Audiodateien.`n" $false ([System.Drawing.Color]::DimGray) }
+        $d.Cursor = 'Default'
+    }
+    $rt.SelectionStart = 0
+    $h = [Math]::Min(540, [Math]::Max(300, $rt.GetPositionFromCharIndex([Math]::Max(0, $rt.TextLength - 1)).Y + 40))
+    $rt.Height = $h
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = 'Schließen'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
+    $ok.Location = New-Object System.Drawing.Point(($w - 16 - 110), (14 + $h + 10)); $ok.Size = New-Object System.Drawing.Size(110, 32)
+    $d.Controls.Add($ok); $d.AcceptButton = $ok; $d.CancelButton = $ok
+    $d.ClientSize = New-Object System.Drawing.Size($w, (14 + $h + 10 + 48))
+    $d.Add_Shown({ $ok.Focus() })
+    $besitzer = [System.Windows.Forms.Form]::ActiveForm; if (-not $besitzer) { $besitzer = $form }
+    [void]$d.ShowDialog($besitzer)
+    $d.Dispose()
+}
+
 function Show-Einstellungen {
     $d = New-Object System.Windows.Forms.Form
     $d.Text = 'Einstellungen'
@@ -218,28 +278,60 @@ function Show-Einstellungen {
     $lv.Font = $schrift; $lv.Location = New-Object System.Drawing.Point(12, 26); $lv.Size = New-Object System.Drawing.Size(($gb - 24), 132)
     [void]$lv.Columns.Add('Ordner', 270); [void]$lv.Columns.Add('Art', 110); [void]$lv.Columns.Add('Herkunft', 120); [void]$lv.Columns.Add('Zustand', ($gb - 24 - 270 - 110 - 120 - 24))
     $g0.Controls.Add($lv)
-    $script:qLaedt = $false
+    $script:qLaedt = $false; $script:qStand = 0
+    # Stand der Einstellungsdatei: neu eingelesen wird nur, wenn sie sich geaendert hat (2.3.2)
+    $stand = { try { (Get-Item -LiteralPath $einstellungsPfad -ErrorAction Stop).LastWriteTimeUtc.Ticks } catch { 0 } }
+    $artText = { param($k) $QuellArten[$k] + '  ▾' }
     $fuelle = {
         $script:qLaedt = $true
-        $lv.Items.Clear()
+        $markiert = if ($lv.SelectedItems.Count) { $lv.SelectedItems[0].Text } else { '' }
+        $lv.BeginUpdate(); $lv.Items.Clear()
         foreach ($q in @((Get-Einstellungen).Quellen)) {
             $it = New-Object System.Windows.Forms.ListViewItem($q.Pfad)
-            [void]$it.SubItems.Add($QuellArten[(Get-QuellArtName $q.Art)])
+            [void]$it.SubItems.Add((& $artText (Get-QuellArtName $q.Art)))
             [void]$it.SubItems.Add($q.Herkunft)
             $it.Tag = (Get-QuellArtName $q.Art)
             [void]$it.SubItems.Add($(if (Test-Path -LiteralPath $q.Pfad) { 'gefunden' } else { 'NICHT GEFUNDEN' }))
             $it.Checked = [bool]$q.Aktiv
             [void]$lv.Items.Add($it)
+            if ($markiert -and $q.Pfad -eq $markiert) { $it.Selected = $true }
         }
+        $lv.EndUpdate()
+        $script:qStand = & $stand
         $script:qLaedt = $false
     }
     $speichern = {
         $liste = @(foreach ($it in $lv.Items) { [pscustomobject]@{ Pfad = $it.Text; Aktiv = $it.Checked; Herkunft = $it.SubItems[2].Text; Art = [string]$it.Tag } })
         try { Set-Quellen $liste } catch { Show-Meldung "Speichern fehlgeschlagen:`n$($_.Exception.Message)" 'Error' }
+        $script:qStand = & $stand
     }
     $lv.Add_ItemChecked({ if (-not $script:qLaedt) { & $speichern } })
     $lv.Add_DoubleClick({ if ($lv.SelectedItems.Count) { Open-Pfad $lv.SelectedItems[0].Text } })
-    $tt.SetToolTip($lv, 'Haken = aktiv: Sortieren und Aufräumen lesen alle angehakten Quellen. Doppelklick öffnet den Ordner im Explorer.')
+    $tt.SetToolTip($lv, 'Haken = aktiv: Sortieren und Aufräumen lesen alle angehakten Quellen. Klick auf die Art: Art ändern. Doppelklick öffnet den Ordner im Explorer.')
+    # Art direkt in der Liste waehlen (2.3.2): Klick auf die Spalte "Art" oeffnet die Auswahl
+    $artMenue = New-Object System.Windows.Forms.ContextMenuStrip
+    $artMenue.Font = $schrift
+    foreach ($k in $QuellArten.Keys) { $mi = $artMenue.Items.Add($QuellArten[$k]); $mi.Tag = $k }
+    $script:artZeile = $null
+    $artMenue.Add_ItemClicked({
+        param($sender, $ev)
+        $it = $script:artZeile; if (-not $it) { return }
+        $neuArt = [string]$ev.ClickedItem.Tag
+        if ($neuArt -eq [string]$it.Tag) { return }
+        $e = Get-Einstellungen
+        $f = Test-NeueQuelle $it.Text $e.Quellen $e.Ziel $it.Text $neuArt
+        if ($f) { $artMenue.Close(); Show-Meldung "$f`n`nDie Art wurde nicht geändert." 'Warning'; return }
+        $it.Tag = $neuArt; $it.SubItems[1].Text = (& $artText $neuArt); & $speichern
+    })
+    $lv.Add_MouseClick({
+        param($sender, $ev)
+        $h = $lv.HitTest($ev.Location)
+        if (-not $h.Item -or -not $h.SubItem) { return }
+        if ($h.Item.SubItems.IndexOf($h.SubItem) -ne 1) { return }
+        $script:artZeile = $h.Item
+        foreach ($mi in $artMenue.Items) { $mi.Checked = ([string]$mi.Tag -eq [string]$h.Item.Tag) }
+        $artMenue.Show($lv, $ev.Location)
+    })
     $by = 26 + 132 + 8
     $bAdd = New-Object System.Windows.Forms.Button
     $bAdd.Text = 'Hinzufügen ...'; $bAdd.Font = $schrift; $bAdd.FlatStyle = 'System'
@@ -255,7 +347,7 @@ function Show-Einstellungen {
         if ($f) { Show-Meldung "$f`n`nDie Quelle wurde nicht hinzugefügt." 'Warning'; return }
         Set-Quellen (@($e.Quellen) + [pscustomobject]@{ Pfad = $neu; Aktiv = $true; Herkunft = 'manuell'; Art = $art })
         & $fuelle
-        Show-Meldung "Hinzugefügt als '$($QuellArten[$art])'.`n`nFalls das nicht passt: Quelle in der Liste anklicken und unten die Art ändern."
+        Show-Meldung "Hinzugefügt als '$($QuellArten[$art])'.`n`nFalls das nicht passt: in der Liste auf die Art klicken und ändern (Erklärung unter ⓘ)."
     })
     $g0.Controls.Add($bAdd)
     $bWeg = New-Object System.Windows.Forms.Button
@@ -263,9 +355,11 @@ function Show-Einstellungen {
     $bWeg.Location = New-Object System.Drawing.Point(150, $by); $bWeg.Size = New-Object System.Drawing.Size(110, 30)
     $bWeg.Add_Click({
         if (-not $lv.SelectedItems.Count) { Show-Meldung 'Bitte zuerst eine Quelle in der Liste anklicken.' 'Warning'; return }
+        # Quelle vor der Rueckfrage merken: beim Schliessen der Rueckfrage kann die Markierung verloren gehen (2.3.2)
         $pf = $lv.SelectedItems[0].Text
         if (-not (Show-Frage "Diese Quelle aus der Liste nehmen?`n$pf`n`nDer Ordner selbst bleibt unverändert.")) { return }
-        $lv.Items.Remove($lv.SelectedItems[0]); & $speichern
+        foreach ($x in @($lv.Items)) { if ($x.Text -eq $pf) { $lv.Items.Remove($x) } }
+        & $speichern
     })
     $tt.SetToolTip($bWeg, 'Nimmt die markierte Quelle aus der Liste. Am Ordner wird nichts geändert.')
     $g0.Controls.Add($bWeg)
@@ -275,35 +369,19 @@ function Show-Einstellungen {
     $bSuch.Add_Click({ Show-FundorteSuchen })
     $tt.SetToolTip($bSuch, 'Sucht auf Laufwerken und in Ordnern nach Sample-Packs und zeigt die Fundorte im Browser. Dort lassen sie sich als Quellen übernehmen.')
     $g0.Controls.Add($bSuch)
+    $bInfo = New-Object System.Windows.Forms.Button
+    $bInfo.Text = 'ⓘ'; $bInfo.Font = New-Object System.Drawing.Font('Segoe UI Symbol', 11); $bInfo.FlatStyle = 'System'
+    $bInfo.Location = New-Object System.Drawing.Point(426, $by); $bInfo.Size = New-Object System.Drawing.Size(34, 30)
+    $bInfo.Add_Click({ Show-ArtInfo $(if ($lv.SelectedItems.Count) { $lv.SelectedItems[0] } else { $null }) })
+    $tt.SetToolTip($bInfo, 'Was bedeutet die Art? Zeigt am markierten Ordner, was jede Art bewirkt.')
+    $g0.Controls.Add($bInfo)
     $ay = $by + 40
-    $la = New-Object System.Windows.Forms.Label
-    $la.Text = 'Art der markierten Quelle:'; $la.Font = $schrift; $la.AutoSize = $true; $la.Location = New-Object System.Drawing.Point(12, ($ay + 4))
-    $g0.Controls.Add($la)
-    $cbArt = New-Object System.Windows.Forms.ComboBox
-    $cbArt.DropDownStyle = 'DropDownList'; $cbArt.Font = $schrift; $cbArt.Location = New-Object System.Drawing.Point(190, $ay); $cbArt.Width = 180
-    foreach ($k in $QuellArten.Keys) { [void]$cbArt.Items.Add($QuellArten[$k]) }
-    $cbArt.Enabled = $false
-    $g0.Controls.Add($cbArt)
-    $tt.SetToolTip($cbArt, "Sammlung: jeder Unterordner ist ein Pack.`nEin Pack: alles darin gehört zu einem Pack (Name = Ordnername), auch wenn unsortiert.`nNur lose Dateien: nur die Dateien direkt im Ordner, ohne Unterordner.")
-    $script:artSetzt = $false
-    $lv.Add_SelectedIndexChanged({
-        if (-not $lv.SelectedItems.Count) { $cbArt.Enabled = $false; return }
-        $script:artSetzt = $true; $cbArt.SelectedItem = $QuellArten[[string]$lv.SelectedItems[0].Tag]; $cbArt.Enabled = $true; $script:artSetzt = $false
-    })
-    $cbArt.Add_SelectedIndexChanged({
-        if ($script:artSetzt -or -not $lv.SelectedItems.Count) { return }
-        $it = $lv.SelectedItems[0]
-        $neuArt = @($QuellArten.Keys | Where-Object { $QuellArten[$_] -eq $cbArt.SelectedItem })[0]
-        if ($neuArt -eq [string]$it.Tag) { return }
-        $e = Get-Einstellungen
-        $f = Test-NeueQuelle $it.Text $e.Quellen $e.Ziel $it.Text $neuArt
-        if ($f) { Show-Meldung "$f`n`nDie Art wurde nicht geändert." 'Warning'; $script:artSetzt = $true; $cbArt.SelectedItem = $QuellArten[[string]$it.Tag]; $script:artSetzt = $false; return }
-        $it.Tag = $neuArt; $it.SubItems[1].Text = $QuellArten[$neuArt]; & $speichern
-    })
-    $lq = New-Hinweis $g0 'Haken = aktiv. Sortieren und „Quelle aufräumen“ lesen alle aktiven Quellen. Art: Sammlung = jeder Unterordner ist ein Pack; Ein Pack = alles darin unter dem Ordnernamen; Nur lose Dateien = ohne Unterordner. Doppelklick öffnet einen Ordner.' 12 ($ay + 34) ($gb - 24)
-    $g0.Height = $ay + 34 + $lq.PreferredHeight + 14
+    $lq = New-Hinweis $g0 'Haken = aktiv: Sortieren und „Quelle aufräumen“ lesen alle aktiven Quellen. Art = wie die Packs im Ordner erkannt werden – zum Ändern auf die Art klicken, Erklärung unter ⓘ. Doppelklick öffnet einen Ordner.' 12 $ay ($gb - 24)
+    $g0.Height = $ay + $lq.PreferredHeight + 14
     $dy += $g0.Height + 10
-    $d.Add_Activated({ & $fuelle })   # nach "Fundorte suchen" (Übernahme im Browser) neu einlesen
+    # Nach "Fundorte suchen" (Uebernahme im Browser) neu einlesen - nur wenn sich die Einstellungen geaendert haben
+    $d.Add_Activated({ if ((& $stand) -ne $script:qStand) { & $fuelle } })
+    & $fuelle
 
     # --- Ordner ---
     $g1 = New-Object System.Windows.Forms.GroupBox
@@ -403,7 +481,7 @@ function Show-FundorteSuchen {
     $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'
     $d.MaximizeBox = $false; $d.MinimizeBox = $false
     $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
-    $l = New-Hinweis $d 'Wo soll nach Sample-Packs gesucht werden? Es werden nur Ordner- und Dateinamen gelesen, nichts verändert und keine Cloud-Dateien heruntergeladen. Windows-, Programm- und Anwendungsordner sowie das Ziel werden ausgelassen.' 16 14 $innen
+    $l = New-Hinweis $d 'Wo soll nach Sample-Packs gesucht werden? Es werden nur Ordner- und Dateinamen gelesen (bei Archiven das Inhaltsverzeichnis), nichts verändert, nichts entpackt und keine Cloud-Dateien heruntergeladen. Windows-, Programm- und Anwendungsordner sowie das Ziel werden ausgelassen.' 16 14 $innen
     $l.ForeColor = [System.Drawing.Color]::Black
     $y = 14 + $l.PreferredHeight + 12
     $clb = New-Object System.Windows.Forms.CheckedListBox
@@ -437,7 +515,24 @@ function Show-FundorteSuchen {
         if ($dlg.ShowDialog($d) -eq 'OK') { & $add $dlg.SelectedPath $dlg.SelectedPath $true }
     })
     $d.Controls.Add($bOrd)
+    # 2.3.2: in ZIP-Archive hineinschauen (nur Inhaltsverzeichnis)
+    $cbZip = New-Object System.Windows.Forms.CheckBox
+    $cbZip.Text = 'In ZIP-Archive hineinschauen (dauert etwas länger)'; $cbZip.AutoSize = $true; $cbZip.Checked = $true
+    $cbZip.Location = New-Object System.Drawing.Point(200, ($y + 5))
+    $tt2 = New-Object System.Windows.Forms.ToolTip; $tt2.AutoPopDelay = 15000
+    $tt2.SetToolTip($cbZip, "Liest bei ZIP-Archiven (mit Windows 11 auch RAR und 7z) das Inhaltsverzeichnis: Wie viele Audiodateien sind darin?`nArchive ohne Audiodateien werden dann nicht mehr gezeigt. Es wird nichts entpackt; Archive, die nur in der Cloud liegen, werden nicht geöffnet.")
+    $d.Controls.Add($cbZip)
     $y += 44
+    # 2.3.2: letzten Bericht ohne neuen Suchlauf oeffnen
+    $letzter = $null; try { $letzter = Get-LetzterFundortBericht } catch { }
+    $bLetzt = New-Object System.Windows.Forms.Button
+    $bLetzt.FlatStyle = 'System'
+    $bLetzt.Text = $(if ($letzter) { 'Letzten Bericht öffnen (' + $letzter.LastWriteTime.ToString('dd.MM.yyyy HH:mm') + ')' } else { 'Letzten Bericht öffnen' })
+    $bLetzt.Enabled = [bool]$letzter
+    $bLetzt.Location = New-Object System.Drawing.Point(16, $y); $bLetzt.Size = New-Object System.Drawing.Size(320, 32)
+    $tt2.SetToolTip($bLetzt, $(if ($letzter) { "Öffnet den Bericht des letzten Suchlaufs ohne neue Suche.`n$($letzter.FullName)" } else { 'Es gibt noch keinen Bericht – bitte zuerst suchen.' }))
+    $bLetzt.DialogResult = 'Retry'
+    $d.Controls.Add($bLetzt)
     $ok = New-Object System.Windows.Forms.Button
     $ok.Text = 'Suchen'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
     $ok.Location = New-Object System.Drawing.Point(($w - 16 - 230), $y); $ok.Size = New-Object System.Drawing.Size(110, 32)
@@ -450,10 +545,16 @@ function Show-FundorteSuchen {
     $besitzer = [System.Windows.Forms.Form]::ActiveForm; if (-not $besitzer) { $besitzer = $form }
     $r = $d.ShowDialog($besitzer)
     $gewaehlt = @(for ($i = 0; $i -lt $clb.Items.Count; $i++) { if ($clb.GetItemChecked($i)) { $orte[$i] } })
+    $mitZip = $cbZip.Checked
     $d.Dispose()
+    if ($r -eq 'Retry' -and $letzter) {
+        if (-not (Start-FundortBericht $letzter.FullName)) { Show-Meldung "Der Bericht konnte nicht geöffnet werden.`n$($letzter.FullName)" 'Warning' }
+        return
+    }
     if ($r -ne 'OK') { return }
     if (-not $gewaehlt.Count) { Show-Meldung 'Es ist kein Ort ausgewählt.' 'Warning'; return }
-    [void](Start-Skript 'Fundorte-suchen.ps1' "-Orte '$(($gewaehlt -join '|').Replace("'", "''"))'" 'Fundorte suchen')
+    $zusatz = if ($mitZip) { '' } else { ' -OhneArchivinhalt' }
+    [void](Start-Skript 'Fundorte-suchen.ps1' "-Orte '$(($gewaehlt -join '|').Replace("'", "''"))'$zusatz" 'Fundorte suchen')
 }
 
 # ---------------------------------------------------------------------------

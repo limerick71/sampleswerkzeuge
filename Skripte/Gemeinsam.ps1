@@ -10,7 +10,7 @@
 #   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
 #   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
 
-$ProgrammVersion = '2.3.1'
+$ProgrammVersion = '2.3.2'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -164,6 +164,71 @@ function Get-QuellArtFuerOrdner([string]$pfad) {
     try { $k = @(Get-ChildItem -LiteralPath $pfad -Directory -Force -ErrorAction Stop | ForEach-Object { $_.Name }) } catch { }
     try { $n = @(Get-ChildItem -LiteralPath $pfad -File -Force -ErrorAction Stop | Where-Object { $_.Name -match $RxAudio }).Count } catch { }
     return Get-QuellArtVorschlag $k $n
+}
+
+# Vorschau fuer die Infobox "Art" (2.3.2): was jede Art mit diesem Ordner machen wuerde.
+# Liest nur Namen (keine Cloud-Dateien herunterladen), hoechstens etwa 50.000 Dateien.
+function Get-ArtVorschau([string]$pfad) {
+    $name = [IO.Path]::GetFileName($pfad.TrimEnd('\', '/'))
+    $direkt = @(); $packs = New-Object System.Collections.Generic.List[object]; $kinder = @()
+    try { $direkt = @([IO.Directory]::EnumerateFiles($pfad) | Where-Object { [IO.Path]::GetFileName($_) -match $RxAudio -and -not [IO.Path]::GetFileName($_).StartsWith('._') } | ForEach-Object { [IO.Path]::GetFileName($_) }) } catch { }
+    $gezaehlt = 0
+    try { $unter = @([IO.Directory]::EnumerateDirectories($pfad)) } catch { $unter = @() }
+    foreach ($u in ($unter | Sort-Object)) {
+        $kn = [IO.Path]::GetFileName($u); $kinder += $kn
+        try { if (([IO.File]::GetAttributes($u) -band [IO.FileAttributes]::ReparsePoint)) { continue } } catch { continue }
+        $zahl = 0; $bsp = ''
+        $stapel = New-Object System.Collections.Generic.Stack[string]; $stapel.Push($u)
+        while ($stapel.Count -and $gezaehlt -lt 50000) {
+            $o = $stapel.Pop()
+            try {
+                foreach ($f in [IO.Directory]::EnumerateFiles($o)) {
+                    $fn = [IO.Path]::GetFileName($f)
+                    if ($fn -match $RxAudio -and -not $fn.StartsWith('._')) { $zahl++; $gezaehlt++; if (-not $bsp) { $bsp = $f.Substring($u.Length).TrimStart('\', '/') } }
+                }
+                foreach ($x in [IO.Directory]::EnumerateDirectories($o)) { try { if (-not ([IO.File]::GetAttributes($x) -band [IO.FileAttributes]::ReparsePoint)) { $stapel.Push($x) } } catch { } }
+            } catch { }
+        }
+        if ($zahl) { $packs.Add([pscustomobject]@{ Name = $kn; Audio = $zahl; Beispiel = $bsp }) }
+    }
+    $inUnter = 0; foreach ($p in $packs) { $inUnter += $p.Audio }
+    $erg = New-Object PSObject
+    $erg | Add-Member NoteProperty Name $name
+    $erg | Add-Member NoteProperty Direkt ([object[]]$direkt)
+    $erg | Add-Member NoteProperty Packs ([object[]]$packs.ToArray())
+    $erg | Add-Member NoteProperty InUnterordnern $inUnter
+    $erg | Add-Member NoteProperty Gesamt ($direkt.Count + $inUnter)
+    $erg | Add-Member NoteProperty Empfehlung (Get-QuellArtVorschlag $kinder $direkt.Count)
+    $erg | Add-Member NoteProperty Unvollstaendig ($gezaehlt -ge 50000)
+    return $erg
+}
+# Text der Infobox: je Art Titel und Zeilen ("..." steht fuer den Instrument-Ordner im Ziel)
+function Get-ArtVorschauAbschnitte($v) {
+    $nz = { param($z) $z.ToString('N0', [Globalization.CultureInfo]'de-DE') }
+    $blatt = { param($r) [IO.Path]::GetFileName(([string]$r).Replace('\', '/')) }
+    $s = New-Object System.Collections.Generic.List[string]
+    if ($v.Packs.Count) {
+        $liste = (@($v.Packs | Select-Object -First 4 | ForEach-Object { '„' + $_.Name + '“ (' + (& $nz $_.Audio) + ')' }) -join ', ')
+        if ($v.Packs.Count -gt 4) { $liste += ' und ' + ($v.Packs.Count - 4) + ' weitere' }
+        $s.Add("$($v.Packs.Count) Pack$(if ($v.Packs.Count -ne 1) { 's' }) (= Unterordner mit Audiodateien): $liste")
+    } else { $s.Add('keine Unterordner mit Audiodateien') }
+    if ($v.Direkt.Count) { $s.Add((& $nz $v.Direkt.Count) + ' Dateien direkt im Ordner kommen in den Pack „_Einzeldateien“') }
+    if ($v.Packs.Count) { $s.Add('z. B. …\' + $v.Packs[0].Name + '\' + (& $blatt $v.Packs[0].Beispiel)) }
+    $samm = @{ Art = 'Sammlung'; Titel = 'Sammlung – jeder Unterordner ist ein eigener Pack'; Zeilen = @($s) }
+
+    $s = New-Object System.Collections.Generic.List[string]
+    $s.Add('alle ' + (& $nz $v.Gesamt) + ' Audiodateien (auch in Unterordnern) als Pack „' + $v.Name + '“')
+    $b = if ($v.Direkt.Count) { $v.Direkt[0] } elseif ($v.Packs.Count) { & $blatt $v.Packs[0].Beispiel } else { '' }
+    if ($b) { $s.Add('z. B. …\' + $v.Name + '\' + $b) }
+    $pack = @{ Art = 'Pack'; Titel = 'Ein Pack – alles im Ordner gehört zu einem Pack'; Zeilen = @($s) }
+
+    $s = New-Object System.Collections.Generic.List[string]
+    $t = (& $nz $v.Direkt.Count) + ' Audiodateien direkt im Ordner als Pack „Einzeldateien (' + $v.Name + ')“'
+    if ($v.InUnterordnern) { $t += "; $(& $nz $v.InUnterordnern) Dateien in Unterordnern werden übergangen" }
+    $s.Add($t)
+    if ($v.Direkt.Count) { $s.Add('z. B. …\Einzeldateien (' + $v.Name + ')\' + $v.Direkt[0]) }
+    $lose = @{ Art = 'Lose'; Titel = 'Nur lose Dateien – nur die Dateien direkt im Ordner'; Zeilen = @($s) }
+    return @($samm, $pack, $lose)
 }
 
 # Aktive Quellen als Pfadliste bzw. als Objekte (Pfad, Art ...)

@@ -257,6 +257,8 @@ foreach ($f in $alle) {
         $pack = '_Einzeldateien'; $packRel = @($teile[0])
     }
     if ($artVon[$QWurzel] -eq 'Sammlung' -and $teile[0] -eq 'Vocals' -and $teile.Count -eq 2) { $pack = 'Vocals (Einzeldateien)' }
+    # 2.3.2: lose Dateien eines Ordners (z. B. Downloads) als Pack "Einzeldateien (Ordnername)"
+    if ($artVon[$QWurzel] -eq 'Lose') { $pack = "Einzeldateien ($($teile[0]))" }
     $packOrdner = @(); if ($packRel.Count -gt 1) { $packOrdner = $packRel[0..($packRel.Count - 2)] }
     $relImPack  = Join-Rel $packRel
     $alleOrdner = @(); if ($teile.Count -gt 1) { $alleOrdner = $teile[0..($teile.Count - 2)] }
@@ -291,7 +293,8 @@ foreach ($f in $alle) {
         $kat = 'Sonstiges'; $zr = Join-Rel @($K.Sonstiges, $pack, $name)
     }
     # --- Melodische / thematische Packs -----------------------------------
-    elseif ($teile[0] -eq 'Vocals' -or $pack -match 'Vocal') {
+    # 2.3.2: Vocals auch ueber Ordnernamen im Pack erkennen (z. B. "Pack\Vocal Loops\...")
+    elseif ($teile[0] -eq 'Vocals' -or $pack -match 'Vocal' -or @($packOrdner | Where-Object { $_ -match '\bVocals?\b|\bVox\b|Acapella|A cappella' }).Count) {
         $kat = 'Vocals'; $zr = Join-Rel @($K.Vocals, $pack, $relImPack)
     } elseif ($teile[0] -eq 'Brass') {
         $kat = 'Brass'; $zr = Join-Rel @($K.Brass, 'Brass (Mugent)', $name)

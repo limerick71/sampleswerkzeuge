@@ -8,8 +8,10 @@
   - Entfernt im Bericht markierte Duplikate: Pruefung (liegt im Ziel, ein identisches Exemplar bleibt
     erhalten), dann Papierkorb; Inventur-Liste und Bericht werden angepasst, Protokoll in "Protokolle".
   - Mit -Fundorte <json>: liefert den Fundort-Bericht (QLN-03) und uebernimmt angehakte Fundorte als
-    Quellen, oeffnet Fundorte im Explorer und gleicht sie mit der Bibliothek ab.
-  - Beendet sich, wenn der Bericht etwa 2 Minuten lang geschlossen ist.
+    Quellen, oeffnet Fundorte im Explorer und gleicht sie mit dem Ziel-Ordner ab. Die Seite wird bei
+    jedem Oeffnen aus den gespeicherten Daten neu gebaut (auch fuer aeltere Berichte).
+  - Beendet sich, wenn der Bericht etwa 30 Minuten lang geschlossen ist (2.3.2; vorher 2 Minuten -
+    Browser legen Tabs im Hintergrund schlafen). Antwortet der Dienst nicht mehr, zeigt die Seite das an.
 #>
 [CmdletBinding()]
 param([string]$Fundorte)
@@ -17,6 +19,8 @@ param([string]$Fundorte)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Gemeinsam.ps1')
 . (Join-Path $PSScriptRoot 'Bericht.ps1')
+. (Join-Path $PSScriptRoot 'Fundorte-Bericht.ps1')
+$RuheMinuten = 30
 
 $einst = Get-Einstellungen
 $Ziel = $einst.Ziel.TrimEnd('\', '/')
@@ -24,7 +28,8 @@ $ZielVoll = [IO.Path]::GetFullPath($Ziel).TrimEnd('\', '/')
 if ($Fundorte) {
     if (-not (Test-Path -LiteralPath $Fundorte)) { Write-FehlerLog "Bericht-Dienst: Fundorte nicht gefunden: $Fundorte"; exit 1 }
     $html = [IO.Path]::ChangeExtension($Fundorte, '.html')
-    $fundDaten = [IO.File]::ReadAllText($Fundorte, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    $fundJson = [IO.File]::ReadAllText($Fundorte, [Text.Encoding]::UTF8)
+    $fundDaten = $fundJson | ConvertFrom-Json
     $fundPfade = @{}
     foreach ($f in @($fundDaten.f)) { $fundPfade[([string]$f.p).ToLowerInvariant()] = [string]$f.p }
 } else {
@@ -71,7 +76,7 @@ function Open-ExplorerVorne([string]$argument, [string]$ordner) {
 # Abgleich eines Fundorts mit der Bibliothek: Anteil der Audiodateien, die schon im Ziel liegen
 $zielIndex = $null; $hashCache = @{}
 function Get-Md5([string]$p) { $k = $p.ToLowerInvariant(); if (-not $hashCache.ContainsKey($k)) { $hashCache[$k] = (Get-FileHash -LiteralPath $p -Algorithm MD5).Hash }; $hashCache[$k] }
-function Get-Abgleich([string]$ort) {
+function Get-Abgleich([string]$ort, [bool]$nurDirekt = $false) {
     if (-not $script:zielIndex) {
         $script:zielIndex = @{}
         if (Test-Path -LiteralPath $Ziel) {
@@ -89,7 +94,7 @@ function Get-Abgleich([string]$ort) {
         $o = $stapel.Pop()
         try { $eintr = @((New-Object IO.DirectoryInfo $o).EnumerateFileSystemInfos()) } catch { continue }
         foreach ($e in $eintr) {
-            if ($e.Attributes -band [IO.FileAttributes]::Directory) { if (-not ($e.Attributes -band [IO.FileAttributes]::ReparsePoint)) { $stapel.Push($e.FullName) }; continue }
+            if ($e.Attributes -band [IO.FileAttributes]::Directory) { if (-not $nurDirekt -and -not ($e.Attributes -band [IO.FileAttributes]::ReparsePoint)) { $stapel.Push($e.FullName) }; continue }
             if ($e.Name -notmatch $RxAudio -or $e.Name.StartsWith('._')) { continue }
             if ([int]$e.Attributes -band (0x400000 -bor 0x40000 -bor 0x1000)) { $cloud++; continue }   # nicht herunterladen
             $geprueft++
@@ -100,6 +105,22 @@ function Get-Abgleich([string]$ort) {
         }
     }
     return @{ geprueft = $geprueft; vorhanden = $vorhanden; cloud = $cloud }
+}
+
+# Skript fuer die Seite: Zugangsschluessel, Lebenszeichen alle 20 s und deutlicher Hinweis, wenn der Dienst
+# nicht mehr antwortet (2.3.2). Die Seite reagiert auf das Ereignis "sw-getrennt" (Knoepfe sperren).
+function Get-DienstSkript([string]$tok, [string]$neuText) {
+    $t = 'Die Verbindung zu den Samples-Werkzeugen ist beendet (Bericht war lange geschlossen oder die Werkzeuge wurden beendet). Ordner öffnen, Abgleich, Übernehmen und Entfernen gehen erst wieder, wenn du den Bericht ' + $neuText + ' neu öffnest.'
+    $t = $t.Replace("'", "\'")
+    return @"
+<script>window.SW_DIENST={token:'$tok'};(function(){var weg=false;
+function getrennt(){if(weg)return;weg=true;var d=document.createElement('div');d.id='swGetrennt';d.textContent='$t';
+d.style.cssText='position:sticky;top:0;z-index:50;background:#b42318;color:#fff;padding:10px 16px;font:14px Segoe UI,system-ui,sans-serif';
+document.body.insertBefore(d,document.body.firstChild);try{document.dispatchEvent(new Event('sw-getrennt'));}catch(e){}}
+function pruefe(){fetch('/ping?t=$tok',{cache:'no-store'}).then(function(r){if(!r.ok)getrennt();}).catch(getrennt);}
+window.SW_FEHLER=pruefe;setInterval(pruefe,20000);
+document.addEventListener('visibilitychange',function(){if(!document.hidden)pruefe();});})();</script>
+"@
 }
 
 $token = [guid]::NewGuid().ToString('N')
@@ -241,7 +262,7 @@ try {
         if (-not $listener.Pending()) {
             Start-Sleep -Milliseconds 100
             $ruhe = ((Get-Date) - $letzter).TotalSeconds
-            if (($erstKontakt -and $ruhe -gt 120) -or (-not $erstKontakt -and $ruhe -gt 600)) { break }
+            if (($erstKontakt -and $ruhe -gt 60 * $RuheMinuten) -or (-not $erstKontakt -and $ruhe -gt 600)) { break }
             continue
         }
         $client = $listener.AcceptTcpClient()
@@ -255,8 +276,10 @@ try {
             $erstKontakt = $true
             switch ($a.Pfad) {
                 '/' {
-                    $inhalt = [IO.File]::ReadAllText($html, [Text.Encoding]::UTF8)
-                    $inhalt = $inhalt.Replace('<script id="daten"', "<script>window.SW_DIENST={token:'$token'};</script><script id=""daten""")
+                    # 2.3.2: Fundort-Seite immer aus den Daten neu bauen, so zeigt auch ein aelterer Bericht die aktuelle Seite
+                    if ($Fundorte) { $inhalt = New-FundortHtml $fundJson; $neuText = 'in den Samples-Werkzeugen über „Fundorte suchen …“ → „Letzten Bericht öffnen“' }
+                    else { $inhalt = [IO.File]::ReadAllText($html, [Text.Encoding]::UTF8); $neuText = 'in den Samples-Werkzeugen über „Bericht öffnen“' }
+                    $inhalt = $inhalt.Replace('<script id="daten"', (Get-DienstSkript $token $neuText) + '<script id="daten"')
                     Send-Text $strom 200 'OK' $inhalt 'text/html; charset=utf-8'
                 }
                 '/ping' { Send-Text $strom 200 'OK' 'ok' }
@@ -302,8 +325,10 @@ try {
                 }
                 '/quellen' {
                     if ($a.Methode -ne 'POST') { Send-Text $strom 405 'Method Not Allowed' 'Nur POST.'; break }
-                    $ql = @((Get-Einstellungen).Quellen | ForEach-Object { @{ pfad = [string]$_.Pfad; art = (Get-QuellArtName ([string]$_.Art)) } })
-                    Send-Text $strom 200 'OK' (ConvertTo-Json -InputObject @{ quellen = $ql } -Depth 4 -Compress) 'application/json; charset=utf-8'
+                    $ql = @((Get-Einstellungen).Quellen | ForEach-Object { @{ pfad = [string]$_.Pfad; art = (Get-QuellArtName ([string]$_.Art)); aktiv = [bool]$_.Aktiv } })
+                    # 2.3.2: Fundorte, deren Ordner es nicht mehr gibt (Bericht kann aelter sein)
+                    $fehlt = @(); if ($Fundorte) { $fehlt = @($fundPfade.Values | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Container) }) }
+                    Send-Text $strom 200 'OK' (ConvertTo-Json -InputObject @{ quellen = $ql; fehlt = $fehlt } -Depth 4 -Compress) 'application/json; charset=utf-8'
                 }
                 '/uebernehmen' {
                     # QLN-03/04: angehakte Fundorte als Quellen eintragen (nur Fundorte aus diesem Bericht)
@@ -315,6 +340,13 @@ try {
                         if (-not $fundPfade.ContainsKey($pf.ToLowerInvariant())) { $erg += @{ pfad = $pf; ok = $false; grund = 'kein Fundort aus diesem Bericht' }; continue }
                         if (-not (Test-Path -LiteralPath $pf -PathType Container)) { $erg += @{ pfad = $pf; ok = $false; grund = 'Ordner gibt es nicht mehr' }; continue }
                         $e2 = Get-Einstellungen
+                        # 2.3.2: schon eingetragen - aktiv: ueberspringen; ohne Haken: wieder aktivieren
+                        $vorh = @($e2.Quellen | Where-Object { ([string]$_.Pfad).TrimEnd([char]92) -ieq $pf.TrimEnd([char]92) }) | Select-Object -First 1
+                        if ($vorh) {
+                            if ($vorh.Aktiv) { $erg += @{ pfad = $pf; ok = $false; schon = $true; grund = 'ist schon Quelle' } }
+                            else { $vorh.Aktiv = $true; Set-Quellen @($e2.Quellen); $erg += @{ pfad = $pf; ok = $true; aktiviert = $true; grund = '' } }
+                            continue
+                        }
                         $f = Test-NeueQuelle $pf $e2.Quellen $e2.Ziel '' $art
                         if ($f) { $erg += @{ pfad = $pf; ok = $false; grund = $f }; continue }
                         Set-Quellen (@($e2.Quellen) + [pscustomobject]@{ Pfad = $pf; Aktiv = $true; Herkunft = $herkunft; Art = $art })
@@ -324,9 +356,10 @@ try {
                 }
                 '/abgleich' {
                     if ($a.Methode -ne 'POST' -or -not $Fundorte) { Send-Text $strom 405 'Method Not Allowed' 'Nicht erlaubt.'; break }
-                    $pf = [string]($a.Body | ConvertFrom-Json).pfad
+                    $daten = $a.Body | ConvertFrom-Json
+                    $pf = [string]$daten.pfad
                     if (-not $fundPfade.ContainsKey($pf.ToLowerInvariant())) { Send-Text $strom 404 'Not Found' 'Fundort nicht gefunden.'; break }
-                    $r = Get-Abgleich $pf
+                    $r = Get-Abgleich $pf ([bool]$daten.lose)
                     Send-Text $strom 200 'OK' (ConvertTo-Json -InputObject $r -Compress) 'application/json; charset=utf-8'
                 }
                 default { Send-Text $strom 404 'Not Found' 'Unbekannt.' }
