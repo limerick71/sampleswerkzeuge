@@ -199,26 +199,31 @@ foreach ($v in @($env:USERPROFILE, [Environment]::GetFolderPath('MyDocuments'), 
 }
 function Test-Behaelter([string]$p) {
     if ([IO.Path]::GetPathRoot($p) -ieq $p -or $p.Length -le 3) { return $true }
+    # Gewaehlte Suchorte sind nie selbst Fundort ("dort suchen" heisst nicht "das ist eine Quelle")
+    foreach ($w in $wurzeln) { if ($w.TrimEnd('\', '/') -ieq $p.TrimEnd('\', '/')) { return $true } }
     return $behaelter.ContainsKey($p.TrimEnd('\', '/').ToLowerInvariant())
 }
 
 # Fundorte von oben nach unten bestimmen
 $fundorte = New-Object System.Collections.Generic.List[object]
 function Add-Fundort($n) { $fundorte.Add($n) }
-function Find-Fundorte([string]$p) {
+function Find-Fundorte([string]$p, [bool]$unterBehaelter = $false) {
     $n = $knoten[$p.ToLowerInvariant()]
     if (-not $n) { return }
     $kinder = @($n.Kinder.Values | ForEach-Object { $knoten[$_.ToLowerInvariant()] } | Where-Object { $_ })
     if (Test-Behaelter $p) {
-        # Behaelter (Laufwerk, Downloads, Dokumente ...) ist nie selbst Fundort. Lose Audiodateien direkt darin
-        # erscheinen als Hinweis-Zeile (nicht waehlbar), sonst wuerde der ganze Ordner zur Quelle.
+        # Behaelter (Laufwerk, Downloads, Dokumente ...) ist nie als Ganzes Fundort. Lose Audiodateien direkt
+        # darin erscheinen als eigene Zeile mit der Art "Nur lose Dateien" (ohne Unterordner).
         if ($n.EigeneAudio -gt 0 -or $n.EigeneArchive -gt 0) {
             $fundorte.Add(@{ Pfad = $p; Audio = $n.EigeneAudio; Bytes = $n.EigeneBytes; Archive = $n.EigeneArchive; Projekt = 0; Instrument = 0; Cloud = 0; Neu = $n.Neu
                              Formate = $n.Formate; EigeneAudio = $n.EigeneAudio; Kinder = @{}; Beispiele = $n.Beispiele; Lose = $true })
         }
-        foreach ($k in $kinder) { Find-Fundorte $k.Pfad }
+        foreach ($k in $kinder) { Find-Fundorte $k.Pfad $true }
         return
     }
+    # Direkt unter einem Behaelter ist jeder Ordner ein Fundort (z. B. Downloads\BSH092_...), auch wenn er
+    # nur einen Unterordner hat - sonst wuerde ein innerer Ordner zum Pack-Namen.
+    if ($unterBehaelter -and @($kinder | ForEach-Object { Get-Einschaetzung $_ } | Select-Object -Unique).Count -le 1) { Add-Fundort $n; return }
     # Nur ein Unterordner mit Inhalt und hier selbst nichts (auch keine Projekt-, Instrument- oder Archivdateien): tiefer gehen
     if ($n.EigeneAudio -eq 0 -and $kinder.Count -eq 1 -and $n.Archive -eq $kinder[0].Archive -and $n.Projekt -eq $kinder[0].Projekt -and $n.Instrument -eq $kinder[0].Instrument) { Find-Fundorte $kinder[0].Pfad; return }
     $arten = @($kinder | ForEach-Object { Get-Einschaetzung $_ } | Select-Object -Unique)
@@ -229,13 +234,14 @@ foreach ($w in $wurzeln) { Find-Fundorte $w.TrimEnd('\', '/'); if ($w.Length -le
 
 # Bereits eingetragene Quellen
 $quellen = @($einst.Quellen)
-function Get-QuellStatus([string]$p) {
+function Get-QuellStatus([string]$p, [string]$art = 'Sammlung') {
     $pn = $p.TrimEnd('\') + '\'
     foreach ($q in $quellen) {
         $qn = ([string]$q.Pfad).TrimEnd('\') + '\'
+        $qArt = Get-QuellArtName ([string]$q.Art)
         if ($qn -ieq $pn) { return 'ist bereits Quelle' }
-        if ($pn.StartsWith($qn, [StringComparison]::OrdinalIgnoreCase)) { return "liegt in der Quelle $($q.Pfad)" }
-        if ($qn.StartsWith($pn, [StringComparison]::OrdinalIgnoreCase)) { return "enthält die Quelle $($q.Pfad)" }
+        if ($pn.StartsWith($qn, [StringComparison]::OrdinalIgnoreCase) -and $qArt -ne 'Lose') { return "liegt in der Quelle $($q.Pfad)" }
+        if ($qn.StartsWith($pn, [StringComparison]::OrdinalIgnoreCase) -and $art -ne 'Lose') { return "enthält die Quelle $($q.Pfad)" }
     }
     return ''
 }
@@ -244,7 +250,8 @@ $liste = @(foreach ($n in $fundorte) {
     $art = Get-Einschaetzung $n
     $kinder = @($n.Kinder.Values | ForEach-Object { $knoten[$_.ToLowerInvariant()] } | Where-Object { $_ } | Sort-Object { $_.Audio } -Descending)
     $packs = @($kinder | Where-Object { $_.Audio -gt 0 }).Count
-    $status = if ($n.Lose -and $n.Audio -gt 0) { 'lose Dateien direkt in diesem Ordner – zum Übernehmen in einen eigenen Unterordner verschieben' } elseif ($n.Lose) { 'Archive direkt in diesem Ordner – vor dem Übernehmen entpacken (ab Version 3 übernimmt das der Import)' } else { Get-QuellStatus $n.Pfad }
+    $qArt = if ($n.Lose) { 'Lose' } else { Get-QuellArtVorschlag @($kinder | ForEach-Object { [IO.Path]::GetFileName($_.Pfad) }) $n.EigeneAudio }
+    $status = if ($n.Lose -and $n.Audio -eq 0) { 'nur Archive direkt in diesem Ordner – vor dem Übernehmen entpacken (ab Version 3 übernimmt das der Import)' } else { Get-QuellStatus $n.Pfad $qArt }
     [pscustomobject][ordered]@{
         p   = $n.Pfad
         art = $art
@@ -257,8 +264,9 @@ $liste = @(foreach ($n in $fundorte) {
         pk  = $packs
         lose = $n.EigeneAudio
         nl  = [bool]$n.Lose
+        qa  = $qArt
         st  = $status
-        vor = ($art -eq 'Sample-Packs' -and -not $status -and $n.Audio -ge 5 -and $n.Cloud -eq 0)
+        vor = ($art -eq 'Sample-Packs' -and -not $n.Lose -and -not $status -and $n.Audio -ge 5 -and $n.Cloud -eq 0)
         u   = @($kinder | Select-Object -First 30 | ForEach-Object { [pscustomobject]@{ n = [IO.Path]::GetFileName($_.Pfad); a = $_.Audio; b = $_.Bytes; art = (Get-Einschaetzung $_) } })
         bsp = @($n.Beispiele)
     }
@@ -331,7 +339,8 @@ tr.detail td{background:var(--bg);font-size:13px}tr.detail table{margin:4px 0 6p
   function n(z){ return Number(z).toLocaleString('de-DE'); }
   function meldung(t){ var m = $('meldung'); m.textContent = t; m.style.display = 'block'; clearTimeout(m._t); m._t = setTimeout(function(){ m.style.display = 'none'; }, 3500); }
   var KL = {'Sample-Packs':'a-sp','Instrument-Bibliothek':'a-ib','DAW-Projekt':'a-dp','System/Programm':'a-sy','Nur Archive (ZIP)':'a-ar'};
-  function waehlbar(f){ return !f.nl && !f.st && f.a > 0 && f.cl < f.a; }
+  function waehlbar(f){ return !f.st && f.a > 0 && f.cl < f.a; }
+  var ARTEN = [['Sammlung','Sammlung'],['Pack','Ein Pack'],['Lose','Nur lose Dateien']];
   $('unter').textContent = 'Suchlauf vom ' + M.Erstellt + ' · durchsucht: ' + M.Orte.join(', ') + ' · ' + n(M.Ordner) + ' Ordner in ' + M.Dauer + ' s' + (M.NichtLesbar ? ' · ' + M.NichtLesbar + ' Ordner nicht lesbar' : '');
   function karten(){
     var sp = F.filter(function(f){ return f.art === 'Sample-Packs'; }), a = 0, b = 0; sp.forEach(function(f){ a += f.a; b += f.b; });
@@ -341,17 +350,20 @@ tr.detail td{background:var(--bg);font-size:13px}tr.detail table{margin:4px 0 6p
   function zeichnen(){
     var klein = $('klein').checked, andere = $('andere').checked, h = [], z = 0;
     F.forEach(function(f){
-      if (!klein && f.a < 5 && f.zip === 0) return;
+      if (!klein && f.a < 5 && f.zip === 0 && !f.nl) return;
       if (!andere && f.art !== 'Sample-Packs' && f.art !== 'Nur Archive (ZIP)') return;
       var w = waehlbar(f), hw = [];
       if (f.st) hw.push('<span class="hw' + (f.st.indexOf('jetzt') === 0 || f.st.indexOf('ist') === 0 ? ' gruen' : '') + '">' + esc(f.st) + '</span>');
-      if (f.pk > 1) hw.push('<span class="hw">' + f.pk + ' Unterordner mit Audio</span>');
+      if (f.pk > 1 && f.qa === 'Sammlung') hw.push('<span class="hw">' + f.pk + ' Packs (Unterordner mit Audio)</span>');
       if (f.lose && f.pk) hw.push('<span class="hw">' + n(f.lose) + ' Dateien direkt im Ordner</span>');
+      if (f.nl && f.a) hw.push('<span class="hw">nur die Dateien direkt in diesem Ordner, ohne Unterordner</span>');
       if (f.zip) hw.push('<span class="hw rot">' + f.zip + ' Archiv(e) nicht entpackt</span>');
       if (f.cl) hw.push('<span class="hw rot">' + n(f.cl) + ' Dateien nur in der Cloud (werden nicht heruntergeladen)</span>');
       if (abgl[f.i]) hw.push('<span class="hw">' + abgl[f.i] + '</span>');
       h.push('<tr class="f" data-i="' + f.i + '"><td><input type="checkbox" class="w" data-i="' + f.i + '"' + (wahl[f.i] && w ? ' checked' : '') + (w ? '' : ' disabled') + '></td>' +
-        '<td class="pfad">' + esc(f.p) + hw.join('') + '</td><td><span class="art ' + (KL[f.art] || '') + '">' + esc(f.art) + '</span></td>' +
+        '<td class="pfad">' + esc(f.p) + hw.join('') + '</td><td><span class="art ' + (KL[f.art] || '') + '">' + esc(f.art) + '</span>' +
+        (w ? '<br><select class="qa" data-i="' + f.i + '" title="Art als Quelle: Sammlung = jeder Unterordner ist ein Pack; Ein Pack = alles darin unter dem Ordnernamen; Nur lose Dateien = ohne Unterordner">' +
+          ARTEN.map(function(a){ return '<option value="' + a[0] + '"' + (f.qa === a[0] ? ' selected' : '') + '>' + a[1] + '</option>'; }).join('') + '</select>' : '') + '</td>' +
         '<td class="z">' + n(f.a) + '</td><td class="z">' + mb(f.b) + '</td><td>' + esc(f.f) + '</td><td>' + esc(f.neu) + '</td>' +
         '<td><button class="k oe" data-i="' + f.i + '"' + (DIENST ? '' : ' disabled') + '>Ordner öffnen</button></td></tr>');
       if (offen[f.i]) {
@@ -368,19 +380,22 @@ tr.detail td{background:var(--bg);font-size:13px}tr.detail table{margin:4px 0 6p
   }
   document.addEventListener('click', function(e){
     var cb = e.target.closest('input.w'); if (cb) { wahl[cb.getAttribute('data-i')] = cb.checked; zeichnen(); return; }
+    if (e.target.closest('select.qa')) return;
     var oe = e.target.closest('button.oe'); if (oe) { post('/oeffnen-ort', { pfad: F[oe.getAttribute('data-i')].p }).then(function(){ meldung('Explorer wird geöffnet …'); }); return; }
     var tr = e.target.closest('tr.f'); if (tr) { var i = tr.getAttribute('data-i'); offen[i] = !offen[i]; zeichnen(); }
   });
   $('klein').addEventListener('change', zeichnen); $('andere').addEventListener('change', zeichnen);
+  document.addEventListener('change', function(e){ var s = e.target.closest('select.qa'); if (s) F[s.getAttribute('data-i')].qa = s.value; });
   function post(pfad, daten){
     return fetch(pfad + '?t=' + DIENST.token, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(daten) })
       .then(function(r){ return r.text().then(function(t){ if (!r.ok) { meldung(t); throw new Error(t); } return t ? JSON.parse(t) : {}; }); });
   }
   $('uebernehmen').addEventListener('click', function(){
-    var pf = Object.keys(wahl).filter(function(i){ return wahl[i] && waehlbar(F[i]); }).map(function(i){ return F[i].p; });
-    if (!pf.length) return;
-    if (!confirm(pf.length + ' Fundort(e) als Quelle übernehmen?\n\n' + pf.join('\n') + '\n\nEs wird nichts kopiert oder verändert; die Quellen erscheinen unter ⚙ Einstellungen.')) return;
-    post('/uebernehmen', { pfade: pf }).then(function(r){
+    var wa = Object.keys(wahl).filter(function(i){ return wahl[i] && waehlbar(F[i]); }).map(function(i){ return F[i]; });
+    if (!wa.length) return;
+    var NAME = {}; ARTEN.forEach(function(a){ NAME[a[0]] = a[1]; });
+    if (!confirm(wa.length + ' Fundort(e) als Quelle übernehmen?\n\n' + wa.map(function(f){ return f.p + '  (' + NAME[f.qa] + ')'; }).join('\n') + '\n\nEs wird nichts kopiert oder verändert; die Quellen erscheinen unter ⚙ Einstellungen.')) return;
+    post('/uebernehmen', { pfade: wa.map(function(f){ return { pfad: f.p, art: f.qa }; }) }).then(function(r){
       var ok = 0, nein = [];
       (r.ergebnisse || []).forEach(function(x){ F.forEach(function(f){ if (f.p === x.pfad) { if (x.ok) { f.st = 'jetzt Quelle'; ok++; } else { nein.push(x.pfad + ': ' + x.grund); } } }); });
       zeichnen(); meldung(ok + ' Quelle(n) übernommen.');
@@ -403,11 +418,11 @@ tr.detail td{background:var(--bg);font-size:13px}tr.detail table{margin:4px 0 6p
     setInterval(function(){ fetch('/ping?t=' + DIENST.token).catch(function(){}); }, 20000);
     // Status gegen die aktuelle Quellenliste neu bestimmen (Bericht kann älter sein)
     post('/quellen', {}).then(function(r){
-      var Q = (r.quellen || []).map(function(q){ return q.replace(/[\\\/]+$/, '').toLowerCase() + '\\'; });
+      var Q = (r.quellen || []).map(function(q){ return { p: String(q.pfad).replace(/[\\\/]+$/, '').toLowerCase() + '\\', lose: q.art === 'Lose' }; });
       F.forEach(function(f){
-        if (f.nl) return;
+        if (f.nl && !f.a) return;
         var p = f.p.replace(/[\\\/]+$/, '').toLowerCase() + '\\', st = '';
-        Q.forEach(function(q){ if (st) return; if (q === p) st = 'ist bereits Quelle'; else if (p.indexOf(q) === 0) st = 'liegt in einer Quelle'; else if (q.indexOf(p) === 0) st = 'enthält eine Quelle'; });
+        Q.forEach(function(q){ if (st) return; if (q.p === p) st = 'ist bereits Quelle'; else if (p.indexOf(q.p) === 0 && !q.lose) st = 'liegt in einer Quelle'; else if (q.p.indexOf(p) === 0 && f.qa !== 'Lose') st = 'enthält eine Quelle'; });
         f.st = st;
       });
       zeichnen();

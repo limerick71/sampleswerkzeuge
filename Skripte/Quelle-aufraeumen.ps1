@@ -43,13 +43,24 @@ $QuellListe = @(foreach ($q in $QuellListe) {
 Write-Host ""
 if (-not $QuellListe.Count) { throw "Keine Quelle gefunden (in der Oberflaeche unter Einstellungen pruefen)." }
 $Quelle = $QuellListe[0]
-# Zu welcher Quelle gehoert ein Pfad? (laengste passende Quelle, sonst '')
+# Art je Quelle aus den Einstellungen (unbekannt = Sammlung)
+$artVon = @{}
+foreach ($q in $QuellListe) { $artVon[$q] = Get-QuellArtName ([string](@($einst.Quellen | Where-Object { $_.Pfad -ieq $q }) | Select-Object -First 1).Art) }
+# Zu welcher Quelle gehoert ein Pfad? (laengste passende Quelle, sonst ''). "Nur lose Dateien" umfasst
+# nur Dateien direkt im Ordner.
 function Get-QuellWurzel([string]$pfad) {
     $treffer = ''
     foreach ($q in $QuellListe) {
-        if ($pfad.StartsWith($q + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -and $q.Length -gt $treffer.Length) { $treffer = $q }
+        if (-not $pfad.StartsWith($q + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { continue }
+        if ($artVon[$q] -eq 'Lose' -and ([IO.Path]::GetDirectoryName($pfad)).TrimEnd('\', '/') -ine $q) { continue }
+        if ($q.Length -gt $treffer.Length) { $treffer = $q }
     }
     return $treffer
+}
+# Bezugsordner fuer den Pack-Schluessel (wie beim Sortieren)
+function Get-PackWurzel([string]$q) {
+    if (-not $q -or $artVon[$q] -eq 'Sammlung') { return $q }
+    $e = [IO.Path]::GetDirectoryName($q); if ($e) { return $e.TrimEnd('\', '/') } else { return $q }
 }
 
 # Formate fuer Gruppe 3 (CLN-12): eigene Auswahl, unabhaengig von den Sortier-Haken
@@ -144,6 +155,7 @@ if ($MacReste -or $Formate -or $Originale) {
             try { $inh = @(Get-ChildItem -LiteralPath $o -Force -ErrorAction Stop) } catch { continue }
             foreach ($e in $inh) {
                 if ($e.PSIsContainer) {
+                    if ($artVon[$QWurzel] -eq 'Lose') { continue }
                     if ($e.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
                     if ($o -eq $QWurzel -and ($e.Name -eq 'ModX' -or $e.Name -eq '_Sortier-Skript' -or $e.Name -like 'Samples-Werkzeuge*')) { continue }
                     $stapel.Push($e.FullName)
@@ -184,13 +196,13 @@ if ($Formate -or $Originale) {
 if ($Formate) {
     Write-Host "Formate ($formatText): pruefe WAV-Gegenstuecke im Ziel ..." -ForegroundColor Cyan
     $wavs = @{}
-    foreach ($f in $quellDateien) { if ($f.Extension -ieq '.wav' -and (Get-MacRestArt $f.FullName) -ne 'mac') { $wavs[(Get-FormatSchluessel $f.FullName (Get-QuellWurzel $f.FullName))] = $f.FullName } }
+    foreach ($f in $quellDateien) { if ($f.Extension -ieq '.wav' -and (Get-MacRestArt $f.FullName) -ne 'mac') { $wavs[(Get-FormatSchluessel $f.FullName (Get-PackWurzel (Get-QuellWurzel $f.FullName)))] = $f.FullName } }
     $kandidaten = @($quellDateien | Where-Object { $ausgeschlossen -contains $_.Extension.ToLowerInvariant() })
     $i = 0
     foreach ($f in $kandidaten) {
         $i++; Show-Fortschritt 'Formate pruefen' $i $kandidaten.Count
         if ((Get-MacRestArt $f.FullName) -eq 'mac') { continue }
-        $wav = $wavs[(Get-FormatSchluessel $f.FullName (Get-QuellWurzel $f.FullName))]
+        $wav = $wavs[(Get-FormatSchluessel $f.FullName (Get-PackWurzel (Get-QuellWurzel $f.FullName)))]
         if (-not $wav) { continue }   # ohne WAV-Gegenstueck: bleibt immer
         $zw = $zielVon[$wav.ToLowerInvariant()]
         # WAV war beim Kopieren ein Duplikat: dann zaehlt die Ziel-Kopie des behaltenen Exemplars

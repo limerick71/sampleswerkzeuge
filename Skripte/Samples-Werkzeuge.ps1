@@ -117,7 +117,7 @@ function Test-OrdnerBereit([switch]$NurQuelle) {
     }
     if (-not $NurQuelle) {
         foreach ($q in $aktiv) {
-            $f = Test-QuelleZiel $q.Pfad $e.Ziel
+            $f = Test-QuelleZiel $q.Pfad $e.Ziel (Get-QuellArtName $q.Art)
             if ($f) { Show-Meldung "$f`n($($q.Pfad))`n`nBitte über ⚙ Einstellungen korrigieren." 'Warning'; return $false }
         }
         $zs = Get-OrdnerStatus $e.Ziel
@@ -216,7 +216,7 @@ function Show-Einstellungen {
     $lv = New-Object System.Windows.Forms.ListView
     $lv.View = 'Details'; $lv.CheckBoxes = $true; $lv.FullRowSelect = $true; $lv.HideSelection = $false; $lv.MultiSelect = $false
     $lv.Font = $schrift; $lv.Location = New-Object System.Drawing.Point(12, 26); $lv.Size = New-Object System.Drawing.Size(($gb - 24), 132)
-    [void]$lv.Columns.Add('Ordner', 330); [void]$lv.Columns.Add('Herkunft', 140); [void]$lv.Columns.Add('Zustand', ($gb - 24 - 330 - 140 - 24))
+    [void]$lv.Columns.Add('Ordner', 270); [void]$lv.Columns.Add('Art', 110); [void]$lv.Columns.Add('Herkunft', 120); [void]$lv.Columns.Add('Zustand', ($gb - 24 - 270 - 110 - 120 - 24))
     $g0.Controls.Add($lv)
     $script:qLaedt = $false
     $fuelle = {
@@ -224,7 +224,9 @@ function Show-Einstellungen {
         $lv.Items.Clear()
         foreach ($q in @((Get-Einstellungen).Quellen)) {
             $it = New-Object System.Windows.Forms.ListViewItem($q.Pfad)
+            [void]$it.SubItems.Add($QuellArten[(Get-QuellArtName $q.Art)])
             [void]$it.SubItems.Add($q.Herkunft)
+            $it.Tag = (Get-QuellArtName $q.Art)
             [void]$it.SubItems.Add($(if (Test-Path -LiteralPath $q.Pfad) { 'gefunden' } else { 'NICHT GEFUNDEN' }))
             $it.Checked = [bool]$q.Aktiv
             [void]$lv.Items.Add($it)
@@ -232,7 +234,7 @@ function Show-Einstellungen {
         $script:qLaedt = $false
     }
     $speichern = {
-        $liste = @(foreach ($it in $lv.Items) { [pscustomobject]@{ Pfad = $it.Text; Aktiv = $it.Checked; Herkunft = $it.SubItems[1].Text } })
+        $liste = @(foreach ($it in $lv.Items) { [pscustomobject]@{ Pfad = $it.Text; Aktiv = $it.Checked; Herkunft = $it.SubItems[2].Text; Art = [string]$it.Tag } })
         try { Set-Quellen $liste } catch { Show-Meldung "Speichern fehlgeschlagen:`n$($_.Exception.Message)" 'Error' }
     }
     $lv.Add_ItemChecked({ if (-not $script:qLaedt) { & $speichern } })
@@ -248,10 +250,12 @@ function Show-Einstellungen {
         if ($dlg.ShowDialog($d) -ne 'OK') { return }
         $neu = $dlg.SelectedPath.TrimEnd('\')
         $e = Get-Einstellungen
-        $f = Test-NeueQuelle $neu $e.Quellen $e.Ziel
+        $art = Get-QuellArtFuerOrdner $neu
+        $f = Test-NeueQuelle $neu $e.Quellen $e.Ziel '' $art
         if ($f) { Show-Meldung "$f`n`nDie Quelle wurde nicht hinzugefügt." 'Warning'; return }
-        Set-Quellen (@($e.Quellen) + [pscustomobject]@{ Pfad = $neu; Aktiv = $true; Herkunft = 'manuell' })
+        Set-Quellen (@($e.Quellen) + [pscustomobject]@{ Pfad = $neu; Aktiv = $true; Herkunft = 'manuell'; Art = $art })
         & $fuelle
+        Show-Meldung "Hinzugefügt als '$($QuellArten[$art])'.`n`nFalls das nicht passt: Quelle in der Liste anklicken und unten die Art ändern."
     })
     $g0.Controls.Add($bAdd)
     $bWeg = New-Object System.Windows.Forms.Button
@@ -271,8 +275,33 @@ function Show-Einstellungen {
     $bSuch.Add_Click({ Show-FundorteSuchen })
     $tt.SetToolTip($bSuch, 'Sucht auf Laufwerken und in Ordnern nach Sample-Packs und zeigt die Fundorte im Browser. Dort lassen sie sich als Quellen übernehmen.')
     $g0.Controls.Add($bSuch)
-    $lq = New-Hinweis $g0 'Haken = aktiv. Sortieren und „Quelle aufräumen“ lesen alle aktiven Quellen. Doppelklick öffnet einen Ordner.' 12 ($by + 38) ($gb - 24)
-    $g0.Height = $by + 38 + $lq.PreferredHeight + 14
+    $ay = $by + 40
+    $la = New-Object System.Windows.Forms.Label
+    $la.Text = 'Art der markierten Quelle:'; $la.Font = $schrift; $la.AutoSize = $true; $la.Location = New-Object System.Drawing.Point(12, ($ay + 4))
+    $g0.Controls.Add($la)
+    $cbArt = New-Object System.Windows.Forms.ComboBox
+    $cbArt.DropDownStyle = 'DropDownList'; $cbArt.Font = $schrift; $cbArt.Location = New-Object System.Drawing.Point(190, $ay); $cbArt.Width = 180
+    foreach ($k in $QuellArten.Keys) { [void]$cbArt.Items.Add($QuellArten[$k]) }
+    $cbArt.Enabled = $false
+    $g0.Controls.Add($cbArt)
+    $tt.SetToolTip($cbArt, "Sammlung: jeder Unterordner ist ein Pack.`nEin Pack: alles darin gehört zu einem Pack (Name = Ordnername), auch wenn unsortiert.`nNur lose Dateien: nur die Dateien direkt im Ordner, ohne Unterordner.")
+    $script:artSetzt = $false
+    $lv.Add_SelectedIndexChanged({
+        if (-not $lv.SelectedItems.Count) { $cbArt.Enabled = $false; return }
+        $script:artSetzt = $true; $cbArt.SelectedItem = $QuellArten[[string]$lv.SelectedItems[0].Tag]; $cbArt.Enabled = $true; $script:artSetzt = $false
+    })
+    $cbArt.Add_SelectedIndexChanged({
+        if ($script:artSetzt -or -not $lv.SelectedItems.Count) { return }
+        $it = $lv.SelectedItems[0]
+        $neuArt = @($QuellArten.Keys | Where-Object { $QuellArten[$_] -eq $cbArt.SelectedItem })[0]
+        if ($neuArt -eq [string]$it.Tag) { return }
+        $e = Get-Einstellungen
+        $f = Test-NeueQuelle $it.Text $e.Quellen $e.Ziel $it.Text $neuArt
+        if ($f) { Show-Meldung "$f`n`nDie Art wurde nicht geändert." 'Warning'; $script:artSetzt = $true; $cbArt.SelectedItem = $QuellArten[[string]$it.Tag]; $script:artSetzt = $false; return }
+        $it.Tag = $neuArt; $it.SubItems[1].Text = $QuellArten[$neuArt]; & $speichern
+    })
+    $lq = New-Hinweis $g0 'Haken = aktiv. Sortieren und „Quelle aufräumen“ lesen alle aktiven Quellen. Art: Sammlung = jeder Unterordner ist ein Pack; Ein Pack = alles darin unter dem Ordnernamen; Nur lose Dateien = ohne Unterordner. Doppelklick öffnet einen Ordner.' 12 ($ay + 34) ($gb - 24)
+    $g0.Height = $ay + 34 + $lq.PreferredHeight + 14
     $dy += $g0.Height + 10
     $d.Add_Activated({ & $fuelle })   # nach "Fundorte suchen" (Übernahme im Browser) neu einlesen
 
@@ -307,7 +336,7 @@ function Show-Einstellungen {
             $neu = $dlg.SelectedPath.TrimEnd('\')
             $e = Get-Einstellungen
             $f = ''
-            if ($pe.Name -eq 'Ziel') { foreach ($q in @($e.Quellen)) { if (-not $f) { $f = Test-QuelleZiel $q.Pfad $neu } } }
+            if ($pe.Name -eq 'Ziel') { foreach ($q in @($e.Quellen)) { if (-not $f) { $f = Test-QuelleZiel $q.Pfad $neu (Get-QuellArtName $q.Art) } } }
             if ($f) { Show-Meldung "$f`n`nDie Einstellung wurde nicht geändert." 'Warning'; return }
             try { Set-Einstellung $pe.Name $neu; $felder[$pe.Name].Text = $neu } catch { Show-Meldung "Speichern fehlgeschlagen:`n$($_.Exception.Message)" 'Error' }
         })
@@ -698,7 +727,8 @@ function Update-Status {
     elseif ($aktiv.Count -le 3) {
         foreach ($q in $aktiv) {
             $t = if (Test-Path -LiteralPath $q.Pfad) { 'gefunden' } else { "NICHT GEFUNDEN $([char]0x2013) über $([char]0x2699) Einstellungen ändern" }
-            $zeilen += "Quelle:  $($q.Pfad)  $([char]0x2013)  $t"
+            $artText = if ((Get-QuellArtName $q.Art) -ne 'Sammlung') { "  ($($QuellArten[(Get-QuellArtName $q.Art)]))" } else { '' }
+            $zeilen += "Quelle:  $($q.Pfad)$artText  $([char]0x2013)  $t"
         }
     } else {
         $zeilen += "Quellen:  $($aktiv.Count) aktiv $([char]0x2013) " + $(if ($fehlen.Count) { "$($fehlen.Count) NICHT GEFUNDEN (siehe $([char]0x2699) Einstellungen)" } else { 'alle gefunden' })

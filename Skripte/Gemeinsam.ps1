@@ -10,7 +10,7 @@
 #   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
 #   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
 
-$ProgrammVersion = '2.3.0'
+$ProgrammVersion = '2.3.1'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -127,10 +127,12 @@ function Get-Einstellungen {
         foreach ($q in @($cfg.Quellen)) {
             $pf = ([string]$q.Pfad).Trim().TrimEnd('\', '/')
             if (-not $pf) { continue }
-            $liste.Add([pscustomobject]@{ Pfad = $pf; Aktiv = (([string]$q.Aktiv) -notin 'False', '0', ''); Herkunft = $(if ($q.Herkunft) { [string]$q.Herkunft } else { 'manuell' }) })
+            $liste.Add([pscustomobject]@{ Pfad = $pf; Aktiv = (([string]$q.Aktiv) -notin 'False', '0', ''); Herkunft = $(if ($q.Herkunft) { [string]$q.Herkunft } else { 'manuell' }); Art = (Get-QuellArtName ([string]$q.Art)) })
         }
     }
-    if ($liste.Count -eq 0 -and $e.Quelle) { $liste.Add([pscustomobject]@{ Pfad = $e.Quelle; Aktiv = $true; Herkunft = 'manuell' }) }
+    # Nur wenn es noch gar keine Quellenliste gibt (Einstellungen bis 2.2): bisherige Quelle uebernehmen.
+    # Eine bewusst geleerte Liste bleibt leer.
+    if ($liste.Count -eq 0 -and $e.Quelle -and -not ($cfg -and $cfg.PSObject.Properties['Quellen'])) { $liste.Add([pscustomobject]@{ Pfad = $e.Quelle; Aktiv = $true; Herkunft = 'manuell'; Art = 'Sammlung' }) }
     $e.Add('Quellen', [object[]]$liste.ToArray())
     # "Quelle" bleibt fuer aeltere Stellen: erste aktive Quelle
     $erste = @($liste | Where-Object { $_.Aktiv }) | Select-Object -First 1
@@ -138,26 +140,55 @@ function Get-Einstellungen {
     return $e
 }
 
-# Aktive Quellen als Pfadliste
-function Get-AktiveQuellen { @((Get-Einstellungen).Quellen | Where-Object { $_.Aktiv } | ForEach-Object { $_.Pfad }) }
+# Art einer Quelle (2.3.1):
+#   Sammlung = jeder Unterordner ist ein Pack (Pack-Name = Unterordner)
+#   Pack     = alles darin ist ein Pack (Pack-Name = Name des Quellordners), auch wenn unsortiert
+#   Lose     = nur die Dateien direkt im Ordner, ohne Unterordner (Pack-Name = Name des Ordners)
+$QuellArten = [ordered]@{ Sammlung = 'Sammlung'; Pack = 'Ein Pack'; Lose = 'Nur lose Dateien' }
+function Get-QuellArtName([string]$art) { if ($QuellArten.Contains($art)) { return $art } else { return 'Sammlung' } }
 
-# Quellenliste speichern (Liste von Objekten mit Pfad, Aktiv, Herkunft)
+# Typische Ordner im Inneren eines Packs ("Loops", "One Shots", "Kick", "...-WAV" ...)
+$RxPackInnen = '^(samples?|sounds|demo|wav|wave|waves|aiff?|rex2?|rx2|acid|midi|stems|presets?|patches|full ?mix|kits?)$|^(loops?|one[ -]?shots?|oneshots|drums?|drum ?loops|kicks?|snares?|hats?|hi[ -]?hats?|claps?|percs?|percussion|toms?|cymbals?|crash(es)?|rides?|shakers?|bass|basslines?|bass ?loops|synths?|synth ?loops|keys|pads?|leads?|plucks?|chords?|arps?|vocals?|vox|vocal ?loops|fx|sfx|risers?|impacts?|sweeps?|atmos(pheres?)?|textures?|construction ?kits?|drum ?kits?|top ?loops|music ?loops|melod(y|ic|ies)( ?loops)?|guitars?|piano|strings|brass|apple ?loops)\b|[-_ ](wav|rex2?|rx2|aiff?|midi|apple ?loops|ableton|presets?)$'
+$RxPackNeutral = '^(licen[cs]es?|readme|info|infos|artwork|cover|documentation|docs?|__macosx|license & files)\b'
+# Vorschlag fuer die Art aus den Namen der Unterordner und der Zahl der Dateien direkt im Ordner
+function Get-QuellArtVorschlag([string[]]$kinder, [int]$eigeneDateien = 0) {
+    $relevant = @($kinder | Where-Object { $_ -and $_.ToLowerInvariant() -notmatch $RxPackNeutral })
+    if (-not $relevant.Count) { return 'Pack' }
+    $innen = @($relevant | Where-Object { $_.ToLowerInvariant() -match $RxPackInnen }).Count
+    if ($innen * 2 -ge $relevant.Count) { return 'Pack' }
+    return 'Sammlung'
+}
+# Vorschlag direkt fuer einen vorhandenen Ordner
+function Get-QuellArtFuerOrdner([string]$pfad) {
+    $k = @(); $n = 0
+    try { $k = @(Get-ChildItem -LiteralPath $pfad -Directory -Force -ErrorAction Stop | ForEach-Object { $_.Name }) } catch { }
+    try { $n = @(Get-ChildItem -LiteralPath $pfad -File -Force -ErrorAction Stop | Where-Object { $_.Name -match $RxAudio }).Count } catch { }
+    return Get-QuellArtVorschlag $k $n
+}
+
+# Aktive Quellen als Pfadliste bzw. als Objekte (Pfad, Art ...)
+function Get-AktiveQuellen { @((Get-Einstellungen).Quellen | Where-Object { $_.Aktiv } | ForEach-Object { $_.Pfad }) }
+function Get-AktiveQuellObjekte { @((Get-Einstellungen).Quellen | Where-Object { $_.Aktiv }) }
+
+# Quellenliste speichern (Liste von Objekten mit Pfad, Aktiv, Herkunft, Art)
 function Set-Quellen($liste) {
-    $sauber = @($liste | ForEach-Object { [ordered]@{ Pfad = [string]$_.Pfad; Aktiv = [bool]$_.Aktiv; Herkunft = [string]$_.Herkunft } })
+    $sauber = @($liste | ForEach-Object { [ordered]@{ Pfad = [string]$_.Pfad; Aktiv = [bool]$_.Aktiv; Herkunft = [string]$_.Herkunft; Art = (Get-QuellArtName ([string]$_.Art)) } })
     Set-Einstellung 'Quellen' $sauber
 }
 
 # Prueft einen neuen Quellordner gegen Ziel und vorhandene Quellen. Liefert Fehlertext oder ''.
-function Test-NeueQuelle([string]$pfad, $quellen, [string]$ziel, [string]$ausser = '') {
-    $f = Test-QuelleZiel $pfad $ziel
+# "Nur lose Dateien" liest keine Unterordner: darf daher ueber anderen Quellen (oder dem Ziel) liegen.
+function Test-NeueQuelle([string]$pfad, $quellen, [string]$ziel, [string]$ausser = '', [string]$art = 'Sammlung') {
+    $f = Test-QuelleZiel $pfad $ziel $art
     if ($f) { return $f }
     $n = $pfad.Replace('/', '\').TrimEnd('\') + '\'
     foreach ($q in @($quellen)) {
         if ($ausser -and $q.Pfad -ieq $ausser) { continue }
         $a = ([string]$q.Pfad).Replace('/', '\').TrimEnd('\') + '\'
+        $qArt = Get-QuellArtName ([string]$q.Art)
         if ($a -ieq $n) { return "Dieser Ordner ist schon als Quelle eingetragen." }
-        if ($n.StartsWith($a, [StringComparison]::OrdinalIgnoreCase)) { return "Der Ordner liegt innerhalb der Quelle $($q.Pfad) und wird dort schon mitgelesen." }
-        if ($a.StartsWith($n, [StringComparison]::OrdinalIgnoreCase)) { return "Die Quelle $($q.Pfad) liegt innerhalb dieses Ordners. Bitte zuerst diese Quelle entfernen." }
+        if ($n.StartsWith($a, [StringComparison]::OrdinalIgnoreCase) -and $qArt -ne 'Lose') { return "Der Ordner liegt innerhalb der Quelle $($q.Pfad) und wird dort schon mitgelesen." }
+        if ($a.StartsWith($n, [StringComparison]::OrdinalIgnoreCase) -and $art -ne 'Lose') { return "Die Quelle $($q.Pfad) liegt innerhalb dieses Ordners. Bitte zuerst diese Quelle entfernen oder als Art 'Nur lose Dateien' waehlen." }
     }
     return ''
 }
@@ -177,7 +208,7 @@ function Set-Einstellung([string]$name, $wert) {
         # Quelle, Ziel und Quellen immer speichern, alles andere nur, wenn es vom Standard abweicht
         if ($k -in 'ErsterStartErledigt', 'Quelle', 'Ziel', 'Quellen' -or [string]$e[$k] -ne [string]$std[$k]) { $obj[$k] = $e[$k] }
     }
-    if ($obj.Contains('Quellen')) { $obj['Quellen'] = @($obj['Quellen'] | ForEach-Object { [ordered]@{ Pfad = [string]$_.Pfad; Aktiv = [bool]$_.Aktiv; Herkunft = [string]$_.Herkunft } }) }
+    if ($obj.Contains('Quellen')) { $obj['Quellen'] = @($obj['Quellen'] | ForEach-Object { [ordered]@{ Pfad = [string]$_.Pfad; Aktiv = [bool]$_.Aktiv; Herkunft = [string]$_.Herkunft; Art = (Get-QuellArtName ([string]$_.Art)) } }) }
     ConvertTo-Json -InputObject $obj -Depth 5 | Set-Content -LiteralPath $einstellungsPfad -Encoding UTF8
 }
 
@@ -212,13 +243,13 @@ if (-not (Test-Path -LiteralPath $einstellungsPfad)) {
 }
 
 # Prueft, ob Quelle und Ziel zueinander passen. Liefert eine Fehlermeldung oder ''.
-function Test-QuelleZiel([string]$quelle, [string]$ziel) {
+function Test-QuelleZiel([string]$quelle, [string]$ziel, [string]$art = 'Sammlung') {
     if (-not $quelle) { return 'Es ist keine Quelle eingestellt.' }
     if (-not $ziel)   { return 'Es ist kein Ziel eingestellt.' }
     $q = $quelle.Replace('/', '\').TrimEnd('\') + '\'
     $z = $ziel.Replace('/', '\').TrimEnd('\') + '\'
     if ($q -ieq $z) { return 'Quelle und Ziel sind derselbe Ordner.' }
-    if ($z.StartsWith($q, [StringComparison]::OrdinalIgnoreCase)) { return 'Das Ziel darf nicht innerhalb der Quelle liegen.' }
+    if ($z.StartsWith($q, [StringComparison]::OrdinalIgnoreCase) -and $art -ne 'Lose') { return 'Das Ziel darf nicht innerhalb der Quelle liegen.' }
     if ($q.StartsWith($z, [StringComparison]::OrdinalIgnoreCase)) { return 'Die Quelle darf nicht innerhalb des Ziels liegen.' }
     return ''
 }

@@ -36,6 +36,9 @@ Unten auf „⚙ Einstellungen“ klicken:
               oder mit „Fundorte suchen …“: das Programm sucht auf dem Rechner
               nach Sample-Packs und zeigt sie im Browser; dort anhaken und
               „In Quellenliste übernehmen“. Haken = aktiv.
+              Art je Quelle: „Sammlung“ (jeder Unterordner ein Pack),
+              „Ein Pack“ (alles unter dem Ordnernamen, auch unsortiert),
+              „Nur lose Dateien“ (ohne Unterordner, z. B. lose WAVs in Downloads).
   - Ziel:     sortierte Sample-Bibliothek (Standard: Dokumente\Ziel_Samples)
   - Berichte: hier entstehen Inventuren und Berichte (Standard: Programmordner)
 Downloads und Download-Archiv werden erst ab Version 3 genutzt.

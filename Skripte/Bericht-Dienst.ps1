@@ -302,22 +302,22 @@ try {
                 }
                 '/quellen' {
                     if ($a.Methode -ne 'POST') { Send-Text $strom 405 'Method Not Allowed' 'Nur POST.'; break }
-                    $ql = @((Get-Einstellungen).Quellen | ForEach-Object { [string]$_.Pfad })
-                    Send-Text $strom 200 'OK' (ConvertTo-Json -InputObject @{ quellen = $ql } -Compress) 'application/json; charset=utf-8'
+                    $ql = @((Get-Einstellungen).Quellen | ForEach-Object { @{ pfad = [string]$_.Pfad; art = (Get-QuellArtName ([string]$_.Art)) } })
+                    Send-Text $strom 200 'OK' (ConvertTo-Json -InputObject @{ quellen = $ql } -Depth 4 -Compress) 'application/json; charset=utf-8'
                 }
                 '/uebernehmen' {
                     # QLN-03/04: angehakte Fundorte als Quellen eintragen (nur Fundorte aus diesem Bericht)
                     if ($a.Methode -ne 'POST' -or -not $Fundorte) { Send-Text $strom 405 'Method Not Allowed' 'Nicht erlaubt.'; break }
                     $erg = @()
                     $herkunft = 'aus Suchlauf ' + (Get-Date).ToString('dd.MM.yyyy')
-                    foreach ($pf in @(($a.Body | ConvertFrom-Json).pfade)) {
-                        $pf = [string]$pf
+                    foreach ($eintrag in @(($a.Body | ConvertFrom-Json).pfade)) {
+                        if ($eintrag -is [string]) { $pf = $eintrag; $art = 'Sammlung' } else { $pf = [string]$eintrag.pfad; $art = Get-QuellArtName ([string]$eintrag.art) }
                         if (-not $fundPfade.ContainsKey($pf.ToLowerInvariant())) { $erg += @{ pfad = $pf; ok = $false; grund = 'kein Fundort aus diesem Bericht' }; continue }
                         if (-not (Test-Path -LiteralPath $pf -PathType Container)) { $erg += @{ pfad = $pf; ok = $false; grund = 'Ordner gibt es nicht mehr' }; continue }
                         $e2 = Get-Einstellungen
-                        $f = Test-NeueQuelle $pf $e2.Quellen $e2.Ziel
+                        $f = Test-NeueQuelle $pf $e2.Quellen $e2.Ziel '' $art
                         if ($f) { $erg += @{ pfad = $pf; ok = $false; grund = $f }; continue }
-                        Set-Quellen (@($e2.Quellen) + [pscustomobject]@{ Pfad = $pf; Aktiv = $true; Herkunft = $herkunft })
+                        Set-Quellen (@($e2.Quellen) + [pscustomobject]@{ Pfad = $pf; Aktiv = $true; Herkunft = $herkunft; Art = $art })
                         $erg += @{ pfad = $pf; ok = $true; grund = '' }
                     }
                     Send-Text $strom 200 'OK' (ConvertTo-Json -InputObject @{ ergebnisse = @($erg) } -Depth 4 -Compress) 'application/json; charset=utf-8'

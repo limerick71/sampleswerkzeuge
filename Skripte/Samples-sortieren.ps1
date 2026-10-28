@@ -40,20 +40,32 @@ $Zeitstempel  = Get-Date -Format 'yyyy-MM-dd_HHmmss'
 
 $einst = Get-Einstellungen
 # Quellen (QLN-05): alle aktiven aus der Quellenliste, oder -Quelle fuer einen einzelnen Lauf
-$QuellListe = if ($Quelle) { @($Quelle) } else { @(Get-AktiveQuellen) }
+$QuellObjekte = if ($Quelle) { @([pscustomobject]@{ Pfad = $Quelle; Art = 'Sammlung' }) } else { @(Get-AktiveQuellObjekte) }
+$QuellListe = @($QuellObjekte | ForEach-Object { $_.Pfad })
 if (-not $Ziel)   { $Ziel   = $einst.Ziel }
 Write-Host "Samples sortieren (Samples-Werkzeuge $ProgrammVersion)" -ForegroundColor Cyan
-foreach ($q in $QuellListe) { Write-Host "  Quelle: $q" }
+foreach ($q in $QuellObjekte) { Write-Host "  Quelle: $($q.Pfad)  ($($QuellArten[(Get-QuellArtName $q.Art)]))" }
 Write-Host "  Ziel:   $Ziel"
 Write-Host ""
 
 if (-not $QuellListe.Count) { throw "Es ist keine Quelle aktiv (in der Oberflaeche unter Einstellungen hinzufuegen oder anhaken)." }
-$QuellListe = @(foreach ($q in $QuellListe) {
+$artVon = @{}
+$QuellListe = @(foreach ($qo in $QuellObjekte) {
+    $q = $qo.Pfad
     if (-not (Test-Path -LiteralPath $q)) { throw "Quellordner nicht gefunden: $q  (in der Oberflaeche unter Einstellungen aendern)" }
-    (Resolve-Path -LiteralPath $q).ProviderPath.TrimEnd('\','/')
+    $v = (Resolve-Path -LiteralPath $q).ProviderPath; if ($v.Length -gt 3) { $v = $v.TrimEnd('\','/') }
+    $artVon[$v] = Get-QuellArtName $qo.Art
+    $v
 })
 $Ziel   = $Ziel.TrimEnd('\','/')
-foreach ($q in $QuellListe) { $pruef = Test-QuelleZiel $q $Ziel; if ($pruef) { throw "$pruef ($q)" } }
+foreach ($q in $QuellListe) { $pruef = Test-QuelleZiel $q $Ziel $artVon[$q]; if ($pruef) { throw "$pruef ($q)" } }
+# Bezugsordner fuer Pack-Namen: bei "Ein Pack" und "Nur lose Dateien" der Elternordner, damit der
+# Quellordner selbst die erste Ebene (= Pack-Name) ist
+function Get-PackWurzel([string]$q) {
+    if ($artVon[$q] -eq 'Sammlung') { return $q }
+    $e = [IO.Path]::GetDirectoryName($q)
+    if ($e) { return $e.TrimEnd('\','/') } else { return $q }
+}
 $Quelle = $QuellListe[0]
 $zielStatus = Get-OrdnerStatus $Ziel
 if ($zielStatus.Fehlt) { throw "Ziel nicht erreichbar: $($zielStatus.Text)  (in der Oberflaeche unter 'Einstellungen' aendern)" }
@@ -183,6 +195,7 @@ foreach ($QWurzel in $QuellListe) {
         catch { $nichtLesbar++; continue }
         foreach ($e in $inhalt) {
             if ($e.PSIsContainer) {
+                if ($artVon[$QWurzel] -eq 'Lose') { continue }   # nur Dateien direkt im Ordner
                 if ($e.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
                 if ($ordner -eq $QWurzel -and $e.Name -eq 'ModX') { continue }
                 $stapel.Push($e.FullName)
@@ -200,7 +213,8 @@ $alle = @($alle | Where-Object {
 })
 foreach ($f in $alle) {
     $QWurzel = $wurzelVon[$f.FullName]
-    $rel   = $f.FullName.Substring($QWurzel.Length).TrimStart('\','/')
+    $PWurzel = Get-PackWurzel $QWurzel
+    $rel   = $f.FullName.Substring($PWurzel.Length).TrimStart('\','/')
     $teile = $rel -split '[\\/]'
     $name  = $f.Name
     $nameL = $name.ToLowerInvariant()
@@ -209,7 +223,7 @@ foreach ($f in $alle) {
     $eintrag = [ordered]@{
         Aktion = 'Kopieren'; Kategorie = ''; Quelle = $f.FullName; Ziel = ''
         GroesseMB = [math]::Round($f.Length / 1MB, 2); Bytes = $f.Length
-        Dedup = $true; ZielRel = ''; Hinweis = ''; Quellordner = $QWurzel
+        Dedup = $true; ZielRel = ''; Hinweis = ''; Quellordner = $QWurzel; PackWurzel = $PWurzel
     }
 
     # --- macOS-Reste (CLN-10): werden nicht kopiert, bleiben in der Quelle (Grundsatz: Sortieren liest die Quelle nur).
@@ -235,14 +249,14 @@ foreach ($f in $alle) {
     }
 
     # --- Pack bestimmen (Sammelordner haben Packs eine Ebene tiefer) ------
-    if (($teile[0] -in @('Drumloops','Lofi Sounds - Free Sample Pack','Vocals')) -and $teile.Count -gt 2) {
+    if ($artVon[$QWurzel] -eq 'Sammlung' -and ($teile[0] -in @('Drumloops','Lofi Sounds - Free Sample Pack','Vocals')) -and $teile.Count -gt 2) {
         $pack = $teile[1]; $packRel = $teile[2..($teile.Count - 1)]
     } elseif ($teile.Count -gt 1) {
         $pack = $teile[0]; $packRel = $teile[1..($teile.Count - 1)]
     } else {
         $pack = '_Einzeldateien'; $packRel = @($teile[0])
     }
-    if ($teile[0] -eq 'Vocals' -and $teile.Count -eq 2) { $pack = 'Vocals (Einzeldateien)' }
+    if ($artVon[$QWurzel] -eq 'Sammlung' -and $teile[0] -eq 'Vocals' -and $teile.Count -eq 2) { $pack = 'Vocals (Einzeldateien)' }
     $packOrdner = @(); if ($packRel.Count -gt 1) { $packOrdner = $packRel[0..($packRel.Count - 2)] }
     $relImPack  = Join-Rel $packRel
     $alleOrdner = @(); if ($teile.Count -gt 1) { $alleOrdner = $teile[0..($teile.Count - 2)] }
@@ -333,12 +347,12 @@ foreach ($f in $alle) {
 $ausgeschlossen = @($FormatEinstellung.Keys | Where-Object { -not $einst[$FormatEinstellung[$_]] })
 if ($ausgeschlossen.Count -gt 0) {
     $wavNamen = @{}
-    foreach ($x in $plan) { if ($x.Quelle -match '\.wav$' -and $x.Aktion -notin 'Ignoriert', 'Mac-Rest') { $wavNamen[(Get-FormatSchluessel $x.Quelle $x.Quellordner)] = $true } }
+    foreach ($x in $plan) { if ($x.Quelle -match '\.wav$' -and $x.Aktion -notin 'Ignoriert', 'Mac-Rest') { $wavNamen[(Get-FormatSchluessel $x.Quelle $x.PackWurzel)] = $true } }
     foreach ($x in @($plan | Where-Object { $_.Aktion -eq 'Kopieren' })) {
         $ext = [IO.Path]::GetExtension($x.Quelle).ToLowerInvariant()
         if ($ausgeschlossen -notcontains $ext) { continue }
         $fmt = $FormatName[$FormatEinstellung[$ext]]
-        $k = Get-FormatSchluessel $x.Quelle $x.Quellordner
+        $k = Get-FormatSchluessel $x.Quelle $x.PackWurzel
         if ($wavNamen.ContainsKey($k)) { $x.Aktion = 'Format ausgeschlossen'; $x.Kategorie = $fmt; $x.Hinweis = "WAV mit gleichem Namen im selben Pack vorhanden, Haken '$fmt' ist aus" }
         else { $x.Hinweis = "$fmt ohne WAV mit gleichem Namen im Pack - wird einsortiert" }
     }
