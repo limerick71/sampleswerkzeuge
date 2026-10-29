@@ -59,6 +59,13 @@ $QuellListe = @(foreach ($qo in $QuellObjekte) {
 })
 $Ziel   = $Ziel.TrimEnd('\','/')
 foreach ($q in $QuellListe) { $pruef = Test-QuelleZiel $q $Ziel $artVon[$q]; if ($pruef) { throw "$pruef ($q)" } }
+# 2.3.4: Sammlung, deren Packs erst tiefer liegen (z. B. Splice -> Samples -> packs): sonst wird "Samples" zum Pack-Namen
+$PackTiefer = @(foreach ($q in $QuellListe) { if ($artVon[$q] -eq 'Sammlung') { $eb = Get-PackEbene $q; if ($eb) { [pscustomobject]@{ Quelle = $q; Ebene = $eb; Name = ($eb.Substring($q.Length).TrimStart('\','/') -split '[\\/]')[0] } } } })
+foreach ($t in $PackTiefer) {
+    Write-Host "ACHTUNG: In der Quelle $($t.Quelle) liegen die Packs erst in $($t.Ebene)." -ForegroundColor Yellow
+    Write-Host "  Beim Sortieren wuerde '$($t.Name)' zum Pack-Namen. Bitte unter Einstellungen umstellen (Klick in der Spalte Zustand)." -ForegroundColor Yellow
+}
+if ($PackTiefer.Count) { Write-Host "" }
 # Bezugsordner fuer Pack-Namen: bei "Ein Pack" und "Nur lose Dateien" der Elternordner, damit der
 # Quellordner selbst die erste Ebene (= Pack-Name) ist
 function Get-PackWurzel([string]$q) {
@@ -322,7 +329,8 @@ foreach ($f in $alle) {
     # --- Melodische / thematische Packs -----------------------------------
     # 2.3.2: Vocals auch ueber Ordnernamen im Pack erkennen (z. B. "Pack\Vocal Loops\...")
     elseif ($teile[0] -eq 'Vocals' -or $pack -match 'Vocal' -or @($packOrdner | Where-Object { $_ -match '\bVocals?\b|\bVox\b|Acapella|A cappella' }).Count) {
-        $kat = 'Vocals'; $zr = Join-Rel @($K.Vocals, $pack, $relImPack)
+        # 2.3.4: wie die anderen Kategorien ohne den inneren Ordnerweg (gleichnamige Dateien bekommen unten ihren Unterordner)
+        $kat = 'Vocals'; $zr = Join-Rel @($K.Vocals, $pack, $name)
     } elseif ($teile[0] -eq 'Brass') {
         $kat = 'Brass'; $zr = Join-Rel @($K.Brass, 'Brass (Mugent)', $name)
     } elseif ($pack -match 'Melancholic Rhodes|Lofi Blessings') {
@@ -579,6 +587,7 @@ $kopieren | Group-Object { ($_.ZielRel -split '[\\/]')[0] } | Sort-Object Name |
 } | Write-Host
 $lange = @($kopieren | Where-Object { $_.Ziel.Length -ge 260 }).Count
 if ($lange -gt 0) { Write-Host "Hinweis: $lange Zielpfad(e) sind laenger als 259 Zeichen. Sie werden kopiert, manche Programme (z. B. DAW, Explorer) koennen damit aber Probleme haben." -ForegroundColor Yellow }
+foreach ($t in $PackTiefer) { Write-Host "ACHTUNG: Packs von $($t.Quelle) liegen erst in $($t.Ebene) - Pack-Name waere '$($t.Name)'. Unter Einstellungen umstellen (Spalte Zustand)." -ForegroundColor Yellow }
 $unsort = @($kopieren | Where-Object { $_.Kategorie -eq 'Unsortiert' }).Count
 if ($unsort -gt 0) { Write-Host "Hinweis: $unsort Datei(en) landen in '_Unsortiert' (bitte in der CSV pruefen)." -ForegroundColor Yellow }
 

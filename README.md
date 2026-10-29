@@ -23,6 +23,7 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 
 | Version | Datum | Inhalt |
 |---|---|---|
+| 2.3.4 | 29.10.2026 | Befunde aus dem Test der 2.3.3: Archive robuster gelesen (Grund bei nicht prüfbaren); Innenordner eines Packs erkannt; DAW-Projekt nur mit Projektdatei; Inventur mit Keys/Synth/Melodic; „nur Auffällige“ in der Pack-Ansicht; Packs liegen tiefer – Hinweis und Umstellen; Vocals ohne inneren Ordnerweg; kleine Fundorte standardmäßig sichtbar |
 | 2.3.3 | 28.10.2026 | Befunde aus dem Test der 2.3.2: keine Installer, Plugin-Inhalte und Archive kopieren; Sammelordner nur als „Nur lose Dateien“; Pack-Ebene (z. B. Splice); lange Pfade; neue Instrumente und Kategorie 13 Strings & Orchestra; RX2 als Loop neben der WAV; Formate im Ziel entfernen |
 | 2.3.2 | 28.10.2026 | Befunde aus dem Test der 2.3.1: Entfernen in den Einstellungen, Art in der Liste mit Erklärung ⓘ, Vocals über Ordnernamen, „Einzeldateien (…)“ bei losen Dateien; Fundort-Bericht mit ZIP-Inhalt, Ableton-Erkennung, „Letzten Bericht öffnen“, Abgleich mit dem Ziel-Ordner auch für Quellen |
 | 2.3.1 | 28.10.2026 | Art einer Quelle (Sammlung, Ein Pack, Nur lose Dateien); richtiger Pack-Name bei einzelnen Packs; lose Dateien in Downloads übernehmbar |

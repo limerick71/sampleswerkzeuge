@@ -83,7 +83,7 @@ if ($PSVersionTable.PSEdition -ne 'Core') {
     $verweise = @([System.IO.Compression.ZipArchive], [System.Diagnostics.Process], [System.Collections.Generic.HashSet[string]] |
         ForEach-Object { $_.Assembly.Location } | Where-Object { $_ } | Select-Object -Unique)
 }
-if (-not ('SamplesWerkzeuge.FundortScanner233' -as [type])) {
+if (-not ('SamplesWerkzeuge.FundortScanner234' -as [type])) {
     $atArg = @{ Language = 'CSharp' }; if ($verweise.Count) { $atArg.ReferencedAssemblies = $verweise }
     Add-Type @atArg -TypeDefinition @'
 using System;
@@ -93,21 +93,24 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Collections.Generic;
 namespace SamplesWerkzeuge {
-    public class OrdnerInfo233 {
+    public class OrdnerInfo234 {
         public string Pfad; public int Audio; public long Bytes; public int Archive; public int Projekt; public int Instrument;
         public int Cloud; public DateTime Neu; public string Formate; public string Beispiele;
+        // 2.3.4: Ableton-Presets (.adg/.adv/.alc) sind Zeichen fuer ein Sample-Pack; DawAudio setzt das Skript
+        public int AbletonPreset; public int DawAudio;
         // Archive (2.3.2): nur Archive mit Audiodateien, nicht lesbare und verschachtelte zaehlen in "Archive"
         public int ZAudio; public long ZBytes; public int ZCloud; public int ZOffen; public int ZVerschachtelt; public int ZOhneAudio;
         public string ZFormate; public string ZListe;
     }
-    public class ArchivInhalt { public bool Gelesen; public int Audio; public long Bytes; public int Archive; public SortedSet<string> Formate = new SortedSet<string>(); }
-    public static class FundortScanner233 {
+    public class ArchivInhalt { public bool Gelesen; public string Grund = ""; public int Audio; public long Bytes; public int Archive; public SortedSet<string> Formate = new SortedSet<string>(); }
+    public static class FundortScanner234 {
         public static int Ordner; public static int NichtLesbar; public static int ArchiveGelesen;
         public static bool ArchiveLesen = true; public static bool TarLesen = false;
         public static readonly HashSet<string> AudioExt = new HashSet<string>(new string[] { ".wav", ".aif", ".aiff", ".mp3", ".flac", ".ogg", ".rx2", ".rex", ".m4a" }, StringComparer.OrdinalIgnoreCase);
         static readonly HashSet<string> ProjektExt = new HashSet<string>(new string[] { ".als", ".flp", ".cpr", ".ptx", ".ptf", ".song", ".rpp", ".bwproject", ".aup", ".aup3", ".npr", ".reason", ".logicx" }, StringComparer.OrdinalIgnoreCase);
         static readonly HashSet<string> InstrExt = new HashSet<string>(new string[] { ".nki", ".nkx", ".nkc", ".nkr", ".nicnt", ".ncw", ".nkm", ".nkb", ".ens", ".exs", ".gig", ".sf2", ".ufs", ".zmulti", ".nksn", ".hsb", ".vstpreset" }, StringComparer.OrdinalIgnoreCase);
         static readonly HashSet<string> ArchivExt = new HashSet<string>(new string[] { ".zip", ".rar", ".7z" }, StringComparer.OrdinalIgnoreCase);
+        static readonly HashSet<string> AbletonPresetExt = new HashSet<string>(new string[] { ".adg", ".adv", ".alc", ".alp", ".ask" }, StringComparer.OrdinalIgnoreCase);
         const FileAttributes CloudBits = (FileAttributes)0x400000 | (FileAttributes)0x40000 | FileAttributes.Offline;
         static readonly Regex TarZeile = new Regex(@"^(\S)\S*\s+\d+\s+\S+\s+\S+\s+(\d+)\s+\S+\s+\d+\s+\S+\s+(.+)$");
 
@@ -128,11 +131,27 @@ namespace SamplesWerkzeuge {
             return false;
         }
 
+        // 2.3.4: Endung und Dateiname ohne Path.GetExtension - das bricht unter Windows PowerShell 5.1 bei
+        // Zeichen ab, die in Archiven vorkommen duerfen (z. B. " < > | oder Steuerzeichen)
+        static string Ext(string name) {
+            int s = Math.Max(name.LastIndexOf('/'), name.LastIndexOf('\\'));
+            int d = name.LastIndexOf('.');
+            if (d <= s || d >= name.Length - 1) return "";
+            return name.Substring(d);
+        }
+        static string DateiName(string name) {
+            string n = name.TrimEnd('/', '\\');
+            int s = Math.Max(n.LastIndexOf('/'), n.LastIndexOf('\\'));
+            return s >= 0 ? n.Substring(s + 1) : n;
+        }
+        static bool MacRest(string name) { return name.StartsWith("._") || string.Equals(name, ".DS_Store", StringComparison.OrdinalIgnoreCase); }
+        static string Kurz(string t) { t = (t ?? "").Replace("|", "/").Replace("\r", " ").Replace("\n", " ").Trim(); return t.Length > 120 ? t.Substring(0, 120) + " ..." : t; }
+
         static void Zaehle(ArchivInhalt r, string name, long laenge) {
-            string ext = Path.GetExtension(name);
+            string ext = Ext(name);
             if (string.IsNullOrEmpty(ext)) return;
-            string datei = Path.GetFileName(name.Replace('\\', '/').TrimEnd('/'));
-            if (name.IndexOf("__MACOSX", StringComparison.OrdinalIgnoreCase) >= 0 || datei.StartsWith("._")) return;
+            string datei = DateiName(name);
+            if (name.IndexOf("__MACOSX", StringComparison.OrdinalIgnoreCase) >= 0 || MacRest(datei)) return;
             if (AudioExt.Contains(ext)) { r.Audio++; r.Bytes += laenge; r.Formate.Add(ext.TrimStart('.').ToUpperInvariant()); }
             else if (ArchivExt.Contains(ext)) r.Archive++;
         }
@@ -140,20 +159,24 @@ namespace SamplesWerkzeuge {
         // Liest nur das Inhaltsverzeichnis; es wird nichts entpackt und nichts veraendert.
         public static ArchivInhalt LeseArchiv(string pfad) {
             ArchivInhalt r = new ArchivInhalt();
-            string ext = Path.GetExtension(pfad);
+            string ext = Ext(pfad);
             try {
                 if (string.Equals(ext, ".zip", StringComparison.OrdinalIgnoreCase)) {
                     using (FileStream fs = new FileStream(L(pfad), FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                     using (ZipArchive z = new ZipArchive(fs, ZipArchiveMode.Read)) {
-                        foreach (ZipArchiveEntry e in z.Entries) Zaehle(r, e.FullName, e.Length);
+                        // 2.3.4: ein ungewoehnlicher Eintrag bricht nicht mehr das ganze Archiv ab
+                        foreach (ZipArchiveEntry e in z.Entries) { try { Zaehle(r, e.FullName, e.Length); } catch (Exception) { } }
                     }
                     r.Gelesen = true;
-                } else if (TarLesen) {
+                } else if (!TarLesen) {
+                    r.Grund = "RAR/7z: kein passendes Windows-Werkzeug (erst ab Windows 11 eingebaut)";
+                } else {
                     ProcessStartInfo si = new ProcessStartInfo("tar", "-tvf \"" + pfad + "\"");
                     si.UseShellExecute = false; si.RedirectStandardOutput = true; si.RedirectStandardError = true; si.CreateNoWindow = true;
                     si.StandardOutputEncoding = System.Text.Encoding.UTF8;
+                    System.Text.StringBuilder fehler = new System.Text.StringBuilder();
                     using (Process p = Process.Start(si)) {
-                        p.ErrorDataReceived += delegate { };
+                        p.ErrorDataReceived += delegate(object o, DataReceivedEventArgs a) { if (a.Data != null && fehler.Length < 2000) fehler.AppendLine(a.Data); };
                         p.BeginErrorReadLine();
                         string zeile;
                         while ((zeile = p.StandardOutput.ReadLine()) != null) {
@@ -161,16 +184,27 @@ namespace SamplesWerkzeuge {
                             if (m.Success) { if (m.Groups[1].Value != "d") Zaehle(r, m.Groups[3].Value, long.Parse(m.Groups[2].Value)); }
                             else Zaehle(r, zeile.Trim(), 0);
                         }
-                        if (!p.WaitForExit(60000)) { try { p.Kill(); } catch (Exception) { } return r; }
+                        if (!p.WaitForExit(60000)) { try { p.Kill(); } catch (Exception) { } r.Grund = "Zeitüberschreitung beim Lesen"; return r; }
+                        p.WaitForExit();
                         r.Gelesen = (p.ExitCode == 0);
+                        if (!r.Gelesen) {
+                            string f = fehler.ToString().ToLowerInvariant();
+                            if (f.Contains("encrypt") || f.Contains("passphrase") || f.Contains("password")) r.Grund = "verschlüsselt (Kennwort nötig)";
+                            else if (f.Contains("truncated") || f.Contains("unexpected end") || f.Contains("damaged") || f.Contains("premature")) r.Grund = "unvollständig oder beschädigt (Download abgebrochen?)";
+                            else if (f.Contains("unrecognized") || f.Contains("not supported") || f.Contains("unsupported")) r.Grund = "Format wird vom Windows-Werkzeug nicht unterstützt";
+                            else r.Grund = "nicht lesbar: " + Kurz(fehler.ToString());
+                        }
                     }
                 }
-            } catch (Exception) { r.Gelesen = false; }
+            } catch (InvalidDataException) { r.Gelesen = false; r.Grund = "keine gültige ZIP-Datei (Download unvollständig oder beschädigt?)"; }
+            catch (UnauthorizedAccessException) { r.Gelesen = false; r.Grund = "kein Zugriff"; }
+            catch (IOException ex) { r.Gelesen = false; r.Grund = "gesperrt oder nicht lesbar: " + Kurz(ex.Message); }
+            catch (Exception ex) { r.Gelesen = false; r.Grund = "nicht lesbar: " + Kurz(ex.Message); }
             return r;
         }
 
-        public static List<OrdnerInfo233> Suche(string[] wurzeln, string[] aus) {
-            List<OrdnerInfo233> erg = new List<OrdnerInfo233>();
+        public static List<OrdnerInfo234> Suche(string[] wurzeln, string[] aus) {
+            List<OrdnerInfo234> erg = new List<OrdnerInfo234>();
             Ordner = 0; NichtLesbar = 0; ArchiveGelesen = 0;
             Stack<string> stapel = new Stack<string>();
             foreach (string w in wurzeln) stapel.Push(w);
@@ -179,7 +213,7 @@ namespace SamplesWerkzeuge {
                 string d = stapel.Pop();
                 Ordner++;
                 if ((DateTime.Now - letzte).TotalSeconds >= 5) { Console.WriteLine("  ... " + Ordner.ToString("N0") + " Ordner durchsucht" + (ArchiveGelesen > 0 ? ", " + ArchiveGelesen.ToString("N0") + " Archive angesehen" : "")); letzte = DateTime.Now; }
-                OrdnerInfo233 oi = new OrdnerInfo233(); oi.Pfad = d; oi.Neu = DateTime.MinValue;
+                OrdnerInfo234 oi = new OrdnerInfo234(); oi.Pfad = d; oi.Neu = DateTime.MinValue;
                 SortedSet<string> formate = new SortedSet<string>();
                 SortedSet<string> zformate = new SortedSet<string>();
                 List<string> beisp = new List<string>();
@@ -189,15 +223,17 @@ namespace SamplesWerkzeuge {
                         FileAttributes at = e.Attributes;
                         if ((at & FileAttributes.Directory) != 0) {
                             if ((at & FileAttributes.ReparsePoint) != 0) continue;
-                            // Ableton-Projekt (2.3.2): Ordner "Ableton Project Info" kennzeichnet ein Projekt
-                            if (string.Equals(e.Name, "Ableton Project Info", StringComparison.OrdinalIgnoreCase)) { oi.Projekt++; continue; }
+                            // 2.3.4: "Ableton Project Info" allein ist kein Projekt (liegt auch in Packs); es zaehlt nur die .als.
+                            // Mac-Reste (__MACOSX) werden nicht durchsucht.
+                            if (string.Equals(e.Name, "Ableton Project Info", StringComparison.OrdinalIgnoreCase)) continue;
+                            if (string.Equals(e.Name, "__MACOSX", StringComparison.OrdinalIgnoreCase)) continue;
                             if (Ausgeschlossen(K(e.FullName), aus)) continue;
                             stapel.Push(K(e.FullName));
                             continue;
                         }
-                        string ext = Path.GetExtension(e.Name);
-                        if (string.IsNullOrEmpty(ext)) continue;
-                        bool audio = AudioExt.Contains(ext) && !e.Name.StartsWith("._");
+                        string ext = Ext(e.Name);
+                        if (string.IsNullOrEmpty(ext) || MacRest(e.Name)) continue;
+                        bool audio = AudioExt.Contains(ext);
                         if (audio) {
                             oi.Audio++;
                             oi.Bytes += ((FileInfo)e).Length;
@@ -207,14 +243,15 @@ namespace SamplesWerkzeuge {
                             if (e.LastWriteTime > oi.Neu) oi.Neu = e.LastWriteTime;
                         } else if (ProjektExt.Contains(ext)) oi.Projekt++;
                         else if (InstrExt.Contains(ext)) oi.Instrument++;
-                        else if (ArchivExt.Contains(ext) && !e.Name.StartsWith("._")) {
+                        else if (AbletonPresetExt.Contains(ext)) oi.AbletonPreset++;
+                        else if (ArchivExt.Contains(ext)) {
                             string zeile = null;
                             if ((at & CloudBits) != 0) { oi.ZCloud++; oi.Archive++; zeile = e.Name + "|c|0|0"; }
                             else if (!ArchiveLesen) { oi.ZOffen++; oi.Archive++; zeile = e.Name + "|o|0|0"; }
                             else {
                                 ArchiveGelesen++;
                                 ArchivInhalt r = LeseArchiv(K(e.FullName));
-                                if (!r.Gelesen) { oi.ZOffen++; oi.Archive++; zeile = e.Name + "|o|0|0"; }
+                                if (!r.Gelesen) { oi.ZOffen++; oi.Archive++; zeile = e.Name + "|o|0|0|" + r.Grund; }
                                 else if (r.Audio == 0 && r.Archive == 0) { oi.ZOhneAudio++; }
                                 else {
                                     oi.Archive++; oi.ZAudio += r.Audio; oi.ZBytes += r.Bytes;
@@ -230,7 +267,7 @@ namespace SamplesWerkzeuge {
                         }
                     }
                 } catch (Exception) { NichtLesbar++; }
-                if (oi.Audio > 0 || oi.Projekt > 0 || oi.Instrument > 0 || oi.Archive > 0) {
+                if (oi.Audio > 0 || oi.Projekt > 0 || oi.Instrument > 0 || oi.Archive > 0 || oi.AbletonPreset > 0) {
                     oi.Formate = string.Join(",", formate); oi.Beispiele = string.Join("|", beisp);
                     oi.ZFormate = string.Join(",", zformate); oi.ZListe = string.Join("\n", zliste);
                     erg.Add(oi);
@@ -243,16 +280,16 @@ namespace SamplesWerkzeuge {
 '@
 }
 # RAR und 7z: nur mit dem in Windows 11 eingebauten tar (bsdtar/libarchive); sonst "Inhalt nicht geprueft"
-[SamplesWerkzeuge.FundortScanner233]::ArchiveLesen = -not $OhneArchivinhalt
+[SamplesWerkzeuge.FundortScanner234]::ArchiveLesen = -not $OhneArchivinhalt
 $tarOk = $false
 if (-not $OhneArchivinhalt -and (Get-Command tar -ErrorAction SilentlyContinue)) { try { $tarOk = [bool]((& tar --version 2>$null | Out-String) -match 'bsdtar|libarchive') } catch { } }
-[SamplesWerkzeuge.FundortScanner233]::TarLesen = $tarOk
+[SamplesWerkzeuge.FundortScanner234]::TarLesen = $tarOk
 Write-Host ("Durchsuche Ordner (es werden nur Namen und Groessen gelesen{0}) ..." -f $(if ($OhneArchivinhalt) { "" } elseif ($tarOk) { ", bei ZIP/RAR/7z das Inhaltsverzeichnis" } else { ", bei ZIP das Inhaltsverzeichnis" })) -ForegroundColor Cyan
-$treffer = [SamplesWerkzeuge.FundortScanner233]::Suche([string[]]$wurzeln, [string[]]$aus)
-$ordnerZahl = [SamplesWerkzeuge.FundortScanner233]::Ordner
-$nichtLesbar = [SamplesWerkzeuge.FundortScanner233]::NichtLesbar
+$treffer = [SamplesWerkzeuge.FundortScanner234]::Suche([string[]]$wurzeln, [string[]]$aus)
+$ordnerZahl = [SamplesWerkzeuge.FundortScanner234]::Ordner
+$nichtLesbar = [SamplesWerkzeuge.FundortScanner234]::NichtLesbar
 Write-Host ("  {0:N0} Ordner durchsucht, {1:N0} mit Audiodateien, Projekten oder Archiven" -f $ordnerZahl, $treffer.Count)
-$archivZahl = [SamplesWerkzeuge.FundortScanner233]::ArchiveGelesen
+$archivZahl = [SamplesWerkzeuge.FundortScanner234]::ArchiveGelesen
 if ($archivZahl) { Write-Host ("  {0:N0} Archive angesehen (nur Inhaltsverzeichnis)" -f $archivZahl) }
 if ($nichtLesbar) { Write-Host "  $nichtLesbar Ordner waren nicht lesbar und wurden ausgelassen." -ForegroundColor DarkGray }
 
@@ -266,7 +303,7 @@ function Get-Suchwurzel([string]$p) {
     foreach ($w in $wurzeln) { $wn = $w.TrimEnd('\', '/'); if (($p -ieq $wn -or $p -ieq $w -or $p.StartsWith($wn + $sep, [StringComparison]::OrdinalIgnoreCase)) -and $w.Length -gt $t.Length) { $t = $w } }
     return $t
 }
-$SummenFelder = 'Audio', 'Bytes', 'Archive', 'Projekt', 'Instrument', 'Cloud', 'ZAudio', 'ZBytes', 'ZCloud', 'ZOffen', 'ZVerschachtelt'
+$SummenFelder = 'Audio', 'Bytes', 'Archive', 'Projekt', 'Instrument', 'Cloud', 'ZAudio', 'ZBytes', 'ZCloud', 'ZOffen', 'ZVerschachtelt', 'AbletonPreset', 'DawAudio'
 $knoten = @{}
 function Get-Knoten([string]$p) {
     $k = $p.ToLowerInvariant()
@@ -278,6 +315,9 @@ function Get-Knoten([string]$p) {
     }
     return $knoten[$k]
 }
+# 2.3.4: Audiodateien, die zu einem DAW-Projekt gehoeren (neben der Projektdatei oder in Aufnahme-/Import-Ordnern)
+$DawPfade = '[\\/](Samples[\\/](Recorded|Imported|Processed|Combined|Consolidated)|Live Recordings|Audio Files|Bounces?|Freeze Files)([\\/]|$)'
+foreach ($t in $treffer) { $t.DawAudio = $(if ($t.Projekt -gt 0 -or $t.Pfad -match $DawPfade) { $t.Audio } else { 0 }) }
 foreach ($t in $treffer) {
     $sw = Get-Suchwurzel $t.Pfad
     $n = Get-Knoten $t.Pfad
@@ -304,14 +344,15 @@ foreach ($t in $treffer) {
 $InstrNamen = 'Native Instruments|Kontakt|Spitfire|Sonokinetic|Muse ?Hub|Arturia|\bUVI\b|Vienna|\bVSL\b|EastWest|East West|Toontrack|Superior Drummer|EZdrummer|Steinberg|HALion|Komplete|Heavyocity|8Dio|Orchestral Tools|Cinesamples|XLN Audio|Addictive|Spectrasonics|Omnisphere|Keyscape|Trilian|Factory Packs|Core Library|Output Arcade|Soundiron|Impact Soundworks|Best Service|Garritan|Embertone'
 # Ableton (2.3.2): eigene und mitgelieferte Klaenge der Ableton-Library; Projektordner mit ihren Unterordnern
 $AbletonLibrary = '[\\/](User Library|ABL Assets)([\\/]|$)'
-$DawPfade = '[\\/](Samples[\\/](Recorded|Imported|Processed|Combined|Consolidated)|Live Recordings|Audio Files|Bounces?|Freeze Files)([\\/]|$)'
 $SystemPfade = @($env:windir, $env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramData) | Where-Object { $_ }
 function Get-Einschaetzung($n) {
     $p = $n.Pfad
     foreach ($s in $SystemPfade) { if ($p.StartsWith($s, [StringComparison]::OrdinalIgnoreCase)) { return 'System/Programm' } }
     if ($p -match $AbletonLibrary) { return 'Ableton-Library' }
     if ($n.Instrument -gt 0 -or $p -match $InstrNamen) { return 'Instrument-Bibliothek' }
-    if ($n.Projekt -gt 0 -or $p -match $DawPfade) { return 'DAW-Projekt' }
+    # 2.3.4: DAW-Projekt nur mit Projektdatei (.als, .flp ...) und wenn die Audiodateien ueberwiegend zum Projekt
+    # gehoeren; ein Pack mit Demo-Projekt oder Ableton-Presets bleibt ein Sample-Pack
+    if ($n.Projekt -gt 0 -and $n.DawAudio * 2 -ge $n.Audio) { return 'DAW-Projekt' }
     if ($n.Audio -eq 0 -and $n.Archive -gt 0) { if ($n.ZAudio -gt 0) { return 'Archive mit Samples' } else { return 'Archive (Inhalt offen)' } }
     return 'Sample-Packs'
 }
@@ -343,7 +384,7 @@ function Get-PackKnoten($n) {
     }
     if ($w -eq $n) { return $n }
     $namen = @($w.Kinder.Values | ForEach-Object { [IO.Path]::GetFileName($_) })
-    if ($namen.Count -ge 2 -and (Get-QuellArtVorschlag $namen $w.Eigen.Audio) -eq 'Sammlung') { return $w }
+    if ($namen.Count -ge 2 -and (Get-QuellArtVorschlag $namen $w.Eigen.Audio ([IO.Path]::GetFileName($w.Pfad))) -eq 'Sammlung') { return $w }
     return $n
 }
 function Add-Fundort($n) { $fundorte.Add((Get-PackKnoten $n)) }
@@ -368,7 +409,9 @@ function Find-Fundorte([string]$p, [bool]$unterBehaelter = $false) {
     # nur einen Unterordner hat - sonst wuerde ein innerer Ordner zum Pack-Namen.
     if ($unterBehaelter -and @($kinder | ForEach-Object { Get-Einschaetzung $_ } | Select-Object -Unique).Count -le 1) { Add-Fundort $n; return }
     # Nur ein Unterordner mit Inhalt und hier selbst nichts (auch keine Projekt-, Instrument- oder Archivdateien): tiefer gehen
-    if ($n.Eigen.Audio -eq 0 -and $kinder.Count -eq 1 -and $n.Archive -eq $kinder[0].Archive -and $n.Projekt -eq $kinder[0].Projekt -and $n.Instrument -eq $kinder[0].Instrument) { Find-Fundorte $kinder[0].Pfad; return }
+    # 2.3.4: nicht in einen typischen Innenordner (Loops, Kicks, "<Pack> - Drums" ...) hinabgehen - dann ist dieser Ordner das Pack
+    if ($n.Eigen.Audio -eq 0 -and $kinder.Count -eq 1 -and $n.Archive -eq $kinder[0].Archive -and $n.Projekt -eq $kinder[0].Projekt -and $n.Instrument -eq $kinder[0].Instrument -and
+        $n.AbletonPreset -eq $kinder[0].AbletonPreset -and -not (Test-PackInnenName ([IO.Path]::GetFileName($kinder[0].Pfad)) ([IO.Path]::GetFileName($p)))) { Find-Fundorte $kinder[0].Pfad; return }
     $arten = @($kinder | ForEach-Object { Get-Einschaetzung $_ } | Select-Object -Unique)
     if ($n.Eigen.Audio -eq 0 -and $arten.Count -gt 1) { foreach ($k in $kinder) { Find-Fundorte $k.Pfad }; return }
     Add-Fundort $n
@@ -393,7 +436,7 @@ $liste = @(foreach ($n in $fundorte) {
     $art = Get-Einschaetzung $n
     $kinder = @($n.Kinder.Values | ForEach-Object { $knoten[$_.ToLowerInvariant()] } | Where-Object { $_ } | Sort-Object { $_.Audio + $_.ZAudio } -Descending)
     $packs = @($kinder | Where-Object { $_.Audio -gt 0 }).Count
-    $qArt = if ($n.Lose) { 'Lose' } else { Get-QuellArtVorschlag @($kinder | ForEach-Object { [IO.Path]::GetFileName($_.Pfad) }) $n.Eigen.Audio }
+    $qArt = if ($n.Lose) { 'Lose' } else { Get-QuellArtVorschlag @($kinder | ForEach-Object { [IO.Path]::GetFileName($_.Pfad) }) $n.Eigen.Audio ([IO.Path]::GetFileName($n.Pfad.TrimEnd('\', '/'))) }
     $status = Get-QuellStatus $n.Pfad $qArt
     $basisPfad = $n.Pfad.TrimEnd('\', '/')
     [pscustomobject][ordered]@{
@@ -413,6 +456,8 @@ $liste = @(foreach ($n in $fundorte) {
         cl  = $n.Cloud
         pk  = $packs
         lose = $n.Eigen.Audio
+        pj  = $n.Projekt
+        ap  = $n.AbletonPreset
         nl  = [bool]$n.Lose
         qa  = $qArt
         st  = $status
@@ -420,7 +465,7 @@ $liste = @(foreach ($n in $fundorte) {
         u   = @($kinder | Select-Object -First 30 | ForEach-Object { [pscustomobject]@{ n = [IO.Path]::GetFileName($_.Pfad); a = $_.Audio; b = $_.Bytes; za = $_.ZAudio; art = (Get-Einschaetzung $_) } })
         bsp = @($n.Beispiele)
         zl  = @($n.ZListe | ForEach-Object { $t = $_ -split '\|'; $r = $t[0]; if ($r.StartsWith($basisPfad + $sep, [StringComparison]::OrdinalIgnoreCase)) { $r = $r.Substring($basisPfad.Length + 1) }
-                 [pscustomobject]@{ n = $r; s = $t[1]; a = [int]$t[2]; b = [long]$t[3] } })
+                 [pscustomobject]@{ n = $r; s = $t[1]; a = [int]$t[2]; b = [long]$t[3]; g = $(if ($t.Count -gt 4) { $t[4] } else { '' }) } })
     }
 }) | Sort-Object @{ e = { $_.art -ne 'Sample-Packs' } }, @{ e = { $_.b + $_.zb }; Descending = $true }
 

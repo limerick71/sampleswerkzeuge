@@ -284,6 +284,14 @@ function Show-Einstellungen {
     # Stand der Einstellungsdatei: neu eingelesen wird nur, wenn sie sich geaendert hat (2.3.2)
     $stand = { try { (Get-Item -LiteralPath $einstellungsPfad -ErrorAction Stop).LastWriteTimeUtc.Ticks } catch { 0 } }
     $artText = { param($k) $QuellArten[$k] + '  ▾' }
+    # 2.3.4: Ebene, auf der die Packs einer Sammlung liegen (z. B. Splice -> Samples\packs); je Pfad einmal ermittelt
+    $script:ebenen = @{}
+    $ebeneVon = { param($p, $art)
+        if ($art -ne 'Sammlung') { return $null }
+        $k = $p.ToLowerInvariant()
+        if (-not $script:ebenen.ContainsKey($k)) { $script:ebenen[$k] = $(try { Get-PackEbene $p } catch { $null }) }
+        return $script:ebenen[$k]
+    }
     $fuelle = {
         $script:qLaedt = $true
         $markiert = if ($lv.SelectedItems.Count) { $lv.SelectedItems[0].Text } else { '' }
@@ -293,7 +301,10 @@ function Show-Einstellungen {
             [void]$it.SubItems.Add((& $artText (Get-QuellArtName $q.Art)))
             [void]$it.SubItems.Add($q.Herkunft)
             $it.Tag = (Get-QuellArtName $q.Art)
-            [void]$it.SubItems.Add($(if (Test-Path -LiteralPath $q.Pfad) { 'gefunden' } else { 'NICHT GEFUNDEN' }))
+            $da = Test-Path -LiteralPath $q.Pfad
+            $eb = if ($da) { & $ebeneVon $q.Pfad (Get-QuellArtName $q.Art) } else { $null }
+            $zst = $it.SubItems.Add($(if (-not $da) { 'NICHT GEFUNDEN' } elseif ($eb) { 'Packs liegen tiefer ▸ umstellen' } else { 'gefunden' }))
+            if ($eb) { $it.UseItemStyleForSubItems = $false; $zst.ForeColor = [System.Drawing.Color]::FromArgb(180, 90, 0) }
             $it.Checked = [bool]$q.Aktiv
             [void]$lv.Items.Add($it)
             if ($markiert -and $q.Pfad -eq $markiert) { $it.Selected = $true }
@@ -313,7 +324,7 @@ function Show-Einstellungen {
     # Nur echte Klicks speichern: beim Anlegen der Liste meldet Windows die Haken ebenfalls (2.3.2)
     $lv.Add_ItemChecked({ if (-not $script:qLaedt -and $script:qStand -ne -1 -and $lv.IsHandleCreated) { & $speichern } })
     $lv.Add_DoubleClick({ if ($lv.SelectedItems.Count) { Open-Pfad $lv.SelectedItems[0].Text } })
-    $tt.SetToolTip($lv, 'Haken = aktiv: Sortieren und Aufräumen lesen alle angehakten Quellen. Klick auf die Art: Art ändern. Doppelklick öffnet den Ordner im Explorer.')
+    $tt.SetToolTip($lv, 'Haken = aktiv: Sortieren und Aufräumen lesen alle angehakten Quellen. Klick auf die Art: Art ändern. Zustand „Packs liegen tiefer“: anklicken, um die Quelle auf die Ebene der Packs umzustellen. Doppelklick öffnet den Ordner im Explorer.')
     # Art direkt in der Liste waehlen (2.3.2): Klick auf die Spalte "Art" oeffnet die Auswahl
     $artMenue = New-Object System.Windows.Forms.ContextMenuStrip
     $artMenue.Font = $schrift
@@ -337,7 +348,22 @@ function Show-Einstellungen {
         param($sender, $ev)
         $h = $lv.HitTest($ev.Location)
         if (-not $h.Item -or -not $h.SubItem) { return }
-        if ($h.Item.SubItems.IndexOf($h.SubItem) -ne 1) { return }
+        $spalte = $h.Item.SubItems.IndexOf($h.SubItem)
+        # 2.3.4: Klick auf "Packs liegen tiefer" bietet an, die Quelle auf die Pack-Ebene umzustellen
+        if ($spalte -eq 3) {
+            $alt = $h.Item.Text; $eb = & $ebeneVon $alt ([string]$h.Item.Tag)
+            if (-not $eb) { return }
+            $name = ($eb.Substring($alt.TrimEnd('\').Length).TrimStart('\') -split '\\')[0]
+            if (-not (Show-Frage "Die Packs dieser Quelle liegen erst in`n$eb`n`nSo wie eingetragen würde beim Sortieren '$name' zum Pack-Namen, statt der Namen der einzelnen Packs.`n`nQuelle auf diesen Ordner umstellen (Art 'Sammlung')?`nAm Ordner selbst wird nichts geändert. Schon Einsortiertes bleibt, wie es ist.")) { return }
+            $e = Get-Einstellungen
+            $f = Test-NeueQuelle $eb $e.Quellen $e.Ziel $alt 'Sammlung'
+            if ($f) { Show-Meldung "$f`n`nDie Quelle wurde nicht umgestellt." 'Warning'; return }
+            $neu = @(foreach ($q in @($e.Quellen)) { if ($q.Pfad -eq $alt) { [pscustomobject]@{ Pfad = $eb; Aktiv = [bool]$q.Aktiv; Herkunft = $q.Herkunft; Art = 'Sammlung' } } else { $q } })
+            try { Set-Quellen $neu } catch { Show-Meldung "Speichern fehlgeschlagen:`n$($_.Exception.Message)" 'Error'; return }
+            & $fuelle
+            return
+        }
+        if ($spalte -ne 1) { return }
         $script:artZeile = $h.Item
         foreach ($mi in $artMenue.Items) { $mi.Checked = ([string]$mi.Tag -eq [string]$h.Item.Tag) }
         $artMenue.Show($lv, $ev.Location)

@@ -194,6 +194,8 @@ function Get-Einordnung([string[]]$teile) {
     $i = 1
     $inst = $kat
     if ($katOrdner -match '^0[12] ' -and $teile.Count -gt 2) { $inst = $teile[1]; $i = 2 }
+    # 2.3.4: "04 Keys & Synth" hat seit 2.3.3 die Ebene Keys / Synth / Melodic; aeltere Ablagen ohne diese Ebene bleiben lesbar
+    elseif ($katOrdner -match '^04 ' -and $teile.Count -gt 2 -and $teile[1] -in 'Keys', 'Synth', 'Melodic') { $inst = $teile[1]; $i = 2 }
     $typ = ''
     if ($teile.Count -gt $i + 1 -and $teile[$i] -in 'One-Shots', 'Loops') { $typ = $teile[$i].TrimEnd('s'); $i++ }
     $pack = if ($teile.Count -gt $i + 1) { $teile[$i] } else { '(ohne Pack)' }

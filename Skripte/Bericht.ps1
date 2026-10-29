@@ -206,10 +206,20 @@ input.mk{width:16px;height:16px;margin:6px 6px 0 0;vertical-align:top}
     else if (s.n && s.n.indexOf('verschoben') === 0) m.push(['blau','verschoben',s.n]);
     return m;
   }
+  // 2.3.4: je Pack die Zahl defekter und unsortierter Samples (fuer Markierung und Filter "nur Auffaellige")
+  var packZahl = null;
+  function packZahlen(){
+    if (packZahl) return packZahl; packZahl = {};
+    S.forEach(function(s){ var h = s.h || '', z = packZahl[s.p] = packZahl[s.p] || { def: 0, uns: 0 };
+      if (h.indexOf('defekt') >= 0 || h.indexOf('0 Byte') >= 0) z.def++; if (h.indexOf('unsortiert') >= 0) z.uns++; });
+    return packZahl;
+  }
   function markenP(p){
-    var m = [];
+    var m = [], z = packZahlen()[p.p] || { def: 0, uns: 0 };
     if (p.a === 'ausgespart') m.push(['grau','ausgespart','nicht in die Bibliothek kopiert']);
+    if (z.def) m.push(['rot', z.def + ' defekt', 'leere oder unlesbare Samples in diesem Pack']);
     if (p.dup) m.push(['gelb', p.dup + ' Duplikat' + (p.dup > 1 ? 'e' : ''), 'entfernbare Duplikate in diesem Pack']);
+    if (z.uns) m.push(['gelb', z.uns + ' unsortiert', 'Samples in diesem Pack, die keinem Instrument zugeordnet sind']);
     if (p.lz === 'nein') m.push(['grau','ohne Lizenztext','keine Lizenz- oder Infodatei gefunden']);
     if (p.neu === 'neu') m.push(['gruen','neu','seit der letzten Inventur neu']);
     if (p.ah === 'manuell') m.push(['blau','Art manuell','Pack-Art aus Pack-Arten.csv']);
@@ -308,8 +318,11 @@ input.mk{width:16px;height:16px;margin:6px 6px 0 0;vertical-align:top}
       '<td class="klein">' + esc(p.i) + '</td><td class="z">' + zahl(p.l) + ' %</td><td>' + esc(p.bpm) + '</td><td class="klein">' + esc(p.key) + '</td><td>' + esc(p.f) + '</td><td>' + esc(p.o) + '</td></tr>';
     if (auf && !aus) {
       var L = S.filter(function(s){ return s.p === p.p; }).sort(function(a,b){ return a.w.localeCompare(b.w,'de',{numeric:true}); });
+      // 2.3.4: bei "nur Auffaellige" auch im aufgeklappten Pack nur die auffaelligen Samples
+      var ohne = 0; if ($('fProblem').checked) { var alle = L.length; L = L.filter(function(s){ return problem(markenS(s)); }); ohne = alle - L.length; }
       h += '<tr class="unterliste"><td colspan="10"><table>' + KOPF_S;
       L.forEach(function(s){ h += zeileS(s); });
+      if (ohne) h += '<tr><td colspan="10" class="leer">' + zahl(ohne) + ' unauffällige' + (ohne === 1 ? 's Sample' : ' Samples') + ' ausgeblendet („nur Auffällige“)</td></tr>';
       h += '</table></td></tr>';
     }
     return h;

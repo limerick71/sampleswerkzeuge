@@ -62,7 +62,7 @@ tr.weg td{opacity:.55}
 <div class="werkzeuge">
  <button class="k haupt" id="uebernehmen">In Quellenliste übernehmen (0)</button>
  <button class="k" id="abgleich">Angehakte mit Ziel-Ordner abgleichen (0)</button>
- <label class="ck"><input type="checkbox" id="klein"> auch kleine Fundorte zeigen (unter 5 Audiodateien)</label>
+ <label class="ck"><input type="checkbox" id="klein" checked> auch kleine Fundorte zeigen (unter 5 Audiodateien)</label>
  <span class="leise" id="ausgeblendet" style="font-size:12px"></span>
  <label class="ck"><input type="checkbox" id="andere" checked> Instrument-Bibliotheken, Ableton-Library, Projekte, System zeigen</label>
  <div class="erkl">Abgleich: prüft für die angehakten Fundorte über Größe und Prüfsumme, wie viele Audiodateien schon im Ziel-Ordner liegen (<span id="zielname"></span>). Es wird nichts verändert; bei großen Fundorten dauert es etwas.</div>
@@ -117,9 +117,12 @@ tr.weg td{opacity:.55}
       if (f.za) hw.push('<span class="hw rot">' + n(f.za) + ' Audiodateien in Archiven (' + mb(f.zb) + ' entpackt' + (f.zf ? ', ' + esc(f.zf) : '') + ') – vor dem Übernehmen entpacken (ab Version 3 übernimmt das der Import)</span>');
       if (f.zv) hw.push('<span class="hw rot">' + f.zv + ' Archiv(e) enthalten weitere Archive</span>');
       if (f.zc) hw.push('<span class="hw rot">' + f.zc + ' Archiv(e) nur in der Cloud – Inhalt nicht geprüft</span>');
-      if (f.zo) hw.push('<span class="hw rot">' + f.zo + ' Archiv(e): Inhalt nicht geprüft' + (M.ArchivInhalt === false ? ' (Hineinschauen war abgeschaltet)' : ' (RAR/7z ohne passendes Windows-Werkzeug, beschädigt oder verschlüsselt)') + '</span>');
+      if (f.zo) { var gr = {}; (f.zl || []).forEach(function(x){ if (x.s === 'o' && x.g) gr[x.g] = 1; }); gr = Object.keys(gr);
+        hw.push('<span class="hw rot">' + f.zo + ' Archiv(e): Inhalt nicht geprüft' + (M.ArchivInhalt === false ? ' (Hineinschauen war abgeschaltet)' : (gr.length ? ' – ' + esc(gr.join('; ')) : ' (RAR/7z ohne passendes Windows-Werkzeug, beschädigt oder verschlüsselt)')) + '</span>'); }
       if (f.zip && f.za === 0 && !f.zo && !f.zc && !f.zv) hw.push('<span class="hw rot">' + f.zip + ' Archiv(e) nicht entpackt</span>');
       if (f.cl) hw.push('<span class="hw rot">' + n(f.cl) + ' Dateien nur in der Cloud (werden nicht heruntergeladen)</span>');
+      if (f.art === 'Sample-Packs' && f.pj) hw.push('<span class="hw">enthält ' + f.pj + ' Projektdatei(en), z. B. ein Demo-Projekt – die Audiodateien liegen aber überwiegend außerhalb, daher Sample-Pack</span>');
+      if (f.art === 'Sample-Packs' && f.ap) hw.push('<span class="hw">enthält Ableton-Presets (.adg/.adv/.alc) – gehören zum Pack, werden beim Sortieren nicht übernommen</span>');
       if (abgl[f.i]) hw.push('<span class="hw">' + abgl[f.i] + '</span>');
       var ue = uebernehmbar(f);
       h.push('<tr class="f' + (f.weg ? ' weg' : '') + '" data-i="' + f.i + '"><td><input type="checkbox" class="w" data-i="' + f.i + '"' + (wahl[f.i] && w ? ' checked' : '') + (w ? '' : ' disabled') + '></td>' +
@@ -131,7 +134,7 @@ tr.weg td{opacity:.55}
         '<td><button class="k oe" data-i="' + f.i + '"' + (DIENST && !getrennt && !f.weg ? '' : ' disabled') + '>Ordner öffnen</button></td></tr>');
       if (offen[f.i]) {
         var u = (f.u || []).map(function(x){ return '<tr><td>' + esc(x.n) + '</td><td class="z">' + n(x.a) + (x.za ? ' + ' + n(x.za) + ' in Archiven' : '') + '</td><td class="z">' + mb(x.b) + '</td><td>' + esc(x.art) + '</td></tr>'; }).join('');
-        var z = (f.zl || []).map(function(x){ return '<tr><td>' + esc(x.n) + '</td><td class="z">' + (x.s === 'a' || x.s === 'v' ? n(x.a) : '–') + '</td><td class="z">' + (x.s === 'a' || x.s === 'v' ? mb(x.b) : '–') + '</td><td>' + esc(ZST[x.s] || '') + '</td></tr>'; }).join('');
+        var z = (f.zl || []).map(function(x){ return '<tr><td>' + esc(x.n) + '</td><td class="z">' + (x.s === 'a' || x.s === 'v' ? n(x.a) : '–') + '</td><td class="z">' + (x.s === 'a' || x.s === 'v' ? mb(x.b) : '–') + '</td><td>' + esc(x.s === 'o' && x.g ? 'Inhalt nicht geprüft: ' + x.g : (ZST[x.s] || '')) + '</td></tr>'; }).join('');
         h.push('<tr class="detail"><td></td><td colspan="7">' + (u ? '<table><tr><th>Unterordner</th><th class="z">Audiodateien</th><th class="z">Größe</th><th>Einschätzung</th></tr>' + u + '</table>' : '') +
           (z ? '<table><tr><th>Archiv</th><th class="z">Audiodateien darin</th><th class="z">Größe entpackt</th><th></th></tr>' + z + '</table>' : '') +
           '<span class="leise">Beispiele: ' + esc((f.bsp || []).join(' · ') || '–') + '</span></td></tr>');

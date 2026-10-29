@@ -10,7 +10,7 @@
 #   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
 #   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
 
-$ProgrammVersion = '2.3.3'
+$ProgrammVersion = '2.3.4'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -177,11 +177,27 @@ function Get-QuellArtName([string]$art) { if ($QuellArten.Contains($art)) { retu
 $RxPackInnen = '^(samples?|sounds|demo|wav|wave|waves|aiff?|rex2?|rx2|acid|midi|stems|presets?|patches|full ?mix|kits?)$|^(loops?|one[ -]?shots?|oneshots|drums?|drum ?loops|kicks?|snares?|hats?|hi[ -]?hats?|claps?|percs?|percussion|toms?|cymbals?|crash(es)?|rides?|shakers?|bass|basslines?|bass ?loops|synths?|synth ?loops|keys|pads?|leads?|plucks?|chords?|arps?|vocals?|vox|vocal ?loops|fx|sfx|risers?|impacts?|sweeps?|atmos(pheres?)?|textures?|construction ?kits?|drum ?kits?|top ?loops|music ?loops|melod(y|ic|ies)( ?loops)?|guitars?|piano|strings|brass|apple ?loops)\b|[-_ ](wav|rex2?|rx2|aiff?|midi|apple ?loops|ableton|presets?)$'
 $RxPackNeutral = '^(licen[cs]es?|readme|info|infos|artwork|cover|documentation|docs?|__macosx|license & files)\b'
 # Vorschlag fuer die Art aus den Namen der Unterordner und der Zahl der Dateien direkt im Ordner
-function Get-QuellArtVorschlag([string[]]$kinder, [int]$eigeneDateien = 0) {
+# 2.3.4: weitere Innenordner - "Bonus ...", "<Name> - Loops/Drums/Noise ..." und Ordner, die den Namen des
+# Packs selbst tragen (z. B. "VOLTAGE REVELATIONS - DRUMS" in "Voltage Revelations")
+$RxPackInnenWort = 'loops?|one ?shots?|oneshots|drums?|drum ?loops|drum ?kits?|kicks?|snares?|hats?|percs?|percussion|bass|basslines?|synths?|keys|pads?|leads?|plucks?|chords?|arps?|vocals?|vox|fx|sfx|noises?|textures?|atmos(pheres?)?|construction ?kits?|kits?|stems|midi|presets?|samples?|melod(y|ic|ies)|music|instruments?|tops?|grooves?|fills?|breaks?|wav|aiff?|rex2?|rx2'
+$RxPackInnenEnde = '\s[-_–]\s*(' + $RxPackInnenWort + ')( ?(loops?|samples?|kits?|one ?shots?|\d+))?$'
+function Get-NormName([string]$n) { return (($n.ToLowerInvariant() -replace '[_\-–.,()\[\]]+', ' ') -replace '\s+', ' ').Trim() }
+function Test-PackInnenName([string]$name, [string]$eltern = '') {
+    $l = $name.ToLowerInvariant().Trim()
+    if ($l -match $RxPackInnen) { return $true }
+    if ($l -match '^bonus') { return $true }
+    if ($l -match $RxPackInnenEnde) { return $true }
+    if ($eltern) {
+        $e = Get-NormName $eltern; $k = Get-NormName $name
+        if ($e.Length -ge 4 -and $k -ne $e -and $k.Contains($e)) { return $true }
+    }
+    return $false
+}
+function Get-QuellArtVorschlag([string[]]$kinder, [int]$eigeneDateien = 0, [string]$eltern = '') {
     $relevant = @($kinder | Where-Object { $_ -and $_.ToLowerInvariant() -notmatch $RxPackNeutral })
     if (-not $relevant.Count) { return 'Pack' }
     if ($eigeneDateien -gt 0 -and $relevant.Count -eq 1) { return 'Pack' }   # 2.3.3: eigene Dateien plus ein Unterordner = ein Pack
-    $innen = @($relevant | Where-Object { $_.ToLowerInvariant() -match $RxPackInnen }).Count
+    $innen = @($relevant | Where-Object { Test-PackInnenName $_ $eltern }).Count
     if ($innen * 2 -ge $relevant.Count) { return 'Pack' }
     return 'Sammlung'
 }
@@ -224,7 +240,7 @@ function Get-PackEbene([string]$pfad) {
     }
     if ($w -eq $pfad.TrimEnd('\', '/')) { return $null }
     $namen = @(); try { $namen = @([IO.Directory]::EnumerateDirectories($w) | ForEach-Object { [IO.Path]::GetFileName($_) }) } catch { }
-    if ($namen.Count -ge 2 -and (Get-QuellArtVorschlag $namen 0) -eq 'Sammlung') { return $w }
+    if ($namen.Count -ge 2 -and (Get-QuellArtVorschlag $namen 0 ([IO.Path]::GetFileName($w))) -eq 'Sammlung') { return $w }
     return $null
 }
 function Get-QuellArtFuerOrdner([string]$pfad) {
@@ -232,7 +248,7 @@ function Get-QuellArtFuerOrdner([string]$pfad) {
     $k = @(); $n = 0
     try { $k = @(Get-ChildItem -LiteralPath $pfad -Directory -Force -ErrorAction Stop | ForEach-Object { $_.Name }) } catch { }
     try { $n = @(Get-ChildItem -LiteralPath $pfad -File -Force -ErrorAction Stop | Where-Object { $_.Name -match $RxAudio }).Count } catch { }
-    return Get-QuellArtVorschlag $k $n
+    return Get-QuellArtVorschlag $k $n ([IO.Path]::GetFileName($pfad.TrimEnd('\', '/')))
 }
 
 # Vorschau fuer die Infobox "Art" (2.3.2): was jede Art mit diesem Ordner machen wuerde.
@@ -267,7 +283,7 @@ function Get-ArtVorschau([string]$pfad) {
     $erg | Add-Member NoteProperty Packs ([object[]]$packs.ToArray())
     $erg | Add-Member NoteProperty InUnterordnern $inUnter
     $erg | Add-Member NoteProperty Gesamt ($direkt.Count + $inUnter)
-    $erg | Add-Member NoteProperty Empfehlung $(if (Test-Sammelordner $pfad) { 'Lose' } else { Get-QuellArtVorschlag $kinder $direkt.Count })
+    $erg | Add-Member NoteProperty Empfehlung $(if (Test-Sammelordner $pfad) { 'Lose' } else { Get-QuellArtVorschlag $kinder $direkt.Count ([IO.Path]::GetFileName($pfad.TrimEnd('\', '/'))) })
     $erg | Add-Member NoteProperty Sammelordner (Test-Sammelordner $pfad)
     $erg | Add-Member NoteProperty PackEbene $(if (Test-Sammelordner $pfad) { $null } else { Get-PackEbene $pfad })
     $erg | Add-Member NoteProperty Unvollstaendig ($gezaehlt -ge 50000)
