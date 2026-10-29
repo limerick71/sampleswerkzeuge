@@ -13,7 +13,8 @@
 .BENUTZUNG
   Ohne Schalter: kleines Fenster mit Ordnerauswahl.
     -Quelle "C:\...\_Unsortiert"   Ordner (ohne Fenster)
-    -MaxSekunden 10                 je Datei hoechstens so viele Sekunden anhoeren
+    -MaxSekunden 10                 je Datei hoechstens so viele Sekunden anhoeren (die lautesten Stellen)
+    -MinSekunden 1                  kuerzere Dateien werden nur als "zu kurz" aufgefuehrt
     -OhneUnterordner                nur Dateien direkt im Ordner
     -Modellordner "..."             anderer Ort fuer yamnet.onnx, yamnet.data, labels.txt
 #>
@@ -21,11 +22,12 @@
 param(
     [string]$Quelle,
     [double]$MaxSekunden = 10,
+    [double]$MinSekunden = 1,
     [switch]$OhneUnterordner,
     [string]$Modellordner
 )
 $ErrorActionPreference = 'Stop'
-$Version = '0.1'
+$Version = '0.2'
 $wurzel = Split-Path -Parent $PSScriptRoot
 if (-not $Modellordner) { $Modellordner = Join-Path $wurzel 'Modell' }
 $berichtOrdner = Join-Path $wurzel 'Berichte'
@@ -67,7 +69,11 @@ $Kategorien = [ordered]@{
     'Guitar'        = @{ Ziel = '05 Guitar';                     K = @(134, 135, 136) + (Get-Bereich 138 146) }
     'Brass'         = @{ Ziel = '06 Brass & Sax';                K = @(180, 181, 182, 183, 190, 191, 192, 193, 203, 205, 206, 207) }
     'Vocals'        = @{ Ziel = '07 Vocals';                     K = @((Get-Bereich 0 35) + @(213, 249, 250)) }
-    'FX'            = @{ Ziel = '08 FX & Noise';                 K = @(210) + (Get-Bereich 382 397) + (Get-Bereich 420 430) + @(453, 456, 457, 458) + (Get-Bereich 475 493) + (Get-Bereich 495 499) + @(507) + (Get-Bereich 509 517) }
+    # 0.2: Effekt-Klassen (Effects unit, Chorus, Distortion) zaehlen nicht mehr; reine Toene siehe 'Tonal'
+    'FX'            = @{ Ziel = '08 FX & Noise';                 K = @(210) + (Get-Bereich 382 397) + (Get-Bereich 420 430) + @(453) + (Get-Bereich 475 489) + (Get-Bereich 491 493) + @(498, 499, 507, 509) + (Get-Bereich 512 517) }
+    # 0.2: reine Toene (Sine wave, Harmonic, Electronic tuner, Hum, Chirp tone, Tuning fork) = tonales Instrument;
+    # Grundton unter 150 Hz -> Bass, sonst Keys & Synth
+    'Tonal'         = @{ Ziel = '';                              K = @(199, 456, 490, 495, 496, 497, 510) }
     'Atmos'         = @{ Ziel = '09 Atmos & Field Recordings';   K = @((Get-Bereich 61 131) + (Get-Bereich 277 347) + (Get-Bereich 500 506) + @(508, 518, 519, 520)) }
     'Strings'       = @{ Ziel = '13 Strings & Orchestra';        K = @(179, 184, 185, 186, 187, 188, 194) }
 }
@@ -77,6 +83,12 @@ $AudioEndungen = '\.(wav|aif|aiff|aifc|mp3|flac|ogg|m4a|rx2|rex)$'
 $Lesbar = '\.(wav|aif|aiff|aifc)$'
 
 function Format-Wert([double]$w) { $w.ToString('0.000', $de) }
+# Grundton als Notenname, z. B. "F2 (87 Hz)"
+function Get-Notenname([double]$hz) {
+    $namen = 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'H'
+    $m = [int][Math]::Round(69 + 12 * [Math]::Log($hz / 440.0, 2))
+    return '{0}{1} ({2} Hz)' -f $namen[(($m % 12) + 12) % 12], ([Math]::Floor($m / 12) - 1), [Math]::Round($hz)
+}
 
 # ---------------------------------------------------------------------------
 # Analyse
@@ -107,7 +119,7 @@ function Invoke-Analyse([string]$ordner, [double]$maxSek, [bool]$unter, [scriptb
         $rel = $f.DirectoryName.Substring([Math]::Min($basis.Length, $f.DirectoryName.Length)).TrimStart('\', '/')
         $z = [ordered]@{
             'Datei' = $f.Name; 'Unterordner' = $rel; 'Format' = $f.Extension.TrimStart('.').ToUpperInvariant(); 'Dauer s' = ''; 'Abtastrate' = ''; 'Kanaele' = ''; 'Bit' = ''
-            'Pegel RMS dBFS' = ''; 'Spitze dBFS' = ''; 'Analysiert s' = ''; 'Ausschnitte' = ''
+            'Pegel RMS dBFS' = ''; 'Spitze dBFS' = ''; 'Analysiert s' = ''; 'Ausschnitte' = ''; 'Stellen (s)' = ''; 'Angleichung dB' = ''; 'Grundton' = ''; 'Klarheit' = ''
             'Vorschlag Kategorie' = ''; 'Vorschlag Zielordner' = ''; 'Typ (nach Dauer)' = ''; 'Sicherheit' = ''; 'Wert' = ''
             'Zweite Kategorie' = ''; 'Wert 2' = ''
             'Top 1' = ''; 'Top 2' = ''; 'Top 3' = ''; 'Top 4' = ''; 'Top 5' = ''
@@ -120,15 +132,22 @@ function Invoke-Analyse([string]$ordner, [double]$maxSek, [bool]$unter, [scriptb
             $z['Hinweis'] = 'Format im Prototyp nicht lesbar (nur WAV und AIFF)'
         } else {
             try {
-                $a = [SamplesWerkzeuge.Yamnet.Audio]::Lese($f.FullName, $maxSek)
+                # 0.2: ganze Datei lesen (hoechstens 10 min), die lautesten Stellen anhoeren
+                $a = [SamplesWerkzeuge.Yamnet.Audio]::Lese($f.FullName, 600)
                 $pg = [SamplesWerkzeuge.Yamnet.Vorverarbeitung]::Pegel($a.Mono)
-                $y = [SamplesWerkzeuge.Yamnet.Vorverarbeitung]::Resample($a.Mono, $a.Rate)
-                $n = 0
-                $erg = $modell.BewerteSignal($y, [ref]$n)
-                $mittel = $erg[0]; $spitze = $erg[1]
                 $z['Dauer s'] = $a.Dauer.ToString('0.00', $de); $z['Abtastrate'] = $a.Rate; $z['Kanaele'] = $a.Kanaele; $z['Bit'] = $a.Bits
                 $z['Pegel RMS dBFS'] = $pg[0].ToString('0.0', $de); $z['Spitze dBFS'] = $pg[1].ToString('0.0', $de)
-                $z['Analysiert s'] = ([Math]::Min($a.Dauer, $maxSek)).ToString('0.00', $de); $z['Ausschnitte'] = $n
+                $z['Typ (nach Dauer)'] = if ($a.Dauer -ge 6) { 'Loop' } else { 'One-Shot' }
+                if ($a.Dauer -lt $MinSekunden) { throw (New-Object System.Exception 'ZU_KURZ') }
+                $anzahl = [Math]::Max(1, [int][Math]::Floor($maxSek / 0.96))
+                $st = [SamplesWerkzeuge.Yamnet.Auswahl]::Waehle($a.Mono, $a.Rate, $anzahl)
+                $erg = $modell.BewerteStellen($st)
+                $mittel = $erg[0]; $spitze = $erg[1]; $n = $st.Fenster16k.Count
+                $z['Analysiert s'] = ($n * 0.96).ToString('0.00', $de); $z['Ausschnitte'] = $n
+                $z['Stellen (s)'] = (@($st.Beginn | ForEach-Object { ([double]$_).ToString('0.0', $de) }) -join ' / ')
+                $z['Angleichung dB'] = $st.VerstaerkungDb.ToString('+0.0;-0.0;0', $de)
+                $gt = @(0, 0); foreach ($fe in $st.Fenster16k) { $g = [SamplesWerkzeuge.Yamnet.Auswahl]::Grundton($fe); if ($g[1] -gt $gt[1]) { $gt = $g } }
+                if ($gt[0] -gt 0) { $z['Grundton'] = (Get-Notenname $gt[0]); $z['Klarheit'] = Format-Wert $gt[1] }
                 $top = @(0..($kl.Count - 1) | Sort-Object { - $mittel[$_] } | Select-Object -First 5)
                 for ($t = 0; $t -lt 5; $t++) { $z["Top $($t + 1)"] = '{0} ({1})' -f $kl[$top[$t]], (Format-Wert $mittel[$top[$t]]) }
                 $topS = @(0..($kl.Count - 1) | Sort-Object { - $spitze[$_] } | Select-Object -First 3)
@@ -143,18 +162,27 @@ function Invoke-Analyse([string]$ordner, [double]$maxSek, [bool]$unter, [scriptb
                 $rang = @($werte.get_Keys() | Sort-Object { - $werte[$_] })
                 $best = $rang[0]; $w = $werte[$best]
                 $z['Sicherheit'] = & $Sicherheit $w; $z['Wert'] = Format-Wert $w
-                if ($z['Sicherheit'] -ne 'unklar') { $z['Vorschlag Kategorie'] = $best; $z['Vorschlag Zielordner'] = $Kategorien[$best].Ziel }
+                if ($z['Sicherheit'] -ne 'unklar') {
+                    if ($best -eq 'Tonal') {
+                        # reiner Ton: nach Grundton (klar erkannt) Bass oder Keys & Synth
+                        if ($gt[1] -ge 0.6 -and $gt[0] -lt 150) { $z['Vorschlag Kategorie'] = 'Bass (tonal)'; $z['Vorschlag Zielordner'] = '03 Bass' }
+                        else { $z['Vorschlag Kategorie'] = 'Keys & Synth (tonal)'; $z['Vorschlag Zielordner'] = '04 Keys & Synth' }
+                    } elseif ($best -in 'Synth', 'Keys' -and $gt[1] -ge 0.8 -and $gt[0] -lt 120) {
+                        # tiefer, klarer Grundton bei Synth/Keys: eher ein Bass-Sample
+                        $z['Vorschlag Kategorie'] = 'Bass (nach Grundton)'; $z['Vorschlag Zielordner'] = '03 Bass'
+                    } else { $z['Vorschlag Kategorie'] = $best; $z['Vorschlag Zielordner'] = $Kategorien[$best].Ziel }
+                }
                 $z['Zweite Kategorie'] = $rang[1]; $z['Wert 2'] = Format-Wert $werte[$rang[1]]
-                $z['Typ (nach Dauer)'] = if ($a.Dauer -ge 6) { 'Loop' } else { 'One-Shot' }
                 $hw = @()
-                if ($a.Dauer -gt $maxSek) { $hw += "nur die ersten $maxSek s angehoert" }
+                if ($a.Dauer -gt 600) { $hw += 'nur die ersten 10 min durchsucht' }
                 if ($pg[1] -lt -50) { $hw += 'sehr leise oder stumm' }
                 if ($mittel[494] -ge 0.5) { $hw += 'ueberwiegend Stille' }
                 $z['Hinweis'] = $hw -join '; '
                 $klZeilen.Add(('"{0}";"{1}";' -f $f.Name.Replace('"', '""'), $rel.Replace('"', '""')) + (($mittel | ForEach-Object { ([double]$_).ToString('0.0000', $de) }) -join ';'))
             } catch {
                 $ex = $_.Exception; while ($ex.InnerException) { $ex = $ex.InnerException }
-                $z['Hinweis'] = 'FEHLER: ' + $ex.Message
+                if ($ex.Message -eq 'ZU_KURZ') { $z['Sicherheit'] = 'zu kurz'; $z['Hinweis'] = ('zu kurz fuer die Analyse (unter {0} s) - YAMNet hoert in Abschnitten von 0,96 s' -f $MinSekunden.ToString('0.0#', $de)) }
+                else { $z['Hinweis'] = 'FEHLER: ' + $ex.Message }
             }
         }
         $z['Rechenzeit ms'] = $uhr.ElapsedMilliseconds
@@ -166,7 +194,7 @@ function Invoke-Analyse([string]$ordner, [double]$maxSek, [bool]$unter, [scriptb
 }
 
 function Get-Zusammenfassung($erg) {
-    $g = @($erg.Zeilen | Group-Object 'Vorschlag Kategorie' | Sort-Object Count -Descending | ForEach-Object { '{0}: {1}' -f $(if ($_.Name) { $_.Name } else { 'unklar/nicht lesbar' }), $_.Count })
+    $g = @($erg.Zeilen | Group-Object { if ($_.'Vorschlag Kategorie') { $_.'Vorschlag Kategorie' } elseif ($_.Sicherheit -eq 'zu kurz') { 'zu kurz (unter 1 s)' } else { 'unklar/nicht lesbar' } } | Sort-Object Count -Descending | ForEach-Object { '{0}: {1}' -f $_.Name, $_.Count })
     return "$($erg.Dateien) Dateien analysiert.`n" + ($g -join "`n")
 }
 
@@ -209,7 +237,7 @@ $bw.Add_Click({ $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Des
 $fenster.Controls.Add($bw)
 $y += 40
 $cb = New-Object System.Windows.Forms.CheckBox; $cb.Text = 'Unterordner einbeziehen'; $cb.Checked = $true; $cb.AutoSize = $true; $cb.Location = New-Object System.Drawing.Point(80, $y); $fenster.Controls.Add($cb)
-$ls = New-Object System.Windows.Forms.Label; $ls.Text = 'je Datei höchstens (Sekunden):'; $ls.AutoSize = $true; $ls.Location = New-Object System.Drawing.Point(300, ($y + 2)); $fenster.Controls.Add($ls)
+$ls = New-Object System.Windows.Forms.Label; $ls.Text = 'je Datei anhören (Sekunden):'; $ls.AutoSize = $true; $ls.Location = New-Object System.Drawing.Point(300, ($y + 2)); $fenster.Controls.Add($ls)
 $nu = New-Object System.Windows.Forms.NumericUpDown; $nu.Minimum = 1; $nu.Maximum = 120; $nu.Value = [decimal]$MaxSekunden; $nu.Location = New-Object System.Drawing.Point(510, $y); $nu.Width = 60; $fenster.Controls.Add($nu)
 $y += 40
 $pb = New-Object System.Windows.Forms.ProgressBar; $pb.Location = New-Object System.Drawing.Point(16, $y); $pb.Size = New-Object System.Drawing.Size(($w - 32), 22); $fenster.Controls.Add($pb)

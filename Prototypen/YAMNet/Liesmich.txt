@@ -1,4 +1,4 @@
-﻿YAMNet-Prototyp 0.1 fuer die Samples-Werkzeuge (nur zum Testen)
+﻿YAMNet-Prototyp 0.2 fuer die Samples-Werkzeuge (nur zum Testen)
 ============================================================
 
 WOZU
@@ -34,12 +34,24 @@ SPALTEN IM BERICHT
   Typ (nach Dauer)            One-Shot unter 6 s, sonst Loop
   Hinweis, Rechenzeit ms, Pfad
 
+NEU IN 0.2
+  - Angehoert werden die lautesten Stellen der Datei (bis "je Datei anhoeren", Standard 10 s),
+    nicht mehr die ersten Sekunden. Stille am Anfang (z. B. Vocals) stoert nicht mehr.
+  - Lautstaerke wird vor dem Anhoeren angeglichen (Spalte "Angleichung dB").
+  - Grundton je Datei (Spalte "Grundton", "Klarheit"). Reine Toene (Sine wave, Electronic tuner,
+    Hum ...) gelten als tonales Instrument: unter 150 Hz Bass, sonst Keys & Synth. Synth/Keys mit
+    klarem Grundton unter 120 Hz werden als Bass vorgeschlagen.
+  - Effekt-Klassen (Effects unit, Chorus, Distortion) zaehlen nicht mehr als FX.
+  - Dateien unter 1 s werden nur als "zu kurz" aufgefuehrt (YAMNet hoert in Abschnitten von
+    0,96 s; kurze Drum-One-Shots erkennt es kaum).
+  - Spalte "Stellen (s)": wo angehoert wurde.
+
 GRENZEN
   - Lesbar sind WAV und AIFF. MP3, RX2, FLAC usw. werden nur aufgelistet.
   - YAMNet wurde mit Alltagsgeraeuschen und Musik (AudioSet/YouTube) trainiert, nicht mit
     Studio-Samples. Synth-Sounds landen oft bei FX oder Atmos, sehr kurze One-Shots bei
     "unklar". Der Vorschlag ist eine Hilfe, keine Entscheidung.
-  - Rechenzeit etwa 0,2 s je 0,5 s Audio. "je Datei hoechstens" begrenzt lange Loops.
+  - Rechenzeit etwa 0,2 s je angehoerter Sekunde.
 
 OHNE FENSTER
-  powershell -ExecutionPolicy Bypass -File Skripte\YAMNet-Analyse.ps1 -Quelle "D:\Ordner" [-MaxSekunden 10] [-OhneUnterordner]
+  powershell -ExecutionPolicy Bypass -File Skripte\YAMNet-Analyse.ps1 -Quelle "D:\Ordner" [-MaxSekunden 10] [-MinSekunden 1] [-OhneUnterordner]

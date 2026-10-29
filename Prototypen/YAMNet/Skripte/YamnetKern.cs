@@ -144,6 +144,19 @@ namespace SamplesWerkzeuge.Yamnet {
             werte[name] = new Tensor(d, s);
         }
 
+        // 0.2: ausgewaehlte Stellen (je ein Ausschnitt): Mittelwert und Hoechstwert je Klasse
+        public float[][] BewerteStellen(Stellen st) {
+            float[] mittel = new float[Klassen.Length], spitze = new float[Klassen.Length]; int anzahl = 0;
+            foreach (float[] f in st.Fenster16k) {
+                List<float[]> ps = Vorverarbeitung.Ausschnitte(f);
+                if (ps.Count == 0) continue;
+                float[] s = Bewerte(ps[0]); anzahl++;
+                for (int i = 0; i < s.Length && i < mittel.Length; i++) { mittel[i] += s[i]; if (s[i] > spitze[i]) spitze[i] = s[i]; }
+            }
+            for (int i = 0; i < mittel.Length; i++) mittel[i] /= Math.Max(1, anzahl);
+            return new float[][] { mittel, spitze };
+        }
+
         // Ganze Datei (16 kHz): Mittelwert und Hoechstwert je Klasse ueber alle Ausschnitte
         public float[][] BewerteSignal(float[] y16, out int anzahl) {
             List<float[]> ps = Vorverarbeitung.Ausschnitte(y16);
@@ -325,6 +338,67 @@ namespace SamplesWerkzeuge.Yamnet {
         static double Ext80(byte[] b) {
             int exp = ((b[0] & 0x7F) << 8) | b[1]; ulong man = 0; for (int i = 2; i < 10; i++) man = (man << 8) | b[i];
             if (exp == 0 && man == 0) return 0; return man * Math.Pow(2, exp - 16383 - 63);
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // 0.2: Auswahl der lautesten Stellen, Lautstaerke angleichen, Grundton
+    // ---------------------------------------------------------------------------------------------
+    public class Stellen {
+        public List<float[]> Fenster16k = new List<float[]>();   // je 0,975 s bei 16 kHz (= ein Ausschnitt)
+        public List<double> Beginn = new List<double>();          // Sekunden
+        public double VerstaerkungDb, LautesteRmsDb;
+    }
+
+    public static class Auswahl {
+        // Bis zu "anzahl" nicht ueberlappende Fenster mit dem hoechsten Pegel; Fenster unter -40 dB
+        // gegenueber dem lautesten werden ausgelassen. Danach Pegel angleichen (RMS -20 dBFS, hoechstens +30 dB).
+        public static Stellen Waehle(float[] x, int rate, int anzahl) {
+            Stellen st = new Stellen();
+            int win = (int)Math.Round(0.975 * rate), hop = Math.Max(1, (int)Math.Round(0.24 * rate));
+            List<int> starts = new List<int>(); List<double> rms = new List<double>();
+            if (x.Length <= win) { starts.Add(0); rms.Add(Rms(x, 0, x.Length)); }
+            else for (int s = 0; s + win <= x.Length; s += hop) { starts.Add(s); rms.Add(Rms(x, s, win)); }
+            int[] ord = new int[starts.Count]; for (int i = 0; i < ord.Length; i++) ord[i] = i;
+            double[] r = rms.ToArray(); Array.Sort(r, ord); Array.Reverse(ord);
+            double maxRms = rms[ord[0]];
+            List<int> gew = new List<int>();
+            foreach (int i in ord) {
+                if (gew.Count >= anzahl) break;
+                if (gew.Count > 0 && rms[i] < maxRms * 0.01) break;
+                bool frei = true; foreach (int g in gew) if (Math.Abs(starts[g] - starts[i]) < win) { frei = false; break; }
+                if (frei) gew.Add(i);
+            }
+            gew.Sort((a, b) => starts[a].CompareTo(starts[b]));
+            double gain = maxRms > 1e-9 ? Math.Min(0.1 / maxRms, Math.Pow(10, 30 / 20.0)) : 1.0;
+            st.VerstaerkungDb = 20 * Math.Log10(gain); st.LautesteRmsDb = maxRms > 0 ? 20 * Math.Log10(maxRms) : -120;
+            foreach (int g in gew) {
+                int s0 = starts[g], n = Math.Min(win, x.Length - s0);
+                float[] f = new float[n]; for (int k = 0; k < n; k++) f[k] = (float)(x[s0 + k] * gain);
+                st.Fenster16k.Add(Vorverarbeitung.Resample(f, rate));
+                st.Beginn.Add((double)s0 / rate);
+            }
+            return st;
+        }
+        static double Rms(float[] x, int s, int n) { double q = 0; for (int k = s; k < s + n; k++) q += x[k] * x[k]; return n > 0 ? Math.Sqrt(q / n) : 0; }
+
+        // Grundton per Autokorrelation (30-1000 Hz) in einem 16-kHz-Fenster; Klarheit 0..1
+        public static double[] Grundton(float[] y) {
+            int n = Math.Min(y.Length, 8000), lo = 16, hi = 533;
+            if (n < hi * 2) return new double[] { 0, 0 };
+            double e0 = 0; for (int i = 0; i < n - hi; i++) e0 += y[i] * y[i];
+            if (e0 <= 1e-9) return new double[] { 0, 0 };
+            double[] ac = new double[hi + 1];
+            for (int lag = lo; lag <= hi; lag++) {
+                double s = 0, e1 = 0; for (int i = 0; i < n - hi; i++) { s += y[i] * y[i + lag]; e1 += y[i + lag] * y[i + lag]; }
+                ac[lag] = e1 > 0 ? s / Math.Sqrt(e0 * e1) : 0;
+            }
+            int best = -1; double bv = 0;
+            for (int lag = lo + 1; lag < hi; lag++) if (ac[lag] > ac[lag - 1] && ac[lag] >= ac[lag + 1] && ac[lag] > bv) { bv = ac[lag]; best = lag; }
+            if (best < 0) return new double[] { 0, 0 };
+            // kuerzeste Periode mit fast gleich guter Korrelation (gegen Oktavfehler)
+            for (int lag = lo + 1; lag < best; lag++) if (ac[lag] > ac[lag - 1] && ac[lag] >= ac[lag + 1] && ac[lag] > 0.9 * bv) { best = lag; bv = ac[lag]; break; }
+            return new double[] { 16000.0 / best, bv };
         }
     }
 
