@@ -90,7 +90,7 @@ tr.weg td{opacity:.55}
   // klein: weniger als 5 bekannte Audiodateien (auch in Archiven) - gilt fuer alle Zeilen gleich (auch lose Dateien);
   // nur Archive mit unbekanntem Inhalt bleiben sichtbar, weil ihre Zahl nicht bekannt ist
   function klein(f){ return (f.a + f.za) < 5 && !f.zo && !f.zc && !f.zv && !(f.zip && M.ArchivInhalt === undefined); }
-  var ARTEN = [['Sammlung','Sammlung'],['Pack','Ein Pack'],['Lose','Nur lose Dateien']];
+  var ARTEN = [['Sammlung','Sammlung'],['Pack','Ein Pack'],['Lose','Nur lose Dateien']], ARTNAME = {}; ARTEN.forEach(function(a){ ARTNAME[a[0]] = a[1]; });
   $('unter').textContent = 'Stand des Suchlaufs vom ' + M.Erstellt + ' · durchsucht: ' + M.Orte.join(', ') + ' · ' + n(M.Ordner) + ' Ordner in ' + M.Dauer + ' s' + (M.NichtLesbar ? ' · ' + M.NichtLesbar + ' Ordner nicht lesbar' : '');
   $('zielname').textContent = M.Ziel || 'eingestellter Ziel-Ordner';
   function karten(){
@@ -114,7 +114,7 @@ tr.weg td{opacity:.55}
         hw.push('<span class="hw">Sammlung mit ' + f.pk + ' Packs: ' + esc(pn.slice(0, 3).join(', ')) + (f.pk > 3 ? ' und ' + (f.pk - 3) + ' weitere' : '') + '</span>'); }
       if (f.lose && f.pk) hw.push('<span class="hw">' + n(f.lose) + ' Dateien direkt im Ordner</span>');
       if (f.nl && f.a) hw.push('<span class="hw">nur die Dateien direkt in diesem Ordner, ohne Unterordner</span>');
-      if (f.za) hw.push('<span class="hw rot">' + n(f.za) + ' Audiodateien in Archiven (' + mb(f.zb) + ' entpackt' + (f.zf ? ', ' + esc(f.zf) : '') + ') – vor dem Übernehmen entpacken (ab Version 3 übernimmt das der Import)</span>');
+      if (f.za) hw.push('<span class="hw rot">' + n(f.za) + ' Audiodateien in Archiven (' + mb(f.zb) + ' entpackt' + (f.zf ? ', ' + esc(f.zf) : '') + ') – liegt es im Download-Ordner: mit „Download importieren …“ übernehmen, sonst vorher entpacken</span>');
       if (f.zv) hw.push('<span class="hw rot">' + f.zv + ' Archiv(e) enthalten weitere Archive</span>');
       if (f.zc) hw.push('<span class="hw rot">' + f.zc + ' Archiv(e) nur in der Cloud – Inhalt nicht geprüft</span>');
       if (f.zo) { var gr = {}; (f.zl || []).forEach(function(x){ if (x.s === 'o' && x.g) gr[x.g] = 1; }); gr = Object.keys(gr);
@@ -127,6 +127,7 @@ tr.weg td{opacity:.55}
       var ue = uebernehmbar(f);
       h.push('<tr class="f' + (f.weg ? ' weg' : '') + '" data-i="' + f.i + '"><td><input type="checkbox" class="w" data-i="' + f.i + '"' + (wahl[f.i] && w ? ' checked' : '') + (w ? '' : ' disabled') + '></td>' +
         '<td class="pfad">' + esc(f.p) + hw.join('') + '</td><td><span class="art ' + (KL[f.art] || '') + '">' + esc(f.art) + '</span>' +
+        (!ue && f.qq ? '<br><span class="hw">' + esc(ARTNAME[f.qq] || f.qq) + '</span>' : '') +
         (ue ? '<br><select class="qa" data-i="' + f.i + '" title="Art als Quelle: Sammlung = jeder Unterordner ist ein Pack; Ein Pack = alles darin unter dem Ordnernamen; Nur lose Dateien = ohne Unterordner">' +
           ARTEN.map(function(a){ return '<option value="' + a[0] + '"' + (f.qa === a[0] ? ' selected' : '') + '>' + a[1] + '</option>'; }).join('') + '</select>' : '') + '</td>' +
         '<td class="z">' + n(f.a) + (f.za ? '<span class="zus">+ ' + n(f.za) + ' in Archiven</span>' : '') + '</td><td class="z">' + mb(f.b) + (f.zb ? '<span class="zus">+ ' + mb(f.zb) + ' entpackt</span>' : '') + '</td>' +
@@ -199,14 +200,14 @@ tr.weg td{opacity:.55}
   if (DIENST) {
     // Status gegen die aktuelle Quellenliste neu bestimmen (Bericht kann älter sein); nicht mehr vorhandene Ordner kennzeichnen
     post('/quellen', {}).then(function(r){
-      var Q = (r.quellen || []).map(function(q){ return { p: String(q.pfad).replace(/[\\\/]+$/, '').replace(/\//g, '\\').toLowerCase() + '\\', o: String(q.pfad), lose: q.art === 'Lose', aktiv: q.aktiv !== false }; });
+      var Q = (r.quellen || []).map(function(q){ return { p: String(q.pfad).replace(/[\\\/]+$/, '').replace(/\//g, '\\').toLowerCase() + '\\', o: String(q.pfad), art: q.art, lose: q.art === 'Lose', aktiv: q.aktiv !== false }; });
       var weg = {}; (r.fehlt || []).forEach(function(p){ weg[String(p).toLowerCase()] = true; });
       F.forEach(function(f){
-        f.weg = !!weg[f.p.toLowerCase()];
+        f.weg = !!weg[f.p.toLowerCase()]; f.qq = '';
         var p = f.p.replace(/[\\\/]+$/, '').replace(/\//g, '\\').toLowerCase() + '\\', st = '';
         // 2.3.5: mit Pfad der Quelle und Hinweis, ob sie deaktiviert ist
         var zu = function(q){ return q.o + (q.aktiv ? '' : ' (deaktiviert)'); };
-        Q.forEach(function(q){ if (st) return; if (q.p === p) st = q.aktiv ? 'schon Quelle' : 'schon Quelle (deaktiviert)'; else if (p.indexOf(q.p) === 0 && !q.lose) st = 'liegt in der Quelle ' + zu(q); else if (q.p.indexOf(p) === 0 && f.qa !== 'Lose') st = 'enthält die Quelle ' + zu(q); });
+        Q.forEach(function(q){ if (st) return; if (q.p === p) { st = q.aktiv ? 'schon Quelle' : 'schon Quelle (deaktiviert)'; f.qq = q.art; } else if (p.indexOf(q.p) === 0 && !q.lose) st = 'liegt in der Quelle ' + zu(q); else if (q.p.indexOf(p) === 0 && f.qa !== 'Lose') st = 'enthält die Quelle ' + zu(q); });
         f.st = st;
       });
       zeichnen();

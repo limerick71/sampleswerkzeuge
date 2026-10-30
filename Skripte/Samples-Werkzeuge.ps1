@@ -476,7 +476,7 @@ function Show-Einstellungen {
         $g1.Controls.Add($b)
         $gy += 32
     }
-    $lh = New-Hinweis $g1 'Downloads und Download-Archiv werden ab Version 3 (Import) genutzt.' 12 ($gy + 2) ($gb - 24)
+    $lh = New-Hinweis $g1 'Downloads und Download-Archiv nutzt „Download importieren …“: dort wird nach neuen Packs gesucht, ins Download-Archiv kommen auf Wunsch die Originale.' 12 ($gy + 2) ($gb - 24)
     $g1.Height = $gy + 2 + $lh.PreferredHeight + 14
     $dy += $g1.Height + 10
 
@@ -639,6 +639,78 @@ function Show-FundorteSuchen {
     if (-not $gewaehlt.Count) { Show-Meldung 'Es ist kein Ort ausgewählt.' 'Warning'; return }
     $zusatz = if ($mitZip) { '' } else { ' -OhneArchivinhalt' }
     [void](Start-Skript 'Fundorte-suchen.ps1' "-Orte '$(($gewaehlt -join '|').Replace("'", "''"))'$zusatz" 'Fundorte suchen')
+}
+
+# ---------------------------------------------------------------------------
+# Dialog: Download importieren (Version 3, IMP-01 bis IMP-10)
+# ---------------------------------------------------------------------------
+function Show-DownloadImport {
+    $e = Get-Einstellungen
+    $zs = Get-OrdnerStatus $e.Ziel
+    if ($zs.Fehlt) { Show-Meldung "Der Zielordner ist nicht erreichbar:`n$($e.Ziel)`n$($zs.Text)`n`nBitte über ⚙ Einstellungen den richtigen Ordner wählen." 'Warning'; return }
+    if (-not $e.Downloads -or -not (Test-Path -LiteralPath $e.Downloads -PathType Container)) { Show-Meldung "Der Download-Ordner wurde nicht gefunden:`n$($e.Downloads)`n`nBitte über ⚙ Einstellungen einstellen." 'Warning'; return }
+    $form.Cursor = 'WaitCursor'
+    try { . (Join-Path $skriptOrdner 'Import.ps1'); $kand = @(Get-ImportKandidaten) } finally { $form.Cursor = 'Default' }
+    if (-not $kand.Count) { Show-Meldung "Im Download-Ordner wurden keine Sample-Packs gefunden:`n$($e.Downloads)`n`nGesucht wird nach ZIP-Dateien und Ordnern mit Audiodateien direkt im Download-Ordner."; return }
+    $w = 760; $innen = $w - 32
+    $d = New-Object System.Windows.Forms.Form
+    $d.Text = 'Download importieren'
+    $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'
+    $d.MaximizeBox = $false; $d.MinimizeBox = $false
+    $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
+    $y = 14
+    $l = New-Hinweis $d "Neue Sample-Packs in $($e.Downloads). Die angehakten werden entpackt und nach den Regeln von „Samples sortieren“ einsortiert. Vorher zeigt ein Fenster die Vorschau; kopiert wird erst nach 'J'." 16 $y $innen
+    $l.ForeColor = [System.Drawing.Color]::Black
+    $y += $l.PreferredHeight + 10
+    $lv = New-Object System.Windows.Forms.ListView
+    $lv.View = 'Details'; $lv.CheckBoxes = $true; $lv.FullRowSelect = $true; $lv.MultiSelect = $false; $lv.Font = $schrift
+    $lv.Location = New-Object System.Drawing.Point(16, $y); $lv.Size = New-Object System.Drawing.Size($innen, 220)
+    [void]$lv.Columns.Add('Download', 300); [void]$lv.Columns.Add('Art', 60); [void]$lv.Columns.Add('Größe', 80, 'Right'); [void]$lv.Columns.Add('Audio', 60, 'Right'); [void]$lv.Columns.Add('Datum', 80); [void]$lv.Columns.Add('Hinweis', ($innen - 300 - 60 - 80 - 60 - 80 - 24))
+    foreach ($k in $kand) {
+        $it = New-Object System.Windows.Forms.ListViewItem($k.Name)
+        [void]$it.SubItems.Add($k.Art)
+        [void]$it.SubItems.Add($(if ($k.Bytes -ge 1GB) { '{0:N1} GB' -f ($k.Bytes / 1GB) } elseif ($k.Bytes) { '{0:N0} MB' -f [Math]::Max(1, $k.Bytes / 1MB) } else { '' }))
+        [void]$it.SubItems.Add($(if ($k.Audio) { '{0:N0}' -f $k.Audio } else { '' }))
+        [void]$it.SubItems.Add($k.Datum.ToString('dd.MM.yyyy'))
+        [void]$it.SubItems.Add($k.Hinweis)
+        $it.Tag = $k
+        if (-not $k.Anhakbar) { $it.ForeColor = [System.Drawing.Color]::Gray }
+        [void]$lv.Items.Add($it)
+        $it.Checked = $k.Anhakbar
+    }
+    # Nicht importierbare Zeilen (schon vollständig im Ziel, RAR/7z, nicht lesbar) lassen sich nicht anhaken
+    $lv.Add_ItemCheck({ param($s, $ev) if (-not $lv.Items[$ev.Index].Tag.Anhakbar) { $ev.NewValue = 'Unchecked' } })
+    $d.Controls.Add($lv)
+    $y += 220 + 12
+    $lo = New-Object System.Windows.Forms.Label
+    $lo.Text = 'Danach mit dem Original:'; $lo.Font = $schriftFett; $lo.AutoSize = $true; $lo.Location = New-Object System.Drawing.Point(16, $y)
+    $d.Controls.Add($lo); $y += 26
+    $wahl = [string]$e.ImportOriginal; if ($wahl -notin 'Archiv', 'Behalten', 'Papierkorb') { $wahl = 'Archiv' }
+    $radios = @{}
+    foreach ($o in @(@('Archiv', "ins Download-Archiv verschieben  ($($e.DownloadArchiv))"), @('Behalten', 'im Download-Ordner lassen'), @('Papierkorb', 'in den Papierkorb'))) {
+        $rb = New-Object System.Windows.Forms.RadioButton
+        $rb.Text = $o[1]; $rb.Tag = $o[0]; $rb.AutoSize = $true; $rb.Checked = ($o[0] -eq $wahl)
+        $rb.Location = New-Object System.Drawing.Point(24, $y); $d.Controls.Add($rb); $radios[$o[0]] = $rb; $y += 26
+    }
+    $lh = New-Hinweis $d 'Verschoben oder gelöscht wird ein Original nur, wenn alle seine Dateien per Prüfsumme bestätigt im Ziel liegen; sonst bleibt es im Download-Ordner. Der Arbeitsordner zum Entpacken wird danach immer entfernt.' 24 ($y + 2) ($innen - 10)
+    $y += $lh.PreferredHeight + 16
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = 'Weiter ...'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
+    $ok.Location = New-Object System.Drawing.Point(($w - 16 - 230), $y); $ok.Size = New-Object System.Drawing.Size(110, 32)
+    $ab = New-Object System.Windows.Forms.Button
+    $ab.Text = 'Abbrechen'; $ab.FlatStyle = 'System'; $ab.DialogResult = 'Cancel'
+    $ab.Location = New-Object System.Drawing.Point(($w - 16 - 110), $y); $ab.Size = New-Object System.Drawing.Size(110, 32)
+    $d.Controls.Add($ok); $d.Controls.Add($ab); $d.AcceptButton = $ok; $d.CancelButton = $ab
+    $d.ClientSize = New-Object System.Drawing.Size($w, ($y + 48))
+    $d.Add_Shown({ $ok.Focus() })
+    $r = $d.ShowDialog($form)
+    $gewaehlt = @($lv.Items | Where-Object { $_.Checked -and $_.Tag.Anhakbar } | ForEach-Object { $_.Tag.Name })
+    $orig = @($radios.Keys | Where-Object { $radios[$_].Checked }) | Select-Object -First 1
+    $d.Dispose()
+    if ($r -ne 'OK') { return }
+    if (-not $gewaehlt.Count) { Show-Meldung 'Es ist kein Pack angehakt.' 'Warning'; return }
+    try { Set-Einstellung 'ImportOriginal' $orig } catch { }
+    [void](Start-Skript 'Download-importieren.ps1' "-Auswahl '$(($gewaehlt -join '|').Replace("'", "''"))' -Original $orig" 'Download importieren')
 }
 
 # ---------------------------------------------------------------------------
@@ -863,6 +935,14 @@ $gy += 44
 $null = New-Knopf $gSort 'Ziel öffnen' 0 $gy "Öffnet die sortierte Sample-Bibliothek im Explorer." { Open-Pfad (Get-Einstellungen).Ziel }
 $null = New-Knopf $gSort 'Fundorte suchen ...' 1 $gy "Sucht auf Laufwerken und in Ordnern nach Sample-Packs und zeigt die Fundorte im Browser; dort lassen sie sich als Quellen übernehmen. Es wird nichts verändert." { Show-FundorteSuchen }
 $gy += 44
+# Version 3: Download importieren - entpacken, einsortieren und das Original wegräumen in einem Schritt
+$null = New-Knopf $gSort 'Download importieren ...' 0 $gy `
+    "Frisch heruntergeladene Sample-Packs (ZIP oder Ordner im Download-Ordner) in einem Schritt entpacken, einsortieren und das Original ins Download-Archiv verschieben, liegen lassen oder in den Papierkorb legen. Mit Vorschau und Rückfrage." `
+    { Show-DownloadImport }
+$null = New-Knopf $gSort 'Letztes Import-Protokoll öffnen' 1 $gy `
+    "Öffnet das Protokoll des letzten Imports (CSV): je Download, ob er importiert wurde und was mit dem Original geschah." `
+    { $p = Get-NeuestesProtokoll 'Import-Protokoll_*.csv'; if ($p) { Open-Pfad $p.FullName } else { Show-Meldung 'Noch kein Import mit dieser Version.' 'Warning' } }
+$gy += 44
 Close-Gruppe $gSort ($gy + 2)
 
 # --- 2 Inventur und Bericht
@@ -988,6 +1068,8 @@ function Update-Status {
     $p = Get-NeuestesProtokoll 'Protokoll_*.csv'
     if ($p) { $zeilen += "Letzter Sortierlauf:  $((Get-Protokollzeit $p).ToString('dd.MM.yyyy HH:mm'))" }
     else    { $zeilen += 'Letzter Sortierlauf:  noch keiner mit dieser Version' }
+    $ip = Get-NeuestesProtokoll 'Import-Protokoll_*.csv'
+    if ($ip) { $zeilen += "Letzter Import:  $((Get-Protokollzeit $ip).ToString('dd.MM.yyyy HH:mm'))" }
     $btnProt.Enabled = [bool]$p
 
     $inv = Get-NeuesteInventur 'Sample'

@@ -468,11 +468,22 @@ function Find-Fundorte([string]$p, [bool]$unterBehaelter = $false) {
     if (Test-Behaelter $p) {
         # Behaelter (Laufwerk, Downloads, Dokumente ...) ist nie als Ganzes Fundort. Lose Audiodateien und Archive
         # direkt darin erscheinen als eigene Zeile mit der Art "Nur lose Dateien" (ohne Unterordner).
-        if ($n.Eigen.Audio -gt 0 -or $n.Eigen.Archive -gt 0) {
-            $z = @{ Pfad = $p; Neu = $n.Neu; Formate = $n.Formate; ZFormate = $n.ZFormate; Kinder = @{}; Beispiele = @($n.EigeneBeispiele | Where-Object { $_ }); Lose = $true; Eigen = $n.Eigen
-                    ZListe = @($n.ZListe | Where-Object { [IO.Path]::GetDirectoryName(($_ -split '\|')[0]) -ieq $p.TrimEnd('\', '/') -or [IO.Path]::GetDirectoryName(($_ -split '\|')[0]) -ieq $p }) }
+        # Version 3 (QLN-11): Archive direkt darin bekommen je eine eigene Zeile - sonst liest sich die Zeile der
+        # losen Dateien wie ein Pack aus dem ZIP
+        $eigeneZ = @($n.ZListe | Where-Object { $d = [IO.Path]::GetDirectoryName(($_ -split '\|')[0]); $d -ieq $p.TrimEnd('\', '/') -or $d -ieq $p })
+        if ($n.Eigen.Audio -gt 0) {
+            $z = @{ Pfad = $p; Neu = $n.Neu; Formate = $n.Formate; ZFormate = @{}; Kinder = @{}; Beispiele = @($n.EigeneBeispiele | Where-Object { $_ }); Lose = $true; Eigen = $n.Eigen; ZListe = @() }
             foreach ($s in $SummenFelder) { $z[$s] = $n.Eigen[$s] }
+            foreach ($s in 'Archive', 'ZAudio', 'ZBytes', 'ZCloud', 'ZOffen', 'ZVerschachtelt') { $z[$s] = 0 }
             $z.Projekt = 0; $z.Instrument = 0
+            $fundorte.Add($z)
+        }
+        foreach ($zl in $eigeneZ) {
+            $t = $zl -split '\|'
+            $z = @{ Pfad = $t[0]; Neu = $n.Neu; Formate = @{}; ZFormate = @{}; Kinder = @{}; Beispiele = @(); Lose = $false; Eigen = @{ Audio = 0 }; ZListe = @($zl); Archivzeile = $true }
+            foreach ($s in $SummenFelder) { $z[$s] = 0 }
+            $z.Archive = 1
+            switch ($t[1]) { 'a' { $z.ZAudio = [long]$t[2]; $z.ZBytes = [long]$t[3] } 'v' { $z.ZAudio = [long]$t[2]; $z.ZBytes = [long]$t[3]; $z.ZVerschachtelt = 1 } 'c' { $z.ZCloud = 1 } default { $z.ZOffen = 1 } }
             $fundorte.Add($z)
         }
         foreach ($k in $kinder) { Find-Fundorte $k.Pfad $true }
@@ -533,12 +544,13 @@ $liste = @(foreach ($n in $fundorte) {
         pj  = $n.Projekt
         ap  = $n.AbletonPreset
         nl  = [bool]$n.Lose
+        ar  = [bool]$n.Archivzeile
         qa  = $qArt
         st  = $status
         vor = ($art -eq 'Sample-Packs' -and -not $n.Lose -and -not $status -and $n.Audio -ge 5 -and $n.Cloud -eq 0)
         u   = @($kinder | Select-Object -First 30 | ForEach-Object { [pscustomobject]@{ n = [IO.Path]::GetFileName($_.Pfad); a = $_.Audio; b = $_.Bytes; za = $_.ZAudio; art = (Get-Einschaetzung $_) } })
         bsp = @($n.Beispiele)
-        zl  = @($n.ZListe | ForEach-Object { $t = $_ -split '\|'; $r = $t[0]; if ($r.StartsWith($basisPfad + $sep, [StringComparison]::OrdinalIgnoreCase)) { $r = $r.Substring($basisPfad.Length + 1) }
+        zl  = @($n.ZListe | ForEach-Object { $t = $_ -split '\|'; $r = $t[0]; if ($n.Archivzeile) { $r = [IO.Path]::GetFileName($r) } elseif ($r.StartsWith($basisPfad + $sep, [StringComparison]::OrdinalIgnoreCase)) { $r = $r.Substring($basisPfad.Length + 1) }
                  [pscustomobject]@{ n = $r; s = $t[1]; a = [int]$t[2]; b = [long]$t[3]; g = $(if ($t.Count -gt 4) { $t[4] } else { '' }) } })
     }
 }) | Sort-Object @{ e = { $_.art -ne 'Sample-Packs' } }, @{ e = { $_.b + $_.zb }; Descending = $true }

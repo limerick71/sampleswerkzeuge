@@ -319,15 +319,16 @@ try {
                 '/oeffnen-ort' {
                     if ($a.Methode -ne 'POST' -or -not $Fundorte) { Send-Text $strom 405 'Method Not Allowed' 'Nicht erlaubt.'; break }
                     $pf = [string]($a.Body | ConvertFrom-Json).pfad
-                    if (-not $fundPfade.ContainsKey($pf.ToLowerInvariant()) -or -not (Test-Path -LiteralPath $pf -PathType Container)) { Send-Text $strom 404 'Not Found' 'Fundort nicht gefunden.'; break }
+                    if (-not $fundPfade.ContainsKey($pf.ToLowerInvariant()) -or -not (Test-Path -LiteralPath $pf)) { Send-Text $strom 404 'Not Found' 'Fundort nicht gefunden.'; break }
                     Send-Text $strom 200 'OK' '{}' 'application/json; charset=utf-8'
-                    Open-ExplorerVorne "`"$pf`"" $pf
+                    # Version 3: Archiv-Zeile (Datei) - Ordner oeffnen und das Archiv markieren
+                    if (Test-Path -LiteralPath $pf -PathType Leaf) { Open-ExplorerVorne "/select,`"$pf`"" ([IO.Path]::GetDirectoryName($pf)) } else { Open-ExplorerVorne "`"$pf`"" $pf }
                 }
                 '/quellen' {
                     if ($a.Methode -ne 'POST') { Send-Text $strom 405 'Method Not Allowed' 'Nur POST.'; break }
                     $ql = @((Get-Einstellungen).Quellen | ForEach-Object { @{ pfad = [string]$_.Pfad; art = (Get-QuellArtName ([string]$_.Art)); aktiv = [bool]$_.Aktiv } })
                     # 2.3.2: Fundorte, deren Ordner es nicht mehr gibt (Bericht kann aelter sein)
-                    $fehlt = @(); if ($Fundorte) { $fehlt = @($fundPfade.Values | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Container) }) }
+                    $fehlt = @(); if ($Fundorte) { $fehlt = @($fundPfade.Values | Where-Object { -not (Test-Path -LiteralPath $_) }) }   # Version 3: auch Archiv-Zeilen (Datei)
                     Send-Text $strom 200 'OK' (ConvertTo-Json -InputObject @{ quellen = $ql; fehlt = $fehlt } -Depth 4 -Compress) 'application/json; charset=utf-8'
                 }
                 '/uebernehmen' {

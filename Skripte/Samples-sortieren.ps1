@@ -31,7 +31,12 @@ param(
     [string]$Quelle = '',
     [string]$Ziel   = '',
     [switch]$NurVorschau,
-    [switch]$Ausfuehren
+    [switch]$Ausfuehren,
+    # Version 3 (Import): Quellen fuer diesen Lauf als "Pfad*Art|Pfad*Art", eigene Frage vor dem Kopieren,
+    # Protokoll auch dann, wenn nichts Neues zu kopieren ist (der Import braucht es fuer die Originale)
+    [string]$Quellen = '',
+    [string]$Frage = '',
+    [switch]$ImmerProtokoll
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,7 +45,8 @@ $Zeitstempel  = Get-Date -Format 'yyyy-MM-dd_HHmmss'
 
 $einst = Get-Einstellungen
 # Quellen (QLN-05): alle aktiven aus der Quellenliste, oder -Quelle fuer einen einzelnen Lauf
-$QuellObjekte = if ($Quelle) { @([pscustomobject]@{ Pfad = $Quelle; Art = 'Sammlung' }) } else { @(Get-AktiveQuellObjekte) }
+$QuellObjekte = if ($Quellen) { @($Quellen -split '\|' | Where-Object { $_ } | ForEach-Object { $t = $_ -split '\*'; [pscustomobject]@{ Pfad = $t[0]; Art = $(if ($t.Count -gt 1) { $t[1] } else { 'Pack' }) } }) }
+                elseif ($Quelle) { @([pscustomobject]@{ Pfad = $Quelle; Art = 'Sammlung' }) } else { @(Get-AktiveQuellObjekte) }
 $QuellListe = @($QuellObjekte | ForEach-Object { $_.Pfad })
 if (-not $Ziel)   { $Ziel   = $einst.Ziel }
 Write-Host "Samples sortieren (Samples-Werkzeuge $ProgrammVersion)" -ForegroundColor Cyan
@@ -170,8 +176,20 @@ function Get-WavSekunden([string]$Pfad, [long]$Groesse) {
     } catch { return -1 }
 }
 
-function Find-Instrument([string]$Text) {
+# Version 3 (QLN-11): zuerst ganze Woerter (harp, piano ...), erst danach Kuerzel (BD, SD, RS, HH ...).
+# Kuerzel, die den Anfangsbuchstaben des Pack-Namens entsprechen, zaehlen nicht (Boogie Down -> BD).
+$RxKuerzel = '(?<![a-z])(cp|hh|ch|oh|cc|rc|sd|rs|lt|mt|ht|bd|sh|pc|cb)(?![a-z])'
+function Get-PackInitialen([string]$Pack) {
+    $w = @(($Pack.ToLowerInvariant() -split '[^a-z0-9]+') | Where-Object { $_ -match '^[a-z]' })
+    if ($w.Count -ge 2) { return $w[0].Substring(0, 1) + $w[1].Substring(0, 1) }
+    return ''
+}
+function Find-Instrument([string]$Text, [string]$Pack = '') {
     $t = $Text.ToLowerInvariant() -replace 'no ?kick', ' ' -replace 'stripped', ' '
+    $ohneKuerzel = $t -replace $RxKuerzel, ' '
+    foreach ($i in $Instrumente) { if ($ohneKuerzel -match $i[1]) { return $i[0] } }
+    $ini = Get-PackInitialen $Pack
+    if ($ini) { $t = $t -replace "(?<![a-z])$ini(?![a-z])", ' ' }
     foreach ($i in $Instrumente) { if ($t -match $i[1]) { return $i[0] } }
     return $null
 }
@@ -277,7 +295,7 @@ foreach ($f in $alle) {
     $endung = [IO.Path]::GetExtension($nameL)
     if ($endung -in $ExtProgramm) { $grund = 'Programm oder Installer' }
     elseif ($endung -in $ExtPlugin) { $grund = 'Plugin- oder Instrument-Inhalt (gehoert zum Plugin)' }
-    elseif ($endung -in $ExtArchiv) { $grund = 'Archiv - vorher entpacken (ab Version 3 uebernimmt das der Import)' }
+    elseif ($endung -in $ExtArchiv) { $grund = 'Archiv - vorher entpacken (im Download-Ordner: Download importieren)' }
     elseif ($artVon[$QWurzel] -eq 'Lose' -and $nameL -notmatch $RxAudio -and $nameL -notmatch '\.midi?$') { $grund = 'keine Audio- oder MIDI-Datei (bei Nur lose Dateien werden nur diese uebernommen)' }
     if ($grund) {
         $eintrag.Aktion = 'Kein Sample'; $eintrag.Kategorie = 'kein Sample'; $eintrag.Hinweis = $grund
@@ -356,9 +374,9 @@ foreach ($f in $alle) {
     }
     # --- Generisch: Instrument aus Dateiname, sonst Ordnern ---------------
     else {
-        $inst = Find-Instrument $basis
+        $inst = Find-Instrument $basis $pack
         if (-not $inst) {
-            for ($i = $alleOrdner.Count - 1; $i -ge 0 -and -not $inst; $i--) { $inst = Find-Instrument $alleOrdner[$i] }
+            for ($i = $alleOrdner.Count - 1; $i -ge 0 -and -not $inst; $i--) { $inst = Find-Instrument $alleOrdner[$i] $pack }
         }
         if (-not $inst) { foreach ($pf in $PackFallback) { if ($pack -match $pf[0]) { $inst = $pf[1]; break } } }
         if (-not $inst) {
@@ -611,15 +629,17 @@ Write-Host ""
 Write-Host "Vorschau gespeichert (zeigt nur, was passieren wuerde):" -ForegroundColor Green
 Write-Host "  $vorschauPfad"
 
-if ($kopieren.Count -eq 0) { Write-Host ""; Write-Host "Nichts Neues zu kopieren. Alles ist bereits im Ziel." -ForegroundColor Green; return }
+if ($kopieren.Count -eq 0 -and -not $ImmerProtokoll) { Write-Host ""; Write-Host "Nichts Neues zu kopieren. Alles ist bereits im Ziel." -ForegroundColor Green; return }
+if ($kopieren.Count -eq 0) { Write-Host ""; Write-Host "Nichts Neues zu kopieren. Alles ist bereits im Ziel." -ForegroundColor Green }
 if (-not $Ausfuehren) {
     if ($NurVorschau -or $zuWenigPlatz) {
         Write-Host "Es wurde nichts kopiert."
         return
     }
     Write-Host ""
-    $frage = "Jetzt die $($kopieren.Count) neuen Dateien ($('{0:N2}' -f $summeGB) GB) nach '$Ziel' kopieren"
-    if (-not (Read-JaNein "$($frage)?")) {
+    $frageText = "Jetzt die $($kopieren.Count) neuen Dateien ($('{0:N2}' -f $summeGB) GB) nach '$Ziel' kopieren"
+    if ($Frage) { $frageText = $(if ($kopieren.Count) { "Jetzt die $($kopieren.Count) neuen Dateien ($('{0:N2}' -f $summeGB) GB) kopieren und $Frage" } else { "Jetzt $Frage" }) }
+    if (-not (Read-JaNein "$($frageText)?")) {
         Write-Host ""
         Write-Host "Abgebrochen. Es wurde nichts kopiert." -ForegroundColor Yellow
         Write-Host "Die Vorschau-Datei zeigt nur, was kopiert worden waere. Es gibt kein Protokoll, weil nichts passiert ist."

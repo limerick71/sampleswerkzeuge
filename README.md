@@ -14,7 +14,7 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 | `Samples sortieren.cmd`, `Inventur starten.cmd`, `Quelle aufraeumen.cmd` | Starten die Funktionen ohne Oberfläche |
 | `Erste Schritte.txt`, `Dokumentation Samples-Werkzeuge.rtf` | Anleitungen |
 | `Test/` | `Testvorbereitung.cmd/.ps1` – nur für Tests: Ziel leeren, erstes Pack „SINEE…“ und „Vocal Loops 120“ in der Quelle in den Papierkorb |
-| `Skripte/` | `Gemeinsam.ps1` (Pfade, Einstellungen), `Samples-Werkzeuge.ps1` (Oberfläche), `Samples-sortieren.ps1`, `Inventur.ps1`, `Bericht.ps1` (HTML-Bericht), `Bericht-Dienst.ps1` (lokaler Dienst für Abspielen, Löschen und Ordner öffnen aus dem Bericht sowie für den Fundort-Bericht), `Fundorte-suchen.ps1` (Suchlauf nach Sample-Packs), `Fundorte-Bericht.ps1` (Seite des Fundort-Berichts), `Ziel-Duplikate-entfernen.ps1`, `Quelle-aufraeumen.ps1`; zur Laufzeit `Einstellungen.json` und `Pack-Arten.csv` |
+| `Skripte/` | `Gemeinsam.ps1` (Pfade, Einstellungen), `Samples-Werkzeuge.ps1` (Oberfläche), `Samples-sortieren.ps1`, `Inventur.ps1`, `Bericht.ps1` (HTML-Bericht), `Bericht-Dienst.ps1` (lokaler Dienst für Abspielen, Löschen und Ordner öffnen aus dem Bericht sowie für den Fundort-Bericht), `Fundorte-suchen.ps1` (Suchlauf nach Sample-Packs), `Fundorte-Bericht.ps1` (Seite des Fundort-Berichts), `Ziel-Duplikate-entfernen.ps1`, `Quelle-aufraeumen.ps1`, `Download-importieren.ps1` (Import aus dem Download-Ordner), `Import.ps1` (ZIP lesen und sicher entpacken, Kandidaten im Download-Ordner); zur Laufzeit `Einstellungen.json` und `Pack-Arten.csv` |
 | `Inventuren/`, `Inventur-Vergleiche/` | entstehen zur Laufzeit im Berichtsordner: Inventur (CSV, JSON), HTML-Bericht, Vergleiche |
 | `Protokolle/` | entsteht zur Laufzeit: Vorschauen und Protokolle (CSV) |
 | `tools/` | nur im Repository: erzeugt die RTF-Dokumentation (`python3 tools/dokumentation.py`) |
@@ -23,6 +23,7 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 
 | Version | Datum | Inhalt |
 |---|---|---|
+| 3.0 | 30.10.2026 | Download importieren: frisch heruntergeladene Packs (ZIP oder Ordner) in einem Schritt entpacken, einsortieren und das Original ins Download-Archiv verschieben, liegen lassen oder in den Papierkorb legen – mit Vorschau, Prüfsummen und Import-Protokoll; Instrument-Kürzel zuverlässiger; Archive im Fundort-Bericht als eigene Zeile |
 | 2.3.5 | 30.10.2026 | Befunde aus dem Test der 2.3.4: One-Shots mit Laufnummer; einheitlich „Sortieren“; Fundort-Bericht mit Quelle und „(deaktiviert)“, Haken für alle; ZIP mit ungewöhnlichen Namen; Fundorte-Fenster merkt die Auswahl; „Quelle aufräumen“ fragt zuerst die Quellen; „Packs liegen tiefer“ deutlich sichtbar; Cubase/Ableton-Projekte wieder als DAW-Projekt |
 | 2.3.4 | 29.10.2026 | Befunde aus dem Test der 2.3.3: Archive robuster gelesen (Grund bei nicht prüfbaren); Innenordner eines Packs erkannt; DAW-Projekt nur mit Projektdatei; Inventur mit Keys/Synth/Melodic; „nur Auffällige“ in der Pack-Ansicht; Packs liegen tiefer – Hinweis und Umstellen; Vocals ohne inneren Ordnerweg; kleine Fundorte standardmäßig sichtbar |
 | 2.3.3 | 28.10.2026 | Befunde aus dem Test der 2.3.2: keine Installer, Plugin-Inhalte und Archive kopieren; Sammelordner nur als „Nur lose Dateien“; Pack-Ebene (z. B. Splice); lange Pfade; neue Instrumente und Kategorie 13 Strings & Orchestra; RX2 als Loop neben der WAV; Formate im Ziel entfernen |
@@ -38,7 +39,7 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 | 1.0.0 | 26.10.2026 | Ordnerstruktur wie Plugin-Werkzeuge, einstellbare Ordner (Quelle, Ziel, Downloads, Download-Archiv, Berichte), neue Oberfläche mit Status, Begrüßung und Desktop-Verknüpfung, Vorschau mit Rückfrage, Protokolle in eigenem Ordner, Einstellungen werden von der Vorversion übernommen |
 | 0 | 21.10.2026 | Ausgangsstand: Sortieren, Duplikate entfernen, einfache Oberfläche, feste Pfade |
 
-Geplant: Version 3 Import aus Downloads, danach Bereinigung am Ursprungsort.
+Geplant: Neuordnung der Oberfläche (GUI-07), wenn alle Funktionen drin sind.
 
 © 2026 Herbert Stöcker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite
 weitergeben; Verkauf und Veröffentlichung geänderter Fassungen nur mit Zustimmung.

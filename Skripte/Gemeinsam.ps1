@@ -10,7 +10,7 @@
 #   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
 #   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
 
-$ProgrammVersion = '2.3.5'
+$ProgrammVersion = '3.0'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -96,8 +96,8 @@ function Get-StandardDownloads {
 $PfadEinstellungen = @(
     @{ Name = 'Quelle';         Text = 'Quelle';           Hinweis = 'Ordner mit den unsortierten Sample-Packs. Wird beim Sortieren nur gelesen.' }
     @{ Name = 'Ziel';           Text = 'Ziel';             Hinweis = 'Sortierte Sample-Bibliothek. Hierhin wird kopiert.' }
-    @{ Name = 'Downloads';      Text = 'Downloads';        Hinweis = "Hier sucht der Import (ab Version 3) nach neuen Sample-Packs." }
-    @{ Name = 'DownloadArchiv'; Text = 'Download-Archiv';  Hinweis = "Hierhin verschiebt der Import (ab Version 3) auf Wunsch die Original-Downloads." }
+    @{ Name = 'Downloads';      Text = 'Downloads';        Hinweis = "Hier sucht 'Download importieren' nach neuen Sample-Packs (ZIP-Dateien und Ordner)." }
+    @{ Name = 'DownloadArchiv'; Text = 'Download-Archiv';  Hinweis = "Hierhin verschiebt 'Download importieren' auf Wunsch die Original-Downloads." }
     @{ Name = 'Berichtsordner'; Text = 'Berichte';         Hinweis = "Hier legt die Inventur (ab Version 2) die Unterordner Inventuren und Inventur-Vergleiche an." }
 )
 
@@ -127,6 +127,7 @@ function Get-StandardEinstellungen {
         FundortAn           = ''
         FundortZusatz       = ''
         FundortZip          = $true
+        ImportOriginal      = 'Archiv'   # Version 3: Archiv, Behalten oder Papierkorb
     }
 }
 

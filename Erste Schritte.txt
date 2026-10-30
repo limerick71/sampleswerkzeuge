@@ -44,7 +44,7 @@ Unten auf „⚙ Einstellungen“ klicken:
               usw. immer als „Nur lose Dateien“, Packs darin einzeln.
   - Ziel:     sortierte Sample-Bibliothek (Standard: Dokumente\Ziel_Samples)
   - Berichte: hier entstehen Inventuren und Berichte (Standard: Programmordner)
-Downloads und Download-Archiv werden erst ab Version 3 genutzt.
+  - Downloads / Download-Archiv: für „Download importieren …“ (siehe 4b)
 Die Auswahl wird gespeichert. Der Status im Hauptfenster zeigt danach die
 aktiven Quellen und das Ziel mit Pfad und ob sie gefunden werden.
 Im selben Fenster: „Zusätzlich zur WAV behalten: RX2 / MP3 / AIFF“ (Standard:
@@ -64,6 +64,19 @@ Im Bereich „1 Sortieren“ auf „Samples sortieren …“ klicken:
     oder in einem anderen Ordner liegt.
   - macOS-Reste (._-Dateien, .DS_Store) werden nicht kopiert.
   - Die Quelle bleibt unverändert; nicht Kopiertes bleibt dort liegen.
+
+4b. DOWNLOAD IMPORTIEREN (ABKÜRZUNG FÜR NEUE DOWNLOADS)
+------------------------------------------------------------
+Gerade ein Sample-Pack heruntergeladen? Im Bereich „1 Sortieren“ auf
+„Download importieren …“ klicken:
+  - Die Liste zeigt neue ZIP-Dateien und Ordner mit Audiodateien im
+    Download-Ordner. Schon vollständig Importiertes, RAR/7z und nicht lesbare
+    ZIPs sind grau und nicht anhakbar.
+  - Darunter wählen, was danach mit dem Original passiert: ins Download-Archiv
+    verschieben (Standard), im Download-Ordner lassen oder in den Papierkorb.
+  - Ein Fenster entpackt, zeigt die Vorschau wie beim Sortieren und kopiert
+    erst nach „J“. Das Original wird nur verschoben oder gelöscht, wenn alle
+    Dateien per Prüfsumme bestätigt im Ziel liegen.
 
 
 5. INVENTUR UND BERICHT
