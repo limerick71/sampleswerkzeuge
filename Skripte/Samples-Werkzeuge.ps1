@@ -281,13 +281,16 @@ function Show-Einstellungen {
     [void]$lv.Columns.Add('Ordner', 270); [void]$lv.Columns.Add('Art', 110); [void]$lv.Columns.Add('Herkunft', 120); [void]$lv.Columns.Add('Zustand', ($gb - 24 - 270 - 110 - 120 - 24))
     $g0.Controls.Add($lv)
     $script:qLaedt = $false; $script:qStand = -1   # -1: beim ersten Aktivieren (Fenster sichtbar) einlesen
+    $lWarn = New-Object System.Windows.Forms.LinkLabel
+    $lWarn.Font = $schriftFett; $lWarn.ForeColor = [System.Drawing.Color]::FromArgb(160, 70, 0); $lWarn.AutoEllipsis = $true; $lWarn.Visible = $false
+    $lWarn.Add_LinkClicked({ foreach ($it in @($lv.Items)) { if ($script:tiefer -contains $it.Text) { & $umstellen $it.Text ([string]$it.Tag); break } } })
     # Stand der Einstellungsdatei: neu eingelesen wird nur, wenn sie sich geaendert hat (2.3.2)
     $stand = { try { (Get-Item -LiteralPath $einstellungsPfad -ErrorAction Stop).LastWriteTimeUtc.Ticks } catch { 0 } }
     $artText = { param($k) $QuellArten[$k] + '  ▾' }
     # 2.3.4: Ebene, auf der die Packs einer Sammlung liegen (z. B. Splice -> Samples\packs); je Pfad einmal ermittelt
     $script:ebenen = @{}
     $ebeneVon = { param($p, $art)
-        if ($art -ne 'Sammlung') { return $null }
+        if ($art -eq 'Lose') { return $null }   # 2.3.5: auch bei "Ein Pack" (sonst landet alles unter einem Pack-Namen)
         $k = $p.ToLowerInvariant()
         if (-not $script:ebenen.ContainsKey($k)) { $script:ebenen[$k] = $(try { Get-PackEbene $p } catch { $null }) }
         return $script:ebenen[$k]
@@ -295,7 +298,7 @@ function Show-Einstellungen {
     $fuelle = {
         $script:qLaedt = $true
         $markiert = if ($lv.SelectedItems.Count) { $lv.SelectedItems[0].Text } else { '' }
-        $lv.BeginUpdate(); $lv.Items.Clear()
+        $lv.BeginUpdate(); $lv.Items.Clear(); $script:tiefer = @()
         foreach ($q in @((Get-Einstellungen).Quellen)) {
             $it = New-Object System.Windows.Forms.ListViewItem($q.Pfad)
             [void]$it.SubItems.Add((& $artText (Get-QuellArtName $q.Art)))
@@ -304,12 +307,19 @@ function Show-Einstellungen {
             $da = Test-Path -LiteralPath $q.Pfad
             $eb = if ($da) { & $ebeneVon $q.Pfad (Get-QuellArtName $q.Art) } else { $null }
             $zst = $it.SubItems.Add($(if (-not $da) { 'NICHT GEFUNDEN' } elseif ($eb) { 'Packs liegen tiefer ▸ umstellen' } else { 'gefunden' }))
-            if ($eb) { $it.UseItemStyleForSubItems = $false; $zst.ForeColor = [System.Drawing.Color]::FromArgb(180, 90, 0) }
+            # 2.3.5: ganze Zeile hervorheben und unter der Liste darauf hinweisen
+            if ($eb) { $it.BackColor = [System.Drawing.Color]::FromArgb(255, 232, 200); $it.ForeColor = [System.Drawing.Color]::FromArgb(140, 60, 0); $script:tiefer += $q.Pfad }
             $it.Checked = [bool]$q.Aktiv
             [void]$lv.Items.Add($it)
             if ($markiert -and $q.Pfad -eq $markiert) { $it.Selected = $true }
         }
         $lv.EndUpdate()
+        if ($script:tiefer.Count) {
+            $link = 'Jetzt umstellen …'
+            $lWarn.Text = $link + '   ⚠ Packs liegen tiefer bei ' + $(if ($script:tiefer.Count -eq 1) { $script:tiefer[0] } else { "$($script:tiefer.Count) Quellen (orange Zeilen)" })
+            $lWarn.LinkArea = New-Object System.Windows.Forms.LinkArea(0, $link.Length)
+            $lWarn.Visible = $true
+        } else { $lWarn.Visible = $false }
         $script:qStand = & $stand
         $script:qLaedt = $false
     }
@@ -342,7 +352,7 @@ function Show-Einstellungen {
         $e = Get-Einstellungen
         $f = Test-NeueQuelle $it.Text $e.Quellen $e.Ziel $it.Text $neuArt
         if ($f) { $artMenue.Close(); Show-Meldung "$f`n`nDie Art wurde nicht geändert." 'Warning'; return }
-        $it.Tag = $neuArt; $it.SubItems[1].Text = (& $artText $neuArt); & $speichern
+        $it.Tag = $neuArt; $it.SubItems[1].Text = (& $artText $neuArt); & $speichern; & $fuelle   # 2.3.5: Zustand neu bestimmen
     })
     $lv.Add_MouseClick({
         param($sender, $ev)
@@ -350,8 +360,14 @@ function Show-Einstellungen {
         if (-not $h.Item -or -not $h.SubItem) { return }
         $spalte = $h.Item.SubItems.IndexOf($h.SubItem)
         # 2.3.4: Klick auf "Packs liegen tiefer" bietet an, die Quelle auf die Pack-Ebene umzustellen
-        if ($spalte -eq 3) {
-            $alt = $h.Item.Text; $eb = & $ebeneVon $alt ([string]$h.Item.Tag)
+        if ($spalte -eq 3) { & $umstellen $h.Item.Text ([string]$h.Item.Tag); return }
+        if ($spalte -ne 1) { return }
+        $script:artZeile = $h.Item
+        foreach ($mi in $artMenue.Items) { $mi.Checked = ([string]$mi.Tag -eq [string]$h.Item.Tag) }
+        $artMenue.Show($lv, $ev.Location)
+    })
+    $umstellen = { param($alt, $art)
+            $eb = & $ebeneVon $alt $art
             if (-not $eb) { return }
             $name = ($eb.Substring($alt.TrimEnd('\').Length).TrimStart('\') -split '\\')[0]
             if (-not (Show-Frage "Die Packs dieser Quelle liegen erst in`n$eb`n`nSo wie eingetragen würde beim Sortieren '$name' zum Pack-Namen, statt der Namen der einzelnen Packs.`n`nQuelle auf diesen Ordner umstellen (Art 'Sammlung')?`nAm Ordner selbst wird nichts geändert. Schon Einsortiertes bleibt, wie es ist.")) { return }
@@ -361,13 +377,7 @@ function Show-Einstellungen {
             $neu = @(foreach ($q in @($e.Quellen)) { if ($q.Pfad -eq $alt) { [pscustomobject]@{ Pfad = $eb; Aktiv = [bool]$q.Aktiv; Herkunft = $q.Herkunft; Art = 'Sammlung' } } else { $q } })
             try { Set-Quellen $neu } catch { Show-Meldung "Speichern fehlgeschlagen:`n$($_.Exception.Message)" 'Error'; return }
             & $fuelle
-            return
-        }
-        if ($spalte -ne 1) { return }
-        $script:artZeile = $h.Item
-        foreach ($mi in $artMenue.Items) { $mi.Checked = ([string]$mi.Tag -eq [string]$h.Item.Tag) }
-        $artMenue.Show($lv, $ev.Location)
-    })
+    }
     $by = 26 + 132 + 8
     $bAdd = New-Object System.Windows.Forms.Button
     $bAdd.Text = 'Hinzufügen ...'; $bAdd.Font = $schrift; $bAdd.FlatStyle = 'System'
@@ -400,7 +410,7 @@ function Show-Einstellungen {
         $pf = $lv.SelectedItems[0].Text
         if (-not (Show-Frage "Diese Quelle aus der Liste nehmen?`n$pf`n`nDer Ordner selbst bleibt unverändert.")) { return }
         foreach ($x in @($lv.Items)) { if ($x.Text -eq $pf) { $lv.Items.Remove($x) } }
-        & $speichern
+        & $speichern; & $fuelle
     })
     $tt.SetToolTip($bWeg, 'Nimmt die markierte Quelle aus der Liste. Am Ordner wird nichts geändert.')
     $g0.Controls.Add($bWeg)
@@ -417,6 +427,10 @@ function Show-Einstellungen {
     $tt.SetToolTip($bInfo, 'Was bedeutet die Art? Zeigt am markierten Ordner, was jede Art bewirkt.')
     $g0.Controls.Add($bInfo)
     $ay = $by + 40
+    # 2.3.5: deutlicher Hinweis, wenn bei einer Quelle die Packs tiefer liegen
+    $lWarn.Location = New-Object System.Drawing.Point(12, $ay); $lWarn.Size = New-Object System.Drawing.Size(($gb - 24), 22)
+    $g0.Controls.Add($lWarn)
+    $ay += 26
     $lq = New-Hinweis $g0 'Haken = aktiv: Sortieren und „Quelle aufräumen“ lesen alle aktiven Quellen. Art = wie die Packs im Ordner erkannt werden – zum Ändern auf die Art klicken, Erklärung unter ⓘ. Doppelklick öffnet einen Ordner.' 12 $ay ($gb - 24)
     $g0.Height = $ay + $lq.PreferredHeight + 14
     $dy += $g0.Height + 10
@@ -529,22 +543,33 @@ function Show-FundorteSuchen {
     $clb.Location = New-Object System.Drawing.Point(16, $y); $clb.Size = New-Object System.Drawing.Size($innen, 200)
     $d.Controls.Add($clb)
     $orte = New-Object System.Collections.Generic.List[string]
-    $add = { param($pfad, $text, $an) if ($pfad -and (Test-Path -LiteralPath $pfad) -and -not ($orte -contains $pfad)) { $orte.Add($pfad); [void]$clb.Items.Add($text, [bool]$an) } }
-    & $add (Get-StandardDownloads) "Downloads  ($(Get-StandardDownloads))" $true
-    & $add ([Environment]::GetFolderPath('MyDocuments')) "Dokumente  ($([Environment]::GetFolderPath('MyDocuments')))" $true
-    & $add ([Environment]::GetFolderPath('Desktop')) "Desktop  ($([Environment]::GetFolderPath('Desktop')))" $true
-    & $add ([Environment]::GetFolderPath('MyMusic')) "Musik  ($([Environment]::GetFolderPath('MyMusic')))" $true
+    # 2.3.5: Auswahl merken - angehakte Orte und selbst hinzugefuegte Ordner stehen in den Einstellungen
+    $einstF = Get-Einstellungen
+    $gemerkt = @(([string]$einstF.FundortAn) -split '\|' | Where-Object { $_ })
+    $zusatz = @(([string]$einstF.FundortZusatz) -split '\|' | Where-Object { $_ })
+    $standard = New-Object System.Collections.Generic.List[string]
+    $add = { param($pfad, $text, $an, $istStandard)
+        if ($pfad -and (Test-Path -LiteralPath $pfad) -and -not ($orte -contains $pfad)) {
+            if ($gemerkt.Count) { $an = ($gemerkt -contains $pfad) }
+            $orte.Add($pfad); [void]$clb.Items.Add($text, [bool]$an)
+            if ($istStandard) { $standard.Add($pfad) }
+        } }
+    & $add (Get-StandardDownloads) "Downloads  ($(Get-StandardDownloads))" $true $true
+    & $add ([Environment]::GetFolderPath('MyDocuments')) "Dokumente  ($([Environment]::GetFolderPath('MyDocuments')))" $true $true
+    & $add ([Environment]::GetFolderPath('Desktop')) "Desktop  ($([Environment]::GetFolderPath('Desktop')))" $true $true
+    & $add ([Environment]::GetFolderPath('MyMusic')) "Musik  ($([Environment]::GetFolderPath('MyMusic')))" $true $true
     $sys = "$env:SystemDrive\"
     foreach ($lw in [IO.DriveInfo]::GetDrives()) {
         try {
             if (-not $lw.IsReady -or $lw.DriveType -notin 'Fixed', 'Removable') { continue }
             $frei = '{0:N0} GB belegt' -f (($lw.TotalSize - $lw.TotalFreeSpace) / 1GB)
             $name = if ($lw.VolumeLabel) { " $($lw.VolumeLabel)" } else { '' }
-            if ($lw.RootDirectory.FullName -ieq $sys) { & $add $lw.RootDirectory.FullName "Laufwerk $($lw.Name)$name ganz  ($frei, Systemlaufwerk – dauert länger)" $false }
-            elseif ($lw.DriveType -eq 'Removable') { & $add $lw.RootDirectory.FullName "Laufwerk $($lw.Name)$name ganz  ($frei, Wechseldatenträger)" $false }
-            else { & $add $lw.RootDirectory.FullName "Laufwerk $($lw.Name)$name ganz  ($frei)" $true }
+            if ($lw.RootDirectory.FullName -ieq $sys) { & $add $lw.RootDirectory.FullName "Laufwerk $($lw.Name)$name ganz  ($frei, Systemlaufwerk – dauert länger)" $false $true }
+            elseif ($lw.DriveType -eq 'Removable') { & $add $lw.RootDirectory.FullName "Laufwerk $($lw.Name)$name ganz  ($frei, Wechseldatenträger)" $false $true }
+            else { & $add $lw.RootDirectory.FullName "Laufwerk $($lw.Name)$name ganz  ($frei)" $true $true }
         } catch { }
     }
+    foreach ($z in $zusatz) { & $add $z $z $true $false }
     $y += 200 + 8
     $bOrd = New-Object System.Windows.Forms.Button
     $bOrd.Text = 'Ordner hinzufügen ...'; $bOrd.FlatStyle = 'System'
@@ -552,17 +577,29 @@ function Show-FundorteSuchen {
     $bOrd.Add_Click({
         $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
         $dlg.Description = 'Zusätzlichen Ordner durchsuchen'; $dlg.ShowNewFolderButton = $false
-        if ($dlg.ShowDialog($d) -eq 'OK') { & $add $dlg.SelectedPath $dlg.SelectedPath $true }
+        if ($dlg.ShowDialog($d) -eq 'OK') { $sp = $dlg.SelectedPath; if ($sp.Length -gt 3) { $sp = $sp.TrimEnd('\') }; $gemerkt = @(); & $add $sp $sp $true $false }
     })
     $d.Controls.Add($bOrd)
+    # 2.3.5: selbst hinzugefuegte Ordner wieder entfernen; die Standardorte lassen sich nur abhaken
+    $bWegO = New-Object System.Windows.Forms.Button
+    $bWegO.Text = 'Entfernen'; $bWegO.FlatStyle = 'System'; $bWegO.Enabled = $false
+    $bWegO.Location = New-Object System.Drawing.Point(16, ($y + 38)); $bWegO.Size = New-Object System.Drawing.Size(170, 30)
+    $clb.Add_SelectedIndexChanged({ $i = $clb.SelectedIndex; $bWegO.Enabled = ($i -ge 0 -and -not ($standard -contains $orte[$i])) })
+    $bWegO.Add_Click({
+        $i = $clb.SelectedIndex
+        if ($i -lt 0 -or ($standard -contains $orte[$i])) { return }
+        $orte.RemoveAt($i); $clb.Items.RemoveAt($i); $bWegO.Enabled = $false
+    })
+    $d.Controls.Add($bWegO)
     # 2.3.2: in ZIP-Archive hineinschauen (nur Inhaltsverzeichnis)
     $cbZip = New-Object System.Windows.Forms.CheckBox
-    $cbZip.Text = 'In ZIP-Archive hineinschauen (dauert etwas länger)'; $cbZip.AutoSize = $true; $cbZip.Checked = $true
+    $cbZip.Text = 'In ZIP-Archive hineinschauen (dauert etwas länger)'; $cbZip.AutoSize = $true; $cbZip.Checked = [bool]$einstF.FundortZip
     $cbZip.Location = New-Object System.Drawing.Point(200, ($y + 5))
     $tt2 = New-Object System.Windows.Forms.ToolTip; $tt2.AutoPopDelay = 15000
     $tt2.SetToolTip($cbZip, "Liest bei ZIP-Archiven (mit Windows 11 auch RAR und 7z) das Inhaltsverzeichnis: Wie viele Audiodateien sind darin?`nArchive ohne Audiodateien werden dann nicht mehr gezeigt. Es wird nichts entpackt; Archive, die nur in der Cloud liegen, werden nicht geöffnet.")
     $d.Controls.Add($cbZip)
-    $y += 44
+    $tt2.SetToolTip($bWegO, 'Nimmt einen selbst hinzugefügten Ordner wieder aus der Liste. Downloads, Dokumente, Desktop, Musik und Laufwerke lassen sich nur abhaken.')
+    $y += 38 + 44
     # 2.3.2: letzten Bericht ohne neuen Suchlauf oeffnen
     $letzter = $null; try { $letzter = Get-LetzterFundortBericht } catch { }
     $bLetzt = New-Object System.Windows.Forms.Button
@@ -587,6 +624,13 @@ function Show-FundorteSuchen {
     $gewaehlt = @(for ($i = 0; $i -lt $clb.Items.Count; $i++) { if ($clb.GetItemChecked($i)) { $orte[$i] } })
     $mitZip = $cbZip.Checked
     $d.Dispose()
+    # 2.3.5: Auswahl fuer das naechste Mal merken (nur wenn etwas angehakt ist)
+    try {
+        $zus = @($orte | Where-Object { -not ($standard -contains $_) })
+        if ($gewaehlt.Count) { Set-Einstellung 'FundortAn' ($gewaehlt -join '|') }
+        Set-Einstellung 'FundortZusatz' ($zus -join '|')
+        Set-Einstellung 'FundortZip' $mitZip
+    } catch { Write-FehlerLog "Fundorte-Auswahl nicht gespeichert: $($_.Exception.Message)" }
     if ($r -eq 'Retry' -and $letzter) {
         if (-not (Start-FundortBericht $letzter.FullName)) { Show-Meldung "Der Bericht konnte nicht geöffnet werden.`n$($letzter.FullName)" 'Warning' }
         return
@@ -662,7 +706,7 @@ function Show-QuelleAufraeumen {
     $d.MaximizeBox = $false; $d.MinimizeBox = $false
     $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
     $y = 14
-    $l = New-Hinweis $d "Was soll aus der Quelle in den Papierkorb? Danach zeigt ein Fenster die Vorschau; entfernt wird erst nach 'J'." 16 $y $innen
+    $l = New-Hinweis $d "Was soll aus welcher Quelle in den Papierkorb? Danach zeigt ein Fenster die Vorschau; entfernt wird erst nach 'J'." 16 $y $innen
     $l.ForeColor = [System.Drawing.Color]::Black
     $y += $l.PreferredHeight + 14
     function New-Haken([string]$text, [int]$x, [bool]$an) {
@@ -671,7 +715,17 @@ function Show-QuelleAufraeumen {
         $d.Controls.Add($c); return $c
     }
     $script:hy = $y
-    $c1 = New-Haken 'Duplikate (beim Kopieren als doppelt erkannt, Prüfung gegen das behaltene Exemplar)' 18 $true; $script:hy += 28
+    # QLN-05, 2.3.5: zuerst waehlen, welche Quellen aufgeraeumt werden - immer sichtbar, auch bei nur einer aktiven Quelle
+    $qHaken = @()
+    $lq = New-Object System.Windows.Forms.Label
+    $lq.Text = 'Welche Quellen?'; $lq.Font = $schriftFett; $lq.AutoSize = $true; $lq.Location = New-Object System.Drawing.Point(16, $script:hy)
+    $d.Controls.Add($lq); $script:hy += 26
+    foreach ($q in $aktiv) { $c = New-Haken $q.Pfad 18 $true; $c.AutoSize = $false; $c.Width = $innen; $qHaken += $c; $script:hy += 26 }
+    $script:hy += 8
+    $lw = New-Object System.Windows.Forms.Label
+    $lw.Text = 'Was soll entfernt werden?'; $lw.Font = $schriftFett; $lw.AutoSize = $true; $lw.Location = New-Object System.Drawing.Point(16, $script:hy)
+    $d.Controls.Add($lw); $script:hy += 26
+    $c1 = New-Haken 'Duplikate (beim Sortieren als doppelt erkannt, Prüfung gegen das behaltene Exemplar)' 18 $true; $script:hy += 28
     $c2 = New-Haken 'macOS-Reste (._-Dateien, .DS_Store, __MACOSX – am Dateikopf erkannt)' 18 $true; $script:hy += 28
     # GUI-06: verständlicher Text; CLN-12: eigene Format-Haken
     $c3 = New-Haken 'Formate (nur wenn die gleichnamige WAV aus demselben Pack im Ziel liegt):' 18 ([bool]$aus.Count); $script:hy += 26
@@ -685,15 +739,6 @@ function Show-QuelleAufraeumen {
     $c4 = New-Haken 'Originale, deren Kopie im Ziel per Prüfsumme bestätigt ist (leert die Quelle weitgehend)' 18 $false; $script:hy += 26
     $l4 = New-Hinweis $d 'Nie Kopiertes bleibt liegen (Hilfsdateien, ausgeschlossene Formate, ModX).' 40 $script:hy ($innen - 30)
     $script:hy += $l4.PreferredHeight + 12
-    # QLN-05: bei mehreren aktiven Quellen wählen, welche aufgeräumt werden
-    $qHaken = @()
-    if ($aktiv.Count -gt 1) {
-        $lq = New-Object System.Windows.Forms.Label
-        $lq.Text = 'Welche Quellen?'; $lq.Font = $schriftFett; $lq.AutoSize = $true; $lq.Location = New-Object System.Drawing.Point(16, $script:hy)
-        $d.Controls.Add($lq); $script:hy += 26
-        foreach ($q in $aktiv) { $c = New-Haken $q.Pfad 18 $true; $c.AutoSize = $false; $c.Width = $innen; $qHaken += $c; $script:hy += 26 }
-        $script:hy += 6
-    }
     $y = $script:hy + 6
     $ok = New-Object System.Windows.Forms.Button
     $ok.Text = 'Weiter ...'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
@@ -811,9 +856,9 @@ $gy = 24
 $null = New-Knopf $gSort 'Samples sortieren ...' 0 $gy `
     "Zeigt zuerst eine Vorschau (auch als CSV für Excel) und fragt dann, ob kopiert werden soll. Die Quelle bleibt unverändert; es wird nur kopiert, nichts überschrieben. Bereits vorhandener Inhalt wird übersprungen." `
     { if (Test-OrdnerBereit) { [void](Start-Skript 'Samples-sortieren.ps1' '' 'Samples sortieren') } }
-$btnProt = New-Knopf $gSort 'Letztes Protokoll öffnen' 1 $gy `
-    "Öffnet das Protokoll des letzten Kopierlaufs (CSV, z. B. in Excel)." `
-    { $p = Get-NeuestesProtokoll 'Protokoll_*.csv'; if ($p) { Open-Pfad $p.FullName } else { Show-Meldung 'Noch kein Kopierlauf mit dieser Version.' 'Warning' } }
+$btnProt = New-Knopf $gSort 'Letztes Sortier-Protokoll öffnen' 1 $gy `
+    "Öffnet das Protokoll des letzten Sortierlaufs (CSV, z. B. in Excel)." `
+    { $p = Get-NeuestesProtokoll 'Protokoll_*.csv'; if ($p) { Open-Pfad $p.FullName } else { Show-Meldung 'Noch kein Sortierlauf mit dieser Version.' 'Warning' } }
 $gy += 44
 $null = New-Knopf $gSort 'Ziel öffnen' 0 $gy "Öffnet die sortierte Sample-Bibliothek im Explorer." { Open-Pfad (Get-Einstellungen).Ziel }
 $null = New-Knopf $gSort 'Fundorte suchen ...' 1 $gy "Sucht auf Laufwerken und in Ordnern nach Sample-Packs und zeigt die Fundorte im Browser; dort lassen sie sich als Quellen übernehmen. Es wird nichts verändert." { Show-FundorteSuchen }
@@ -941,8 +986,8 @@ function Update-Status {
     $zeilen += "Formate:  " + $(if ($zus.Count -eq 3) { 'alle (WAV, RX2, MP3, AIFF)' } elseif ($zus.Count -eq 0) { 'nur WAV, wenn vorhanden' } else { "WAV, zusätzlich $($zus -join ', ')" })
 
     $p = Get-NeuestesProtokoll 'Protokoll_*.csv'
-    if ($p) { $zeilen += "Letzter Kopierlauf:  $((Get-Protokollzeit $p).ToString('dd.MM.yyyy HH:mm'))" }
-    else    { $zeilen += 'Letzter Kopierlauf:  noch keiner mit dieser Version' }
+    if ($p) { $zeilen += "Letzter Sortierlauf:  $((Get-Protokollzeit $p).ToString('dd.MM.yyyy HH:mm'))" }
+    else    { $zeilen += 'Letzter Sortierlauf:  noch keiner mit dieser Version' }
     $btnProt.Enabled = [bool]$p
 
     $inv = Get-NeuesteInventur 'Sample'

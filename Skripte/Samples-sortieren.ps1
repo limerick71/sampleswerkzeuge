@@ -145,7 +145,7 @@ $PackFallback = @(,
     @('VOLTAGE REVELATIONS', 'DrumLoops')
 )
 
-$RxOneShot = 'one ?-?shot|oneshot|(?<![a-z])shots(?![a-z])'
+$RxOneShot = 'one[ _-]?shot|(?<![a-z])shots(?![a-z])'   # 2.3.5: auch one_shots
 $RxLoop    = 'loop|bpm|(?<![a-z])(groove|beat|fill)s?(?![a-z])'
 $RxDoku    = '\.(pdf|txt|rtf|nfo|png|jpe?g|gif|bmp|html?|url|docx?)$'
 $RxAudio   = '\.(wav|aiff?|mp3|flac|ogg|rx2|rex|m4a)$'
@@ -179,12 +179,14 @@ function Find-Instrument([string]$Text) {
 function Get-Typ([string]$Datei, [string[]]$Ordner, [string]$Pfad, [long]$Groesse, [string]$Instrument, [bool]$StandardLoop) {
     $d = $Datei.ToLowerInvariant()
     if ($d -match $RxOneShot) { return 'One-Shots' }
-    if ($d -match $RxLoop -or $d -match '_\d{2,3}(\.\d+)?$') { return 'Loops' }
+    if ($d -match $RxLoop) { return 'Loops' }
     for ($i = $Ordner.Count - 1; $i -ge 0; $i--) {
         $o = $Ordner[$i].ToLowerInvariant()
         if ($o -match $RxOneShot) { return 'One-Shots' }
         if ($o -match $RxLoop)    { return 'Loops' }
     }
+    # 2.3.5: Zahl am Ende nur als Tempo, wenn sie wie eines aussieht (60-200, ohne fuehrende Null) - "kick_01" ist eine Laufnummer
+    if ($d -match '_([1-9]\d{1,2})(\.\d+)?$' -and [int]$Matches[1] -ge 60 -and [int]$Matches[1] -le 200) { return 'Loops' }
     if ($StandardLoop) { return 'Loops' }
     if ($Instrument -eq 'Cymbals') { return 'One-Shots' }
     if ($Pfad -match '\.(rx2|rex)$') { return 'Loops' }   # 2.3.3: REX/RX2 sind geschnittene Loops

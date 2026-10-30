@@ -87,7 +87,7 @@ Im Bereich „2 Inventur und Bericht“ auf „Inventur starten“ klicken:
 ------------------------------------------------------------
 Im Bereich „3 Quelle aufräumen“ auf „Quelle aufräumen …“ klicken und wählen
 (bei mehreren Quellen auch, welche aufgeräumt werden):
-  - Duplikate: beim Kopieren als doppelt erkannt, Prüfung per Hash.
+  - Duplikate: beim Sortieren als doppelt erkannt, Prüfung per Hash.
   - macOS-Reste: ._-Dateien, .DS_Store, __MACOSX.
   - Formate: RX2, MP3 und/oder AIFF neben gleichnamiger WAV im selben Pack
     (nur wenn die WAV sicher im Ziel liegt). Die Formate wählt man hier eigens.

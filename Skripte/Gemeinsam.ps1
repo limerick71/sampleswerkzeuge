@@ -10,7 +10,7 @@
 #   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
 #   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
 
-$ProgrammVersion = '2.3.4'
+$ProgrammVersion = '2.3.5'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -123,6 +123,10 @@ function Get-StandardEinstellungen {
         MP3Beibehalten      = $true
         AIFFBeibehalten     = $true
         ErsterStartErledigt = $false
+        # 2.3.5: Auswahl im Fenster "Fundorte suchen" (Pfade mit | getrennt; leer = Vorauswahl des Programms)
+        FundortAn           = ''
+        FundortZusatz       = ''
+        FundortZip          = $true
     }
 }
 
@@ -143,7 +147,8 @@ function Get-Einstellungen {
         } catch { Write-FehlerLog "Einstellungen nicht lesbar: $($_.Exception.Message)" }
     }
     foreach ($k in @($e.Keys)) {
-        if ($k -in 'ErsterStartErledigt', 'RX2Beibehalten', 'MP3Beibehalten', 'AIFFBeibehalten') { $e[$k] = ([string]$e[$k]) -notin 'False', '0', '' }
+        if ($k -in 'ErsterStartErledigt', 'RX2Beibehalten', 'MP3Beibehalten', 'AIFFBeibehalten', 'FundortZip') { $e[$k] = ([string]$e[$k]) -notin 'False', '0', '' }
+        elseif ($k -in 'FundortAn', 'FundortZusatz') { $e[$k] = ([string]$e[$k]).Trim() }   # Pfadlisten: "C:\" behaelt den \
         else { $e[$k] = ([string]$e[$k]).Trim().TrimEnd('\', '/') }
     }
     # Quellenliste (QLN-04, ab 2.3): je Eintrag Pfad, Aktiv, Herkunft. Fehlt sie (Einstellungen bis 2.2),
@@ -417,7 +422,7 @@ function Get-OrdnerStatus([string]$pfad) {
         $lw = if ($root) { $root.TrimEnd('\', '/') } else { $pfad }
         return @{ Text = "NICHT GEFUNDEN (Laufwerk $lw nicht vorhanden)"; Fehlt = $true }
     }
-    return @{ Text = 'noch nicht vorhanden (wird beim Kopieren angelegt)'; Fehlt = $false }
+    return @{ Text = 'noch nicht vorhanden (wird beim Sortieren angelegt)'; Fehlt = $false }
 }
 
 # ---------------------------------------------------------------------------

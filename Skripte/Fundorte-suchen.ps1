@@ -83,7 +83,7 @@ if ($PSVersionTable.PSEdition -ne 'Core') {
     $verweise = @([System.IO.Compression.ZipArchive], [System.Diagnostics.Process], [System.Collections.Generic.HashSet[string]] |
         ForEach-Object { $_.Assembly.Location } | Where-Object { $_ } | Select-Object -Unique)
 }
-if (-not ('SamplesWerkzeuge.FundortScanner234' -as [type])) {
+if (-not ('SamplesWerkzeuge.FundortScanner235' -as [type])) {
     $atArg = @{ Language = 'CSharp' }; if ($verweise.Count) { $atArg.ReferencedAssemblies = $verweise }
     Add-Type @atArg -TypeDefinition @'
 using System;
@@ -93,7 +93,7 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Collections.Generic;
 namespace SamplesWerkzeuge {
-    public class OrdnerInfo234 {
+    public class OrdnerInfo235 {
         public string Pfad; public int Audio; public long Bytes; public int Archive; public int Projekt; public int Instrument;
         public int Cloud; public DateTime Neu; public string Formate; public string Beispiele;
         // 2.3.4: Ableton-Presets (.adg/.adv/.alc) sind Zeichen fuer ein Sample-Pack; DawAudio setzt das Skript
@@ -103,7 +103,7 @@ namespace SamplesWerkzeuge {
         public string ZFormate; public string ZListe;
     }
     public class ArchivInhalt { public bool Gelesen; public string Grund = ""; public int Audio; public long Bytes; public int Archive; public SortedSet<string> Formate = new SortedSet<string>(); }
-    public static class FundortScanner234 {
+    public static class FundortScanner235 {
         public static int Ordner; public static int NichtLesbar; public static int ArchiveGelesen;
         public static bool ArchiveLesen = true; public static bool TarLesen = false;
         public static readonly HashSet<string> AudioExt = new HashSet<string>(new string[] { ".wav", ".aif", ".aiff", ".mp3", ".flac", ".ogg", ".rx2", ".rex", ".m4a" }, StringComparer.OrdinalIgnoreCase);
@@ -197,14 +197,66 @@ namespace SamplesWerkzeuge {
                     }
                 }
             } catch (InvalidDataException) { r.Gelesen = false; r.Grund = "keine gültige ZIP-Datei (Download unvollständig oder beschädigt?)"; }
+            catch (ArgumentException ex) {
+                // 2.3.5: Windows PowerShell 5.1 bricht beim Inhaltsverzeichnis ab, wenn ein Eintrag Zeichen wie " < > | enthaelt
+                // ("Illegales Zeichen im Pfad") - dann das Verzeichnis der ZIP-Datei selbst lesen
+                ArchivInhalt r2 = new ArchivInhalt();
+                bool ok = false; try { ok = LeseZipVerzeichnis(pfad, r2); } catch (Exception) { ok = false; }
+                if (ok) { r2.Gelesen = true; return r2; }
+                r.Gelesen = false; r.Grund = "nicht lesbar: " + Kurz(ex.Message);
+            }
             catch (UnauthorizedAccessException) { r.Gelesen = false; r.Grund = "kein Zugriff"; }
             catch (IOException ex) { r.Gelesen = false; r.Grund = "gesperrt oder nicht lesbar: " + Kurz(ex.Message); }
             catch (Exception ex) { r.Gelesen = false; r.Grund = "nicht lesbar: " + Kurz(ex.Message); }
             return r;
         }
 
-        public static List<OrdnerInfo234> Suche(string[] wurzeln, string[] aus) {
-            List<OrdnerInfo234> erg = new List<OrdnerInfo234>();
+        static uint U16(byte[] b, long i) { return (uint)(b[i] | (b[i + 1] << 8)); }
+        static uint U32(byte[] b, long i) { return (uint)(b[i] | (b[i + 1] << 8) | (b[i + 2] << 16) | (b[i + 3] << 24)); }
+        static ulong U64(byte[] b, long i) { return (ulong)U32(b, i) | ((ulong)U32(b, i + 4) << 32); }
+        static void Lies(FileStream fs, long pos, byte[] b) {
+            fs.Seek(pos, SeekOrigin.Begin); int n = 0;
+            while (n < b.Length) { int k = fs.Read(b, n, b.Length - n); if (k <= 0) throw new EndOfStreamException(); n += k; }
+        }
+        // 2.3.5: zentrales Verzeichnis einer ZIP-Datei selbst lesen (Namen und Groessen, auch ZIP64); nichts wird entpackt
+        public static bool LeseZipVerzeichnis(string pfad, ArchivInhalt r) {
+            using (FileStream fs = new FileStream(L(pfad), FileMode.Open, FileAccess.Read, FileShare.ReadWrite)) {
+                long len = fs.Length; if (len < 22) return false;
+                int max = (int)Math.Min(len, 65557L); byte[] e = new byte[max]; Lies(fs, len - max, e);
+                long i = -1;
+                for (long k = max - 22; k >= 0; k--) { if (U32(e, k) == 0x06054b50) { i = k; break; } }
+                if (i < 0) return false;
+                ulong anzahl = U16(e, i + 10), groesse = U32(e, i + 12), start = U32(e, i + 16);
+                if (anzahl == 0xFFFF || groesse == 0xFFFFFFFF || start == 0xFFFFFFFF) {
+                    if (i < 20 || U32(e, i - 20) != 0x07064b50) return false;
+                    byte[] z = new byte[56]; Lies(fs, (long)U64(e, i - 20 + 8), z);
+                    if (U32(z, 0) != 0x06064b50) return false;
+                    anzahl = U64(z, 32); groesse = U64(z, 40); start = U64(z, 48);
+                }
+                if (groesse > 256UL * 1024 * 1024 || start + groesse > (ulong)len) return false;
+                byte[] v = new byte[(int)groesse]; Lies(fs, (long)start, v);
+                System.Text.Encoding alt;
+                try { alt = System.Text.Encoding.GetEncoding(437); } catch (Exception) { alt = System.Text.Encoding.GetEncoding("ISO-8859-1"); }
+                long p = 0; ulong gelesen = 0;
+                while (p + 46 <= v.Length && U32(v, p) == 0x02014b50) {
+                    uint flags = U16(v, p + 8); ulong groesseE = U32(v, p + 24);
+                    int nl = (int)U16(v, p + 28), xl = (int)U16(v, p + 30), kl = (int)U16(v, p + 32);
+                    if (p + 46 + nl + xl > v.Length) break;
+                    string name = ((flags & 0x800) != 0 ? System.Text.Encoding.UTF8 : alt).GetString(v, (int)(p + 46), nl);
+                    if (groesseE == 0xFFFFFFFF) {
+                        long x = p + 46 + nl, xe = x + xl;
+                        while (x + 4 <= xe) { uint id = U16(v, x), dl = U16(v, x + 2); if (id == 1 && dl >= 8) { groesseE = U64(v, x + 4); break; } x += 4 + dl; }
+                    }
+                    try { Zaehle(r, name, (long)groesseE); } catch (Exception) { }
+                    gelesen++;
+                    p += 46 + nl + xl + kl;
+                }
+                return gelesen > 0 || anzahl == 0;
+            }
+        }
+
+        public static List<OrdnerInfo235> Suche(string[] wurzeln, string[] aus) {
+            List<OrdnerInfo235> erg = new List<OrdnerInfo235>();
             Ordner = 0; NichtLesbar = 0; ArchiveGelesen = 0;
             Stack<string> stapel = new Stack<string>();
             foreach (string w in wurzeln) stapel.Push(w);
@@ -213,7 +265,7 @@ namespace SamplesWerkzeuge {
                 string d = stapel.Pop();
                 Ordner++;
                 if ((DateTime.Now - letzte).TotalSeconds >= 5) { Console.WriteLine("  ... " + Ordner.ToString("N0") + " Ordner durchsucht" + (ArchiveGelesen > 0 ? ", " + ArchiveGelesen.ToString("N0") + " Archive angesehen" : "")); letzte = DateTime.Now; }
-                OrdnerInfo234 oi = new OrdnerInfo234(); oi.Pfad = d; oi.Neu = DateTime.MinValue;
+                OrdnerInfo235 oi = new OrdnerInfo235(); oi.Pfad = d; oi.Neu = DateTime.MinValue;
                 SortedSet<string> formate = new SortedSet<string>();
                 SortedSet<string> zformate = new SortedSet<string>();
                 List<string> beisp = new List<string>();
@@ -280,16 +332,16 @@ namespace SamplesWerkzeuge {
 '@
 }
 # RAR und 7z: nur mit dem in Windows 11 eingebauten tar (bsdtar/libarchive); sonst "Inhalt nicht geprueft"
-[SamplesWerkzeuge.FundortScanner234]::ArchiveLesen = -not $OhneArchivinhalt
+[SamplesWerkzeuge.FundortScanner235]::ArchiveLesen = -not $OhneArchivinhalt
 $tarOk = $false
 if (-not $OhneArchivinhalt -and (Get-Command tar -ErrorAction SilentlyContinue)) { try { $tarOk = [bool]((& tar --version 2>$null | Out-String) -match 'bsdtar|libarchive') } catch { } }
-[SamplesWerkzeuge.FundortScanner234]::TarLesen = $tarOk
+[SamplesWerkzeuge.FundortScanner235]::TarLesen = $tarOk
 Write-Host ("Durchsuche Ordner (es werden nur Namen und Groessen gelesen{0}) ..." -f $(if ($OhneArchivinhalt) { "" } elseif ($tarOk) { ", bei ZIP/RAR/7z das Inhaltsverzeichnis" } else { ", bei ZIP das Inhaltsverzeichnis" })) -ForegroundColor Cyan
-$treffer = [SamplesWerkzeuge.FundortScanner234]::Suche([string[]]$wurzeln, [string[]]$aus)
-$ordnerZahl = [SamplesWerkzeuge.FundortScanner234]::Ordner
-$nichtLesbar = [SamplesWerkzeuge.FundortScanner234]::NichtLesbar
+$treffer = [SamplesWerkzeuge.FundortScanner235]::Suche([string[]]$wurzeln, [string[]]$aus)
+$ordnerZahl = [SamplesWerkzeuge.FundortScanner235]::Ordner
+$nichtLesbar = [SamplesWerkzeuge.FundortScanner235]::NichtLesbar
 Write-Host ("  {0:N0} Ordner durchsucht, {1:N0} mit Audiodateien, Projekten oder Archiven" -f $ordnerZahl, $treffer.Count)
-$archivZahl = [SamplesWerkzeuge.FundortScanner234]::ArchiveGelesen
+$archivZahl = [SamplesWerkzeuge.FundortScanner235]::ArchiveGelesen
 if ($archivZahl) { Write-Host ("  {0:N0} Archive angesehen (nur Inhaltsverzeichnis)" -f $archivZahl) }
 if ($nichtLesbar) { Write-Host "  $nichtLesbar Ordner waren nicht lesbar und wurden ausgelassen." -ForegroundColor DarkGray }
 
@@ -315,9 +367,29 @@ function Get-Knoten([string]$p) {
     }
     return $knoten[$k]
 }
-# 2.3.4: Audiodateien, die zu einem DAW-Projekt gehoeren (neben der Projektdatei oder in Aufnahme-/Import-Ordnern)
+# Audiodateien, die zu einem DAW-Projekt gehoeren (2.3.4, erweitert 2.3.5): neben der Projektdatei, in Aufnahme-/
+# Import-Ordnern (Ableton) oder in den typischen Projektordnern unterhalb einer Projektdatei (Cubase: Audio, Edits,
+# Mixdown, Freeze; Ableton: Samples; Studio One/Reaper: Media, Mixdown, Bounces)
 $DawPfade = '[\\/](Samples[\\/](Recorded|Imported|Processed|Combined|Consolidated)|Live Recordings|Audio Files|Bounces?|Freeze Files)([\\/]|$)'
-foreach ($t in $treffer) { $t.DawAudio = $(if ($t.Projekt -gt 0 -or $t.Pfad -match $DawPfade) { $t.Audio } else { 0 }) }
+$DawUnterordner = '^(Audio|Audio Files|Edits|Mixdown|Freeze|Freeze Files|Images|Samples|Media|Bounces?|Recorded|Recordings|Live Recordings|Auto Saves|Backup|Stems)$'
+$projektOrdner = @{}
+foreach ($t in $treffer) { if ($t.Projekt -gt 0) { $projektOrdner[$t.Pfad.TrimEnd('\', '/').ToLowerInvariant()] = $true } }
+# Liegt der Ordner (hoechstens 4 Ebenen) unter einem Ordner mit Projektdatei? Liefert den ersten Ordner darunter (sonst $null)
+function Get-ProjektRest([string]$p) {
+    $e = $p.TrimEnd('\', '/'); $rest = @()
+    for ($i = 0; $i -lt 4; $i++) {
+        $rest = @([IO.Path]::GetFileName($e)) + $rest
+        $e = [IO.Path]::GetDirectoryName($e)
+        if (-not $e) { return $null }
+        if ($projektOrdner.ContainsKey($e.TrimEnd('\', '/').ToLowerInvariant())) { return [string]$rest[0] }
+    }
+    return $null
+}
+foreach ($t in $treffer) {
+    $dw = ($t.Projekt -gt 0 -or $t.Pfad -match $DawPfade)
+    if (-not $dw) { $r = Get-ProjektRest $t.Pfad; if ($r -and $r -match $DawUnterordner) { $dw = $true } }
+    $t.DawAudio = $(if ($dw) { $t.Audio } else { 0 })
+}
 foreach ($t in $treffer) {
     $sw = Get-Suchwurzel $t.Pfad
     $n = Get-Knoten $t.Pfad
@@ -352,7 +424,8 @@ function Get-Einschaetzung($n) {
     if ($n.Instrument -gt 0 -or $p -match $InstrNamen) { return 'Instrument-Bibliothek' }
     # 2.3.4: DAW-Projekt nur mit Projektdatei (.als, .flp ...) und wenn die Audiodateien ueberwiegend zum Projekt
     # gehoeren; ein Pack mit Demo-Projekt oder Ableton-Presets bleibt ein Sample-Pack
-    if ($n.Projekt -gt 0 -and $n.DawAudio * 2 -ge $n.Audio) { return 'DAW-Projekt' }
+    # 2.3.5: auch ein Ordner innerhalb eines Projekts (z. B. "<Projekt>\Samples" oder "<Projekt>\Audio")
+    if (($n.Projekt -gt 0 -or $null -ne (Get-ProjektRest $p)) -and $n.DawAudio * 2 -ge $n.Audio) { return 'DAW-Projekt' }
     if ($n.Audio -eq 0 -and $n.Archive -gt 0) { if ($n.ZAudio -gt 0) { return 'Archive mit Samples' } else { return 'Archive (Inhalt offen)' } }
     return 'Sample-Packs'
 }
@@ -426,8 +499,9 @@ function Get-QuellStatus([string]$p, [string]$art = 'Sammlung') {
         $qn = ([string]$q.Pfad).TrimEnd('\') + '\'
         $qArt = Get-QuellArtName ([string]$q.Art)
         if ($qn -ieq $pn) { if ($q.Aktiv) { return 'schon Quelle' } else { return 'schon Quelle (deaktiviert)' } }
-        if ($pn.StartsWith($qn, [StringComparison]::OrdinalIgnoreCase) -and $qArt -ne 'Lose') { return "liegt in der Quelle $($q.Pfad)" }
-        if ($qn.StartsWith($pn, [StringComparison]::OrdinalIgnoreCase) -and $art -ne 'Lose') { return "enthält die Quelle $($q.Pfad)" }
+        $zu = if ($q.Aktiv) { "$($q.Pfad)" } else { "$($q.Pfad) (deaktiviert)" }
+        if ($pn.StartsWith($qn, [StringComparison]::OrdinalIgnoreCase) -and $qArt -ne 'Lose') { return "liegt in der Quelle $zu" }
+        if ($qn.StartsWith($pn, [StringComparison]::OrdinalIgnoreCase) -and $art -ne 'Lose') { return "enthält die Quelle $zu" }
     }
     return ''
 }

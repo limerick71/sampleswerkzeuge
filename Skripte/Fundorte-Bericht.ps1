@@ -67,7 +67,7 @@ tr.weg td{opacity:.55}
  <label class="ck"><input type="checkbox" id="andere" checked> Instrument-Bibliotheken, Ableton-Library, Projekte, System zeigen</label>
  <div class="erkl">Abgleich: prüft für die angehakten Fundorte über Größe und Prüfsumme, wie viele Audiodateien schon im Ziel-Ordner liegen (<span id="zielname"></span>). Es wird nichts verändert; bei großen Fundorten dauert es etwas.</div>
 </div>
-<main><table><thead><tr><th></th><th>Fundort</th><th>Einschätzung</th><th class="z">Audiodateien</th><th class="z">Größe</th><th>Formate</th><th>Letzte Änderung</th><th></th></tr></thead><tbody id="liste"></tbody></table>
+<main><table><thead><tr><th><input type="checkbox" id="alle" title="Alle sichtbaren Fundorte an- oder abhaken"></th><th>Fundort</th><th>Einschätzung</th><th class="z">Audiodateien</th><th class="z">Größe</th><th>Formate</th><th>Letzte Änderung</th><th></th></tr></thead><tbody id="liste"></tbody></table>
 <p class="leise" style="font-size:12px">Ein Klick auf eine Zeile zeigt Unterordner, Archive und Beispieldateien. Vorausgewählt sind Sample-Packs, die noch keine Quelle sind. Instrument-Bibliotheken gehören zu Plugins (z. B. Kontakt, Spitfire), die Ableton-Library zu Ableton – beides besser dort lassen; DAW-Projekte enthalten eigene Aufnahmen. Archive werden nur angesehen (Inhaltsverzeichnis), nicht entpackt. Gezählt werden nur Audiodateien: Programme, Installer, Plugin-Inhalte und Archive bleiben beim Sortieren liegen; bei „Nur lose Dateien“ werden nur Audio- und MIDI-Dateien übernommen.</p></main>
 <div id="meldung"></div>
 <script id="daten" type="application/json">__DATEN__</script>
@@ -75,7 +75,7 @@ tr.weg td{opacity:.55}
 (function(){
   var D = JSON.parse(document.getElementById('daten').textContent), F = D.f, M = D.meta, DIENST = window.SW_DIENST;
   var $ = function(id){ return document.getElementById(id); };
-  var wahl = {}, offen = {}, abgl = {}, getrennt = false;
+  var wahl = {}, offen = {}, abgl = {}, getrennt = false, sichtbar = [];
   F.forEach(function(f, i){ f.i = i; f.za = f.za || 0; f.zb = f.zb || 0; f.zo = f.zo || 0; f.zc = f.zc || 0; f.zv = f.zv || 0; if (f.vor) wahl[i] = true; });
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   function mb(b){ b = b / 1048576; return b >= 1024 ? (b/1024).toFixed(1).replace('.', ',') + ' GB' : (b >= 10 ? Math.round(b) : b.toFixed(1).replace('.', ',')) + ' MB'; }
@@ -103,11 +103,11 @@ tr.weg td{opacity:.55}
   function stKlasse(st){ return st.indexOf('jetzt') === 0 || st.indexOf('wieder') === 0 || st === 'schon Quelle' ? ' gruen' : (st.indexOf('deaktiviert') >= 0 ? ' gelb' : ''); }
   var ZST = { a: '', v: 'enthält weitere Archive', c: 'nur in der Cloud – nicht geprüft', o: 'Inhalt nicht geprüft' };
   function zeichnen(){
-    var zKlein = $('klein').checked, andere = $('andere').checked, h = [], aus = 0;
+    var zKlein = $('klein').checked, andere = $('andere').checked, h = [], aus = 0; sichtbar = [];
     F.forEach(function(f){
       if (!andere && !IMMER[f.art]) return;
       if (!zKlein && klein(f)) { aus++; return; }
-      var w = waehlbar(f), hw = [];
+      var w = waehlbar(f), hw = []; if (w) sichtbar.push(f.i);
       if (f.weg) hw.push('<span class="hw rot">Ordner gibt es nicht mehr</span>');
       if (f.st) hw.push('<span class="hw' + stKlasse(f.st) + '">' + esc(f.st) + '</span>');
       if (f.pk > 1 && f.qa === 'Sammlung') { var pn = (f.u || []).filter(function(x){ return x.a > 0; }).map(function(x){ return x.n; });
@@ -147,6 +147,9 @@ tr.weg td{opacity:.55}
     $('uebernehmen').textContent = 'In Quellenliste übernehmen (' + cU + ')';
     $('abgleich').textContent = 'Angehakte mit Ziel-Ordner abgleichen (' + cA + ')';
     $('uebernehmen').disabled = !DIENST || getrennt || !cU; $('abgleich').disabled = !DIENST || getrennt || !cA;
+    // 2.3.5: Haken in der Kopfzeile - an, wenn alle sichtbaren anhakbaren Zeilen angehakt sind
+    var nA = sichtbar.filter(function(i){ return wahl[i]; }).length;
+    $('alle').checked = sichtbar.length > 0 && nA === sichtbar.length; $('alle').indeterminate = nA > 0 && nA < sichtbar.length; $('alle').disabled = !sichtbar.length;
   }
   document.addEventListener('click', function(e){
     var cb = e.target.closest('input.w'); if (cb) { wahl[cb.getAttribute('data-i')] = cb.checked; zeichnen(); return; }
@@ -154,6 +157,7 @@ tr.weg td{opacity:.55}
     var oe = e.target.closest('button.oe'); if (oe) { post('/oeffnen-ort', { pfad: F[oe.getAttribute('data-i')].p }).then(function(){ meldung('Explorer wird geöffnet …'); }).catch(function(){}); return; }
     var tr = e.target.closest('tr.f'); if (tr) { var i = tr.getAttribute('data-i'); offen[i] = !offen[i]; zeichnen(); }
   });
+  $('alle').addEventListener('change', function(){ var an = $('alle').checked; sichtbar.forEach(function(i){ wahl[i] = an; }); zeichnen(); });
   $('klein').addEventListener('change', zeichnen); $('andere').addEventListener('change', zeichnen);
   document.addEventListener('change', function(e){ var s = e.target.closest('select.qa'); if (!s) return; var f = F[s.getAttribute('data-i')];
     // 2.3.3: Sammelordner (Downloads, Dokumente ...) nur als "Nur lose Dateien" - sonst wird alles darin als Pack gelesen
@@ -195,12 +199,14 @@ tr.weg td{opacity:.55}
   if (DIENST) {
     // Status gegen die aktuelle Quellenliste neu bestimmen (Bericht kann älter sein); nicht mehr vorhandene Ordner kennzeichnen
     post('/quellen', {}).then(function(r){
-      var Q = (r.quellen || []).map(function(q){ return { p: String(q.pfad).replace(/[\\\/]+$/, '').toLowerCase() + '\\', lose: q.art === 'Lose', aktiv: q.aktiv !== false }; });
+      var Q = (r.quellen || []).map(function(q){ return { p: String(q.pfad).replace(/[\\\/]+$/, '').replace(/\//g, '\\').toLowerCase() + '\\', o: String(q.pfad), lose: q.art === 'Lose', aktiv: q.aktiv !== false }; });
       var weg = {}; (r.fehlt || []).forEach(function(p){ weg[String(p).toLowerCase()] = true; });
       F.forEach(function(f){
         f.weg = !!weg[f.p.toLowerCase()];
-        var p = f.p.replace(/[\\\/]+$/, '').toLowerCase() + '\\', st = '';
-        Q.forEach(function(q){ if (st) return; if (q.p === p) st = q.aktiv ? 'schon Quelle' : 'schon Quelle (deaktiviert)'; else if (p.indexOf(q.p) === 0 && !q.lose) st = 'liegt in einer Quelle'; else if (q.p.indexOf(p) === 0 && f.qa !== 'Lose') st = 'enthält eine Quelle'; });
+        var p = f.p.replace(/[\\\/]+$/, '').replace(/\//g, '\\').toLowerCase() + '\\', st = '';
+        // 2.3.5: mit Pfad der Quelle und Hinweis, ob sie deaktiviert ist
+        var zu = function(q){ return q.o + (q.aktiv ? '' : ' (deaktiviert)'); };
+        Q.forEach(function(q){ if (st) return; if (q.p === p) st = q.aktiv ? 'schon Quelle' : 'schon Quelle (deaktiviert)'; else if (p.indexOf(q.p) === 0 && !q.lose) st = 'liegt in der Quelle ' + zu(q); else if (q.p.indexOf(p) === 0 && f.qa !== 'Lose') st = 'enthält die Quelle ' + zu(q); });
         f.st = st;
       });
       zeichnen();

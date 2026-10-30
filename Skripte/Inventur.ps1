@@ -4,7 +4,7 @@
   Inventur der sortierten Sample-Bibliothek (Zielordner). Erfasst jedes Sample und jedes Pack,
   liest Audio-Eigenschaften aus WAV/AIFF, BPM und Tonart aus dem Dateinamen, bestimmt die Pack-Art,
   findet Duplikate im Ziel und vergleicht mit der letzten Inventur.
-  Die Quelle wird nicht benoetigt (Ursprungspfade kommen aus den Kopier-Protokollen).
+  Die Quelle wird nicht benoetigt (Ursprungspfade kommen aus den Sortier-Protokollen).
 
   Ergebnis im Berichtsordner:
     Inventuren\Sample-Inventur_<Datum>.csv   eine Zeile je Sample
@@ -225,7 +225,7 @@ while ($stapel.Count -gt 0) {
 }
 Write-Host "  $($dateien.Count) Dateien gefunden."
 
-# Ursprungspfade aus allen Kopier-Protokollen (im Ziel und im Ordner Protokolle)
+# Ursprungspfade aus allen Sortier-Protokollen (im Ziel und im Ordner Protokolle)
 $ursprung = @{}
 $protos = @()
 foreach ($o in @($Ziel, $protokollOrdner)) { if (Test-Path -LiteralPath $o) { $protos += @(Get-ChildItem -LiteralPath $o -Filter 'Protokoll_*.csv' -File -ErrorAction SilentlyContinue) } }

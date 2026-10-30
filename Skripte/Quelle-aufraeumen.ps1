@@ -3,11 +3,11 @@
 .SYNOPSIS
   Quelle aufraeumen (ersetzt "Duplikate entfernen"). Bewusster Schritt fuer alles Entbehrliche in der
   Quelle - das Sortieren selbst veraendert die Quelle nie. Auswaehlbar:
-    1  Duplikate      Dateien, die beim Kopieren als doppelt erkannt wurden (Pruefung gegen das behaltene Exemplar)
+    1  Duplikate      Dateien, die beim Sortieren als doppelt erkannt wurden (Pruefung gegen das behaltene Exemplar)
     2  macOS-Reste    ._-Dateien, .DS_Store, __MACOSX (erkannt am Dateikopf)
     3  Formate        RX2/MP3/AIFF neben einer gleichnamigen WAV im selben Pack, deren Kopie im Ziel bestaetigt ist
                       (welche Formate: frei waehlbar, vorbelegt mit den beim Sortieren abgewaehlten)
-    4  Originale      Dateien, deren Kopie im Ziel laut Kopier-Protokoll vorhanden und per Pruefsumme bestaetigt ist
+    4  Originale      Dateien, deren Kopie im Ziel laut Sortier-Protokoll vorhanden und per Pruefsumme bestaetigt ist
   Alles mit Vorschau und Rueckfrage (Standard: Nein). Die Dateien gehen in den Papierkorb.
 
 .BENUTZUNG
@@ -72,7 +72,7 @@ $vorbelegt = (@($FormatEinstellung.Keys | Where-Object { -not $einst[$FormatEins
 
 if (-not ($Duplikate -or $MacReste -or $Formate -or $Originale)) {
     Write-Host "Was soll aus der Quelle in den Papierkorb?"
-    Write-Host "  1  Duplikate (beim Kopieren als doppelt erkannt)"
+    Write-Host "  1  Duplikate (beim Sortieren als doppelt erkannt)"
     Write-Host "  2  macOS-Reste (._-Dateien, .DS_Store, __MACOSX)"
     Write-Host "  3  RX2/MP3/AIFF neben gleichnamiger WAV im selben Pack, deren Kopie im Ziel liegt"
     Write-Host "  4  Originale, deren Kopie im Ziel bestaetigt ist (die Quelle wird damit weitgehend geleert)"
@@ -114,7 +114,7 @@ function Show-Fortschritt([string]$was, [int]$i, [int]$n) {
     if (((Get-Date) - $script:fortschrittZeit).TotalSeconds -ge 5) { Write-Host ("  ... {0}: {1} von {2}" -f $was, $i, $n) -ForegroundColor DarkGray; $script:fortschrittZeit = Get-Date }
 }
 
-# Alle Kopier-Protokolle: Quelle -> Ziel (fuer Duplikate und Formate)
+# Alle Sortier-Protokolle: Quelle -> Ziel (fuer Duplikate und Formate)
 $orte = @($protokollOrdner, $Ziel) + @($QuellListe | ForEach-Object { Join-Path $_ '_Sortier-Skript' })
 $protos = @(foreach ($o in $orte) { if ($o -and (Test-Path -LiteralPath $o)) { Get-ChildItem -LiteralPath $o -Filter 'Protokoll_*.csv' -File -ErrorAction SilentlyContinue } }) | Sort-Object Name
 
@@ -124,7 +124,7 @@ $protos = @(foreach ($o in $orte) { if ($o -and (Test-Path -LiteralPath $o)) { G
 if ($Duplikate) {
     $p = $protos | Select-Object -Last 1
     if (-not $p) { $p = Get-NeuestesProtokoll 'Vorschau_*.csv' $orte }
-    if (-not $p) { Write-Host "Duplikate: kein Kopier-Protokoll gefunden - bitte zuerst 'Samples sortieren'." -ForegroundColor Yellow }
+    if (-not $p) { Write-Host "Duplikate: kein Sortier-Protokoll gefunden - bitte zuerst 'Samples sortieren'." -ForegroundColor Yellow }
     else {
         Write-Host "Duplikate: pruefe anhand $($p.Name) ..." -ForegroundColor Cyan
         $dupListe = @(Import-Csv -LiteralPath $p.FullName -Delimiter ';' -Encoding UTF8 | Where-Object { $_.Aktion -like 'Duplikat*' })
@@ -180,7 +180,7 @@ if ($MacReste) {
 # ---------------------------------------------------------------------------
 # 3) RX2/MP3/AIFF neben gleichnamiger WAV, deren Kopie im Ziel bestaetigt ist
 # ---------------------------------------------------------------------------
-# Kopier-Protokolle: wohin wurde welche Quelldatei kopiert (fuer Formate und Originale)
+# Sortier-Protokolle: wohin wurde welche Quelldatei kopiert (fuer Formate und Originale)
 $zielVon = @{}; $dupVon = @{}
 if ($Formate -or $Originale) {
     foreach ($p in $protos) {
@@ -205,7 +205,7 @@ if ($Formate) {
         $wav = $wavs[(Get-FormatSchluessel $f.FullName (Get-PackWurzel (Get-QuellWurzel $f.FullName)))]
         if (-not $wav) { continue }   # ohne WAV-Gegenstueck: bleibt immer
         $zw = $zielVon[$wav.ToLowerInvariant()]
-        # WAV war beim Kopieren ein Duplikat: dann zaehlt die Ziel-Kopie des behaltenen Exemplars
+        # WAV war beim Sortieren ein Duplikat: dann zaehlt die Ziel-Kopie des behaltenen Exemplars
         if (-not $zw -and $dupVon.ContainsKey($wav.ToLowerInvariant())) { $zw = $zielVon[$dupVon[$wav.ToLowerInvariant()].ToLowerInvariant()] }
         if (-not $zw -or -not (Test-Datei $zw)) { Add-Eintrag 'Format' 'Uebersprungen: WAV ist (noch) nicht im Ziel' $f.FullName $wav $f.Length; continue }
         if (-not (Test-Gleich $wav $zw)) { Add-Eintrag 'Format' 'Uebersprungen: WAV im Ziel weicht ab' $f.FullName $zw $f.Length; continue }
@@ -215,12 +215,12 @@ if ($Formate) {
 
 # ---------------------------------------------------------------------------
 # 4) Originale, deren Kopie im Ziel bestaetigt ist (CLN-01)
-#    Nur Dateien aus einem Kopier-Protokoll; Ziel-Datei muss existieren und inhaltsgleich sein.
+#    Nur Dateien aus einem Sortier-Protokoll; Ziel-Datei muss existieren und inhaltsgleich sein.
 #    Was nie kopiert wurde (Hilfsdateien, ausgeschlossene Formate, ModX ...), bleibt liegen.
 # ---------------------------------------------------------------------------
 if ($Originale) {
     Write-Host "Originale: pruefe Kopien im Ziel ..." -ForegroundColor Cyan
-    if (-not $protos.Count) { Write-Host "Originale: kein Kopier-Protokoll gefunden - bitte zuerst 'Samples sortieren'." -ForegroundColor Yellow }
+    if (-not $protos.Count) { Write-Host "Originale: kein Sortier-Protokoll gefunden - bitte zuerst 'Samples sortieren'." -ForegroundColor Yellow }
     $kandidaten = @($quellDateien | Where-Object { $zielVon.ContainsKey($_.FullName.ToLowerInvariant()) })
     $i = 0
     foreach ($f in $kandidaten) {
