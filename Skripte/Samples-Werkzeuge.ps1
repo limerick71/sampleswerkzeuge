@@ -652,7 +652,7 @@ function Show-DownloadImport {
     $form.Cursor = 'WaitCursor'
     try { . (Join-Path $skriptOrdner 'Import.ps1'); $kand = @(Get-ImportKandidaten) } finally { $form.Cursor = 'Default' }
     if (-not $kand.Count) { Show-Meldung "Im Download-Ordner wurden keine Sample-Packs gefunden:`n$($e.Downloads)`n`nGesucht wird nach ZIP-Dateien und Ordnern mit Audiodateien direkt im Download-Ordner."; return }
-    $w = 760; $innen = $w - 32
+    $w = 900; $innen = $w - 32
     $d = New-Object System.Windows.Forms.Form
     $d.Text = 'Download importieren'
     $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'
@@ -666,10 +666,14 @@ function Show-DownloadImport {
     $lv = New-Object System.Windows.Forms.ListView
     $lv.View = 'Details'; $lv.CheckBoxes = $true; $lv.FullRowSelect = $true; $lv.MultiSelect = $false; $lv.Font = $schrift
     $lv.Location = New-Object System.Drawing.Point(16, $y); $lv.Size = New-Object System.Drawing.Size($innen, 220)
-    [void]$lv.Columns.Add('Download', 300); [void]$lv.Columns.Add('Art', 60); [void]$lv.Columns.Add('Größe', 80, 'Right'); [void]$lv.Columns.Add('Audio', 60, 'Right'); [void]$lv.Columns.Add('Datum', 80); [void]$lv.Columns.Add('Hinweis', ($innen - 300 - 60 - 80 - 60 - 80 - 24))
+    [void]$lv.Columns.Add('Download', 280); [void]$lv.Columns.Add('Typ', 55); [void]$lv.Columns.Add('Pack-Art', 130); [void]$lv.Columns.Add('Größe', 70, 'Right'); [void]$lv.Columns.Add('Audio', 55, 'Right'); [void]$lv.Columns.Add('Datum', 80); [void]$lv.Columns.Add('Hinweis', ($innen - 280 - 55 - 130 - 70 - 55 - 80 - 24))
+    # 3.0.1: Pack-Art je Download (erkannt wie bei Fundorten), per Klick änderbar
+    $artText = { param($k) if ($k.Wahl -eq 'Sammlung') { "Sammlung ($(@($k.Packs).Count)) ▾" } else { 'Ein Pack  ▾' } }
     foreach ($k in $kand) {
+        $k | Add-Member NoteProperty Wahl $k.PackArt -Force
         $it = New-Object System.Windows.Forms.ListViewItem($k.Name)
         [void]$it.SubItems.Add($k.Art)
+        [void]$it.SubItems.Add($(if ($k.Anhakbar) { & $artText $k } else { '' }))
         [void]$it.SubItems.Add($(if ($k.Bytes -ge 1GB) { '{0:N1} GB' -f ($k.Bytes / 1GB) } elseif ($k.Bytes) { '{0:N0} MB' -f [Math]::Max(1, $k.Bytes / 1MB) } else { '' }))
         [void]$it.SubItems.Add($(if ($k.Audio) { '{0:N0}' -f $k.Audio } else { '' }))
         [void]$it.SubItems.Add($k.Datum.ToString('dd.MM.yyyy'))
@@ -681,6 +685,19 @@ function Show-DownloadImport {
     }
     # Nicht importierbare Zeilen (schon vollständig im Ziel, RAR/7z, nicht lesbar) lassen sich nicht anhaken
     $lv.Add_ItemCheck({ param($s, $ev) if (-not $lv.Items[$ev.Index].Tag.Anhakbar) { $ev.NewValue = 'Unchecked' } })
+    $artMenue = New-Object System.Windows.Forms.ContextMenuStrip; $artMenue.Font = $schrift
+    foreach ($a in @(@('Pack', 'Ein Pack – alles unter dem Namen des Downloads'), @('Sammlung', 'Sammlung – jeder Unterordner ist ein eigenes Pack'))) { $mi = $artMenue.Items.Add($a[1]); $mi.Tag = $a[0] }
+    $script:importZeile = $null
+    $artMenue.Add_ItemClicked({ param($s, $ev) $it = $script:importZeile; if (-not $it) { return }; $it.Tag.Wahl = [string]$ev.ClickedItem.Tag; $it.SubItems[2].Text = (& $artText $it.Tag) })
+    $lv.Add_MouseClick({ param($s, $ev)
+        $h = $lv.HitTest($ev.Location)
+        if (-not $h.Item -or -not $h.SubItem -or -not $h.Item.Tag.Anhakbar) { return }
+        if ($h.Item.SubItems.IndexOf($h.SubItem) -ne 2) { return }
+        $script:importZeile = $h.Item
+        foreach ($mi in $artMenue.Items) { $mi.Checked = ([string]$mi.Tag -eq [string]$h.Item.Tag.Wahl) }
+        $artMenue.Show($lv, $ev.Location) })
+    $tt3 = New-Object System.Windows.Forms.ToolTip; $tt3.AutoPopDelay = 15000
+    $tt3.SetToolTip($lv, 'Klick auf die Pack-Art: ändern. Sammlung = der Download enthält mehrere eigenständige Packs (z. B. „Vol 1“, „Vol 2“); jedes wird unter seinem eigenen Namen einsortiert.')
     $d.Controls.Add($lv)
     $y += 220 + 12
     $lo = New-Object System.Windows.Forms.Label
@@ -706,12 +723,13 @@ function Show-DownloadImport {
     $d.Add_Shown({ $ok.Focus() })
     $r = $d.ShowDialog($form)
     $gewaehlt = @($lv.Items | Where-Object { $_.Checked -and $_.Tag.Anhakbar } | ForEach-Object { $_.Tag.Name })
+    $arten = @($lv.Items | Where-Object { $_.Checked -and $_.Tag.Anhakbar } | ForEach-Object { "$($_.Tag.Name)*$($_.Tag.Wahl)" }) -join '|'
     $orig = @($radios.Keys | Where-Object { $radios[$_].Checked }) | Select-Object -First 1
     $d.Dispose()
     if ($r -ne 'OK') { return }
     if (-not $gewaehlt.Count) { Show-Meldung 'Es ist kein Pack angehakt.' 'Warning'; return }
     try { Set-Einstellung 'ImportOriginal' $orig } catch { }
-    [void](Start-Skript 'Download-importieren.ps1' "-Auswahl '$(($gewaehlt -join '|').Replace("'", "''"))' -Original $orig" 'Download importieren')
+    [void](Start-Skript 'Download-importieren.ps1' "-Auswahl '$(($gewaehlt -join '|').Replace("'", "''"))' -Arten '$($arten.Replace("'", "''"))' -Original $orig" 'Download importieren')
 }
 
 # ---------------------------------------------------------------------------

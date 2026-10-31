@@ -219,6 +219,7 @@ while ($stapel.Count -gt 0) {
     try { $inh = @(Get-ChildItem -LiteralPath $o -Force -ErrorAction Stop) } catch { $nichtLesbar++; continue }
     foreach ($e in $inh) {
         if ($e.PSIsContainer) {
+            if ($o -eq $Ziel -and $e.Name -eq $ZielProtokolle) { continue }   # 3.0.1: Protokolle, keine Samples
             if (-not ($e.Attributes -band [IO.FileAttributes]::ReparsePoint)) { $stapel.Push($e.FullName) }
         } elseif ($o -ne $Ziel) { $dateien.Add($e) }   # Dateien direkt im Ziel sind Protokolle
     }
@@ -228,7 +229,7 @@ Write-Host "  $($dateien.Count) Dateien gefunden."
 # Ursprungspfade aus allen Sortier-Protokollen (im Ziel und im Ordner Protokolle)
 $ursprung = @{}
 $protos = @()
-foreach ($o in @($Ziel, $protokollOrdner)) { if (Test-Path -LiteralPath $o) { $protos += @(Get-ChildItem -LiteralPath $o -Filter 'Protokoll_*.csv' -File -ErrorAction SilentlyContinue) } }
+foreach ($o in @($Ziel, (Get-ZielProtokollOrdner $Ziel), $protokollOrdner)) { if (Test-Path -LiteralPath $o) { $protos += @(Get-ChildItem -LiteralPath $o -Filter 'Protokoll_*.csv' -File -ErrorAction SilentlyContinue) } }
 foreach ($p in ($protos | Sort-Object Name)) {
     try {
         foreach ($z in (Import-Csv -LiteralPath $p.FullName -Delimiter ';' -Encoding UTF8)) {

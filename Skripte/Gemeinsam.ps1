@@ -10,7 +10,7 @@
 #   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
 #   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
 
-$ProgrammVersion = '3.0'
+$ProgrammVersion = '3.0.1'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -182,6 +182,17 @@ function Get-QuellArtName([string]$art) { if ($QuellArten.Contains($art)) { retu
 # Typische Ordner im Inneren eines Packs ("Loops", "One Shots", "Kick", "...-WAV" ...)
 $RxPackInnen = '^(samples?|sounds|demo|wav|wave|waves|aiff?|rex2?|rx2|acid|midi|stems|presets?|patches|full ?mix|kits?)$|^(loops?|one[ -]?shots?|oneshots|drums?|drum ?loops|kicks?|snares?|hats?|hi[ -]?hats?|claps?|percs?|percussion|toms?|cymbals?|crash(es)?|rides?|shakers?|bass|basslines?|bass ?loops|synths?|synth ?loops|keys|pads?|leads?|plucks?|chords?|arps?|vocals?|vox|vocal ?loops|fx|sfx|risers?|impacts?|sweeps?|atmos(pheres?)?|textures?|construction ?kits?|drum ?kits?|top ?loops|music ?loops|melod(y|ic|ies)( ?loops)?|guitars?|piano|strings|brass|apple ?loops)\b|[-_ ](wav|rex2?|rx2|aiff?|midi|apple ?loops|ableton|presets?)$'
 $RxPackNeutral = '^(licen[cs]es?|readme|info|infos|artwork|cover|documentation|docs?|__macosx|license & files)\b'
+# 3.0.1: Namen von Instrument-Bibliotheken (Fundorte und Import) und Ordner mit den Sortier-Protokollen im Ziel
+$RxInstrNamen = 'Native Instruments|Kontakt|Spitfire|Sonokinetic|Muse ?Hub|Arturia|\bUVI\b|Vienna|\bVSL\b|EastWest|East West|Toontrack|Superior Drummer|EZdrummer|Steinberg|HALion|Komplete|Heavyocity|8Dio|Orchestral Tools|Cinesamples|XLN Audio|Addictive|Spectrasonics|Omnisphere|Keyscape|Trilian|Factory Packs|Core Library|Output Arcade|Soundiron|Impact Soundworks|Best Service|Garritan|Embertone'
+$ZielProtokolle = '99_Protokolle'
+function Get-ZielProtokollOrdner([string]$ziel) { return (Join-Path $ziel.TrimEnd('\', '/') $ZielProtokolle) }
+# Protokolle, die frueher direkt im Ziel lagen, in den Unterordner verschieben (beim Sortieren nach "J")
+function Move-ZielProtokolle([string]$ziel) {
+    $zp = Get-ZielProtokollOrdner $ziel
+    foreach ($f in @(Get-ChildItem -LiteralPath $ziel -File -Filter '*Protokoll_*.csv' -ErrorAction SilentlyContinue)) {
+        try { [void][IO.Directory]::CreateDirectory($zp); $nach = Join-Path $zp $f.Name; if (-not (Test-Path -LiteralPath $nach)) { Move-Item -LiteralPath $f.FullName -Destination $nach } } catch { }
+    }
+}
 # Vorschlag fuer die Art aus den Namen der Unterordner und der Zahl der Dateien direkt im Ordner
 # 2.3.4: weitere Innenordner - "Bonus ...", "<Name> - Loops/Drums/Noise ..." und Ordner, die den Namen des
 # Packs selbst tragen (z. B. "VOLTAGE REVELATIONS - DRUMS" in "Voltage Revelations")
@@ -190,7 +201,13 @@ $RxPackInnenEnde = '\s[-_–]\s*(' + $RxPackInnenWort + ')( ?(loops?|samples?|ki
 function Get-NormName([string]$n) { return (($n.ToLowerInvariant() -replace '[_\-–.,()\[\]]+', ' ') -replace '\s+', ' ').Trim() }
 function Test-PackInnenName([string]$name, [string]$eltern = '') {
     $l = $name.ToLowerInvariant().Trim()
+    # 3.0.1: nummerierte Namen ("Vol 1", "Volume 2") sind eigenstaendige Packs
+    if ($l -match '\bvol(ume)?\.?\s*\d') { return $false }
     if ($l -match $RxPackInnen) { return $true }
+    # 3.0.1: typische Innenordner von Vocal-Packs ("Female Vocals", "Ad Libs", "Hooks", "Vocal Stacks" ...)
+    if ($l -match '^((female|male|lead|backing|dry|wet|processed|chopped|main|solo|ensemble|vocal)\s+)?(vocals?|vox|ad ?-?libs?|stacks?|hooks?|phrases?|chops?|harmon(y|ies)|chants?|shouts?|whispers?|spoken)$') { return $true }
+    # 3.0.1: kurze Namen mit einem Instrument ("Alto Sax", "Trumpet", "Sax Solo", "Piano Chords") sind Innenordner
+    if (@($l -split '\s+').Count -le 3 -and $l -match '\b(sax(ophone)?s?|alto|tenor|baritone|soprano|trumpets?|trombones?|flutes?|clarinets?|horns?|brass|pianos?|keys|rhodes|organs?|guitars?|bass|strings?|violins?|cellos?|violas?|harps?|synths?|pads?|plucks?|leads?|arps?|chords?|bells?|choirs?|drums?|kicks?|snares?|hats?|percs?|percussion|fx|vocals?|vox|solo|ensemble|section)\b') { return $true }
     if ($l -match '^bonus') { return $true }
     if ($l -match $RxPackInnenEnde) { return $true }
     if ($eltern) {

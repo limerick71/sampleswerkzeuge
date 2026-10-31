@@ -71,7 +71,9 @@ Gerade ein Sample-Pack heruntergeladen? Im Bereich „1 Sortieren“ auf
 „Download importieren …“ klicken:
   - Die Liste zeigt neue ZIP-Dateien und Ordner mit Audiodateien im
     Download-Ordner. Schon vollständig Importiertes, RAR/7z und nicht lesbare
-    ZIPs sind grau und nicht anhakbar.
+    ZIPs sind grau und nicht anhakbar, ebenso Instrument-Bibliotheken.
+  - Enthält ein Download mehrere Packs (z. B. „Vol 1“, „Vol 2“), steht in der
+    Spalte Pack-Art „Sammlung“ – ein Klick darauf ändert die Art.
   - Darunter wählen, was danach mit dem Original passiert: ins Download-Archiv
     verschieben (Standard), im Download-Ordner lassen oder in den Papierkorb.
   - Ein Fenster entpackt, zeigt die Vorschau wie beim Sortieren und kopiert

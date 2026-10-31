@@ -115,7 +115,7 @@ function Show-Fortschritt([string]$was, [int]$i, [int]$n) {
 }
 
 # Alle Sortier-Protokolle: Quelle -> Ziel (fuer Duplikate und Formate)
-$orte = @($protokollOrdner, $Ziel) + @($QuellListe | ForEach-Object { Join-Path $_ '_Sortier-Skript' })
+$orte = @($protokollOrdner, $Ziel, (Get-ZielProtokollOrdner $Ziel)) + @($QuellListe | ForEach-Object { Join-Path $_ '_Sortier-Skript' })
 $protos = @(foreach ($o in $orte) { if ($o -and (Test-Path -LiteralPath $o)) { Get-ChildItem -LiteralPath $o -Filter 'Protokoll_*.csv' -File -ErrorAction SilentlyContinue } }) | Sort-Object Name
 
 # ---------------------------------------------------------------------------

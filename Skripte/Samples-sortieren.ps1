@@ -45,7 +45,7 @@ $Zeitstempel  = Get-Date -Format 'yyyy-MM-dd_HHmmss'
 
 $einst = Get-Einstellungen
 # Quellen (QLN-05): alle aktiven aus der Quellenliste, oder -Quelle fuer einen einzelnen Lauf
-$QuellObjekte = if ($Quellen) { @($Quellen -split '\|' | Where-Object { $_ } | ForEach-Object { $t = $_ -split '\*'; [pscustomobject]@{ Pfad = $t[0]; Art = $(if ($t.Count -gt 1) { $t[1] } else { 'Pack' }) } }) }
+$QuellObjekte = if ($Quellen) { @($Quellen -split '\|' | Where-Object { $_ } | ForEach-Object { $t = $_ -split '\*'; [pscustomobject]@{ Pfad = $t[0]; Art = $(if ($t.Count -gt 1) { $t[1] } else { 'Pack' }); Einzeln = $(if ($t.Count -gt 2) { $t[2] } else { '' }) } }) }
                 elseif ($Quelle) { @([pscustomobject]@{ Pfad = $Quelle; Art = 'Sammlung' }) } else { @(Get-AktiveQuellObjekte) }
 $QuellListe = @($QuellObjekte | ForEach-Object { $_.Pfad })
 if (-not $Ziel)   { $Ziel   = $einst.Ziel }
@@ -55,12 +55,14 @@ Write-Host "  Ziel:   $Ziel"
 Write-Host ""
 
 if (-not $QuellListe.Count) { throw "Es ist keine Quelle aktiv (in der Oberflaeche unter Einstellungen hinzufuegen oder anhaken)." }
-$artVon = @{}
+$artVon = @{}; $einzelnVon = @{}
 $QuellListe = @(foreach ($qo in $QuellObjekte) {
     $q = $qo.Pfad
     if (-not (Test-Path -LiteralPath $q)) { throw "Quellordner nicht gefunden: $q  (in der Oberflaeche unter Einstellungen aendern)" }
     $v = (Resolve-Path -LiteralPath $q).ProviderPath; if ($v.Length -gt 3) { $v = $v.TrimEnd('\','/') }
     $artVon[$v] = Get-QuellArtName $qo.Art
+    # 3.0.1 (Import): Pack-Name fuer Dateien direkt in einer Sammlung (sonst "_Einzeldateien"), z. B. der Name des Bundles
+    if ($qo.PSObject.Properties['Einzeln'] -and $qo.Einzeln) { $einzelnVon[$v] = [string]$qo.Einzeln }
     $v
 })
 $Ziel   = $Ziel.TrimEnd('\','/')
@@ -213,6 +215,19 @@ function Get-Typ([string]$Datei, [string[]]$Ordner, [string]$Pfad, [long]$Groess
     return 'One-Shots'
 }
 
+# 3.0.1: Ordner, die nur Typ, Format oder eine Huelle beschreiben, zaehlen nicht als Unterordner des Packs
+$RxTypOrdner = '^(loops?|one[ _-]?shots?|oneshots|samples?|sounds|wav|wave|waves|aiff?|rex2?|rx2|audio|audio files|files|content|stems?|kicks?|snares?|hats?|hi[ -]?hats?|claps?|percs?|percussion|toms?|cymbals?|drums?|drum ?loops|drum ?hits|bass|basslines?|bass ?loops|synths?|synth ?loops|keys|pads?|leads?|fx|sfx|midi|music ?loops|top ?loops|\d+)$|[-_ ](wav|rex2?|rx2|aiff?|24 ?bit|16 ?bit|midi)$'
+function Get-UnterOrdner([string[]]$Ordner, [string]$Pack) {
+    $p = Get-NormName $Pack
+    foreach ($o in $Ordner) {
+        $l = $o.ToLowerInvariant().Trim(); $n = Get-NormName $o
+        if ($l -match $RxTypOrdner) { continue }
+        if ($n -eq $p -or ($p.Length -ge 4 -and $n.Contains($p)) -or ($n.Length -ge 6 -and $p.Contains($n))) { continue }   # Huelle mit dem Pack-Namen
+        return $o
+    }
+    return ''
+}
+
 function Join-Rel([string[]]$Teile) {
     $t = @($Teile | Where-Object { $_ -and $_.Trim() -ne '' })
     if ($t.Count -eq 0) { return '' }
@@ -308,7 +323,7 @@ foreach ($f in $alle) {
     } elseif ($teile.Count -gt 1) {
         $pack = $teile[0]; $packRel = $teile[1..($teile.Count - 1)]
     } else {
-        $pack = '_Einzeldateien'; $packRel = @($teile[0])
+        $pack = $(if ($einzelnVon.ContainsKey($QWurzel)) { $einzelnVon[$QWurzel] } else { '_Einzeldateien' }); $packRel = @($teile[0])
     }
     if ($artVon[$QWurzel] -eq 'Sammlung' -and $teile[0] -eq 'Vocals' -and $teile.Count -eq 2) { $pack = 'Vocals (Einzeldateien)' }
     # 2.3.2: lose Dateien eines Ordners (z. B. Downloads) als Pack "Einzeldateien (Ordnername)"
@@ -317,6 +332,8 @@ foreach ($f in $alle) {
     $relImPack  = Join-Rel $packRel
     $alleOrdner = @(); if ($teile.Count -gt 1) { $alleOrdner = $teile[0..($teile.Count - 2)] }
     $ordnerText = ($alleOrdner -join ' ')
+    # 3.0.1: erste aussagekraeftige Ordnerebene unter dem Pack bleibt erhalten (z. B. "Alto Sax", "Female Vocals")
+    $unter = Get-UnterOrdner $packOrdner $pack
 
     $zr = $null; $kat = $null
 
@@ -340,36 +357,36 @@ foreach ($f in $alle) {
     } elseif ($teile[0] -match '100ufgrooves') {
         $kat = 'Songs'; $zr = Join-Rel @($K.Songs, $teile[0], $relImPack)
     } elseif ($nameL -match $RxDoku) {
-        $kat = 'Infos'; $zr = Join-Rel @($K.Infos, $pack, $name)
+        $kat = 'Infos'; $zr = Join-Rel @($K.Infos, $pack, $unter, $name)
     } elseif ($nameL -match '\.midi?$') {
-        $kat = 'MIDI'; $zr = Join-Rel @($K.MIDI, $pack, $name)
+        $kat = 'MIDI'; $zr = Join-Rel @($K.MIDI, $pack, $unter, $name)
     } elseif ($nameL -notmatch $RxAudio) {
-        $kat = 'Sonstiges'; $zr = Join-Rel @($K.Sonstiges, $pack, $name)
+        $kat = 'Sonstiges'; $zr = Join-Rel @($K.Sonstiges, $pack, $unter, $name)
     }
     # --- Melodische / thematische Packs -----------------------------------
     # 2.3.2: Vocals auch ueber Ordnernamen im Pack erkennen (z. B. "Pack\Vocal Loops\...")
     elseif ($teile[0] -eq 'Vocals' -or $pack -match 'Vocal' -or @($packOrdner | Where-Object { $_ -match '\bVocals?\b|\bVox\b|Acapella|A cappella' }).Count) {
         # 2.3.4: wie die anderen Kategorien ohne den inneren Ordnerweg (gleichnamige Dateien bekommen unten ihren Unterordner)
-        $kat = 'Vocals'; $zr = Join-Rel @($K.Vocals, $pack, $name)
+        $kat = 'Vocals'; $zr = Join-Rel @($K.Vocals, $pack, $unter, $name)
     } elseif ($teile[0] -eq 'Brass') {
         $kat = 'Brass'; $zr = Join-Rel @($K.Brass, 'Brass (Mugent)', $name)
     } elseif ($pack -match 'Melancholic Rhodes|Lofi Blessings') {
-        $kat = 'Keys'; $zr = Join-Rel @($K.Keys, $pack, $name)
+        $kat = 'Keys'; $zr = Join-Rel @($K.Keys, $pack, $unter, $name)
     } elseif ($pack -match 'Zen Guitar') {
         $kat = 'Guitar'; $zr = Join-Rel @($K.Guitar, $pack, $relImPack)
     } elseif ($pack -match 'Ambiences') {
-        $kat = 'Atmos'; $zr = Join-Rel @($K.Atmos, $pack, $name)
+        $kat = 'Atmos'; $zr = Join-Rel @($K.Atmos, $pack, $unter, $name)
     } elseif ($pack -match 'Riemann Techno Basslines' -or $rel -match 'Sub Bass Loops') {
-        $kat = 'Bass'; $zr = Join-Rel @($K.Bass, 'Loops', $pack, $name)
+        $kat = 'Bass'; $zr = Join-Rel @($K.Bass, 'Loops', $pack, $unter, $name)
     } elseif ($rel -match 'FX Kicks|Transition Kicks') {
-        $kat = 'FX'; $zr = Join-Rel @($K.FX, $pack, $name)
+        $kat = 'FX'; $zr = Join-Rel @($K.FX, $pack, $unter, $name)
     } elseif ($pack -match 'Warped Foley') {
-        $kat = 'Foley'; $zr = Join-Rel @($K.Foley, 'Loops', $pack, $name)
+        $kat = 'Foley'; $zr = Join-Rel @($K.Foley, 'Loops', $pack, $unter, $name)
     } elseif ($pack -match 'Lofi Forest') {
-        if ($nameL -match 'atmo|forest|rain|creek|pad|bird') { $kat = 'Atmos'; $zr = Join-Rel @($K.Atmos, $pack, $name) }
+        if ($nameL -match 'atmo|forest|rain|creek|pad|bird') { $kat = 'Atmos'; $zr = Join-Rel @($K.Atmos, $pack, $unter, $name) }
         else {
             $typ = Get-Typ $basis $packOrdner $f.FullName $f.Length 'Foley' $false
-            $kat = 'Foley'; $zr = Join-Rel @($K.Foley, $typ, $pack, $name)
+            $kat = 'Foley'; $zr = Join-Rel @($K.Foley, $typ, $pack, $unter, $name)
         }
     }
     # --- Generisch: Instrument aus Dateiname, sonst Ordnern ---------------
@@ -380,15 +397,15 @@ foreach ($f in $alle) {
         }
         if (-not $inst) { foreach ($pf in $PackFallback) { if ($pack -match $pf[0]) { $inst = $pf[1]; break } } }
         if (-not $inst) {
-            $kat = 'Unsortiert'; $zr = Join-Rel @($K.Unsortiert, $pack, $name)
+            $kat = 'Unsortiert'; $zr = Join-Rel @($K.Unsortiert, $pack, $unter, $name)
         } else {
             $kat = $inst
             $stdLoop = ($pack -match 'Hard Mechanical Rhythms') -or ($inst -in 'DrumLoops', 'Melodic')
             if ($MitTyp -contains $inst) {
                 $typ = Get-Typ $basis $packOrdner $f.FullName $f.Length $inst $stdLoop
-                $zr = Join-Rel @($K[$inst], $typ, $pack, $name)
+                $zr = Join-Rel @($K[$inst], $typ, $pack, $unter, $name)
             } else {
-                $zr = Join-Rel @($K[$inst], $pack, $name)
+                $zr = Join-Rel @($K[$inst], $pack, $unter, $name)
             }
         }
     }
@@ -671,7 +688,8 @@ Write-Progress -Activity 'Kopiere Samples' -Completed
 
 Export-Plan $csvPfad $TextProtokoll
 # Protokoll zusaetzlich im Zielordner ablegen
-try { Copy-Item -LiteralPath $csvPfad -Destination (Join-Path $Ziel $csvName) } catch {}
+# 3.0.1: im Ziel im Unterordner 99_Protokolle (aeltere Protokolle direkt im Ziel werden dorthin verschoben)
+try { Move-ZielProtokolle $Ziel; $zp = Get-ZielProtokollOrdner $Ziel; [void][IO.Directory]::CreateDirectory($zp); Copy-Item -LiteralPath $csvPfad -Destination (Join-Path $zp $csvName) } catch {}
 
 Write-Host ""
 Write-Host "Fertig." -ForegroundColor Green

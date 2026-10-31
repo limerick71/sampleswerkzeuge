@@ -23,6 +23,7 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 
 | Version | Datum | Inhalt |
 |---|---|---|
+| 3.0.1 | 31.10.2026 | Befunde aus dem Test der 3.0: Import erkennt Instrument-Bibliotheken und Bundles (Pack-Art änderbar), übergeht Downloads ohne Audio; erste Ordnerebene unter dem Pack bleibt erhalten; Protokolle im Ziel unter 99_Protokolle |
 | 3.0 | 30.10.2026 | Download importieren: frisch heruntergeladene Packs (ZIP oder Ordner) in einem Schritt entpacken, einsortieren und das Original ins Download-Archiv verschieben, liegen lassen oder in den Papierkorb legen – mit Vorschau, Prüfsummen und Import-Protokoll; Instrument-Kürzel zuverlässiger; Archive im Fundort-Bericht als eigene Zeile |
 | 2.3.5 | 30.10.2026 | Befunde aus dem Test der 2.3.4: One-Shots mit Laufnummer; einheitlich „Sortieren“; Fundort-Bericht mit Quelle und „(deaktiviert)“, Haken für alle; ZIP mit ungewöhnlichen Namen; Fundorte-Fenster merkt die Auswahl; „Quelle aufräumen“ fragt zuerst die Quellen; „Packs liegen tiefer“ deutlich sichtbar; Cubase/Ableton-Projekte wieder als DAW-Projekt |
 | 2.3.4 | 29.10.2026 | Befunde aus dem Test der 2.3.3: Archive robuster gelesen (Grund bei nicht prüfbaren); Innenordner eines Packs erkannt; DAW-Projekt nur mit Projektdatei; Inventur mit Keys/Synth/Melodic; „nur Auffällige“ in der Pack-Ansicht; Packs liegen tiefer – Hinweis und Umstellen; Vocals ohne inneren Ordnerweg; kleine Fundorte standardmäßig sichtbar |

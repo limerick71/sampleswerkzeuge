@@ -13,6 +13,7 @@
 .BENUTZUNG
     -Auswahl "Pack A.zip|Pack B"     Namen im Download-Ordner (Trennzeichen |)
     -Original Archiv|Behalten|Papierkorb
+    -Arten "Pack A.zip*Sammlung|Pack B*Pack"   Art je Download (sonst die erkannte)
     -NurVorschau                       nur Vorschau, nichts kopieren
     -Ausfuehren                        ohne Frage ausfuehren
 #>
@@ -20,6 +21,7 @@
 param(
     [string]$Auswahl = '',
     [ValidateSet('Archiv', 'Behalten', 'Papierkorb')][string]$Original = 'Archiv',
+    [string]$Arten = '',
     [switch]$NurVorschau,
     [switch]$Ausfuehren
 )
@@ -98,7 +100,7 @@ try {
     foreach ($p in $zips) {
         $i++
         Write-Progress -Activity 'Entpacken' -Status "$i / $($zips.Count): $($p.Name)" -PercentComplete ($i * 100 / $zips.Count)
-        $r = [SamplesWerkzeuge.ZipWerkzeug300]::Entpacken($p.Pfad, $p.Quelle, 200GB)
+        $r = [SamplesWerkzeuge.ZipWerkzeug301]::Entpacken($p.Pfad, $p.Quelle, 200GB)
         if ($r.Fehler) { $p.Fehler = $r.Fehler; Write-Host "  $($p.Name): nicht entpackt - $($r.Fehler)" -ForegroundColor Red; continue }
         $anz = $r.Dateien
         # ZIP im ZIP: daneben in einen gleichnamigen Ordner entpacken (hoechstens 3 Ebenen), dann die innere ZIP-Datei entfernen
@@ -108,7 +110,7 @@ try {
             $e = $offen.Dequeue(); $innen = [string]$e[0]
             if ([int]$e[1] -gt 3) { continue }
             $zielInnen = Join-Path ([IO.Path]::GetDirectoryName($innen)) ([IO.Path]::GetFileNameWithoutExtension($innen))
-            $r2 = [SamplesWerkzeuge.ZipWerkzeug300]::Entpacken($innen, $zielInnen, 200GB)
+            $r2 = [SamplesWerkzeuge.ZipWerkzeug301]::Entpacken($innen, $zielInnen, 200GB)
             if ($r2.Fehler) { Write-Host "  $($p.Name): inneres Archiv $([IO.Path]::GetFileName($innen)) nicht entpackt - $($r2.Fehler)" -ForegroundColor Yellow; continue }
             foreach ($u in $r2.Uebersprungen) { $r.Uebersprungen.Add($u) }
             $anz += $r2.Dateien - 1
@@ -120,6 +122,18 @@ try {
         Write-Host $txt
     }
     Write-Progress -Activity 'Entpacken' -Completed
+    # 3.0.1: ohne Audiodateien (z. B. nur Archive ohne Audio) nicht einsortieren; Art je Download (Ein Pack oder Sammlung)
+    $artWahl = @{}; foreach ($t in @($Arten -split '\|' | Where-Object { $_ })) { $a = $t -split '\*'; if ($a.Count -eq 2) { $artWahl[$a[0]] = $a[1] } }
+    foreach ($p in @($packs | Where-Object { -not $_.Fehler })) {
+        if (-not (Test-HatAudio $p.Quelle)) { $p.Fehler = 'keine Audiodateien (auch nach dem Entpacken) – nicht importiert'; Write-Host "  $($p.Name): keine Audiodateien - wird nicht importiert" -ForegroundColor Yellow; continue }
+        $wahl = if ($artWahl.ContainsKey($p.Name)) { $artWahl[$p.Name] } else { $p.PackArt }
+        if ($wahl -eq 'Sammlung') {
+            $pa = Get-OrdnerImportArt $p.Quelle
+            $p | Add-Member NoteProperty SortQuelle $pa.Pfad -Force; $p | Add-Member NoteProperty SortArt 'Sammlung' -Force; $p | Add-Member NoteProperty SortPacks @($pa.Packs) -Force
+        } else {
+            $p | Add-Member NoteProperty SortQuelle $p.Quelle -Force; $p | Add-Member NoteProperty SortArt 'Pack' -Force; $p | Add-Member NoteProperty SortPacks @() -Force
+        }
+    }
     foreach ($p in @($packs | Where-Object { $_.Fehler })) { Add-Zeile $p 'nicht importiert' 'bleibt im Download-Ordner' $p.Fehler }
     $gut = @($packs | Where-Object { -not $_.Fehler })
     if (-not $gut.Count) { Write-Host "Kein Pack konnte entpackt werden." -ForegroundColor Red; return }
@@ -129,9 +143,12 @@ try {
     # -----------------------------------------------------------------------
     Write-Host ""
     Write-Host "Danach mit den Originalen ($($OriginalText[$Original])), nur wenn alles im Ziel bestaetigt ist:" -ForegroundColor Cyan
-    foreach ($p in $gut) { Write-Host "  $($p.Name)  ->  Pack '$($p.PackName)'" }
+    foreach ($p in $gut) {
+        if ($p.SortArt -eq 'Sammlung') { Write-Host ("  $($p.Name)  ->  Sammlung mit $($p.SortPacks.Count) Packs: " + (($p.SortPacks | Select-Object -First 4) -join ', ') + $(if ($p.SortPacks.Count -gt 4) { ' ...' } else { '' })) }
+        else { Write-Host "  $($p.Name)  ->  Pack '$(if ($p.Art -eq 'ZIP') { $p.PackName } else { $p.Name })'" }
+    }
     Write-Host ""
-    $quellText = ($gut | ForEach-Object { "$($_.Quelle)*Pack" }) -join '|'
+    $quellText = ($gut | ForEach-Object { "$($_.SortQuelle)*$($_.SortArt)" + $(if ($_.SortArt -eq 'Sammlung') { "*$($_.PackName)" } else { '' }) }) -join '|'
     $frageZusatz = switch ($Original) { 'Archiv' { 'die Originale ins Download-Archiv verschieben' } 'Papierkorb' { 'die Originale in den Papierkorb legen' } default { 'die Originale im Download-Ordner lassen' } }
     $sArg = @{ Quellen = $quellText; Frage = $frageZusatz; ImmerProtokoll = $true }
     if ($NurVorschau) { $sArg.NurVorschau = $true }
@@ -200,7 +217,7 @@ try {
                 } else {
                     # Ordner auf ein anderes Laufwerk: kopieren, Groesse pruefen, dann das Original in den Papierkorb
                     Copy-Item -LiteralPath $p.Pfad -Destination $nach -Recurse
-                    $a1 = [SamplesWerkzeuge.ZipWerkzeug300]::Ordner($p.Pfad); $a2 = [SamplesWerkzeuge.ZipWerkzeug300]::Ordner($nach)
+                    $a1 = [SamplesWerkzeuge.ZipWerkzeug301]::Ordner($p.Pfad); $a2 = [SamplesWerkzeuge.ZipWerkzeug301]::Ordner($nach)
                     if ($a1.Bytes -ne $a2.Bytes) { throw "Kopie ins Download-Archiv unvollstaendig" }
                     Send-Papierkorb $p.Pfad
                 }
@@ -225,6 +242,7 @@ try {
     if ($protokoll.Count) {
         $pp = Join-Path $protokollOrdner "Import-Protokoll_$Zeitstempel.csv"
         $protokoll | Export-Csv -LiteralPath $pp -NoTypeInformation -Delimiter ';' -Encoding UTF8
+        try { $zp = Get-ZielProtokollOrdner $Ziel; [void][IO.Directory]::CreateDirectory($zp); Copy-Item -LiteralPath $pp -Destination $zp } catch { }   # 3.0.1
         Write-Host ""
         Write-Host "Import-Protokoll: $pp"
     }

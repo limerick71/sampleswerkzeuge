@@ -9,7 +9,7 @@
   so stoeren auch ungewoehnliche Namen im Archiv nicht ("Illegales Zeichen im Pfad").
 #>
 
-if (-not ('SamplesWerkzeuge.ZipWerkzeug300' -as [type])) {
+if (-not ('SamplesWerkzeuge.ZipWerkzeug301' -as [type])) {
     Add-Type -Language CSharp -TypeDefinition @'
 using System;
 using System.IO;
@@ -17,20 +17,24 @@ using System.IO.Compression;
 using System.Text;
 using System.Collections.Generic;
 namespace SamplesWerkzeuge {
-    public class ZipEintrag300 {
+    public class ZipEintrag301 {
         public string Name; public long Groesse; public long Gepackt; public long Offset;
         public int Methode; public bool Verschluesselt; public uint Crc; public bool Ordner;
     }
-    public class ZipErgebnis300 {
+    public class ZipErgebnis301 {
         public int Dateien; public long Bytes; public string Fehler = "";
         public List<string> Uebersprungen = new List<string>();
         public List<string> Archive = new List<string>();
     }
-    public class OrdnerAudio300 { public int Audio; public long Bytes; public long AudioBytes; public DateTime Neu = DateTime.MinValue; public List<long> Groessen = new List<long>(); }
-    public static class ZipWerkzeug300 {
+    public class OrdnerAudio301 { public int Audio; public long Bytes; public long AudioBytes; public int Instrument; public int Patches; public DateTime Neu = DateTime.MinValue; public List<long> Groessen = new List<long>(); }
+    public static class ZipWerkzeug301 {
         public static readonly HashSet<string> AudioExt = new HashSet<string>(new string[] { ".wav", ".aif", ".aiff", ".mp3", ".flac", ".ogg", ".rx2", ".rex", ".m4a" }, StringComparer.OrdinalIgnoreCase);
         // Programme und Skripte werden nie entpackt (IMP-05)
         public static readonly HashSet<string> ProgrammExt = new HashSet<string>(new string[] { ".exe", ".msi", ".bat", ".cmd", ".com", ".scr", ".ps1", ".psm1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".hta", ".jar", ".dll", ".sys", ".lnk", ".reg", ".app", ".dmg", ".pkg", ".sh", ".apk", ".msix", ".appx", ".iso" }, StringComparer.OrdinalIgnoreCase);
+        // 3.0.1: Bibliotheks-Dateien von Plugins (Kontakt-Monolithe und -Ressourcen, HALion .vstsound, UVI, Spectrasonics ...)
+        public static readonly HashSet<string> BibliothekExt = new HashSet<string>(new string[] { ".nicnt", ".ncw", ".nkx", ".nkc", ".nkr", ".vstsound", ".ufs", ".hsb", ".zmulti", ".nksn" }, StringComparer.OrdinalIgnoreCase);
+        // Einzelne Instrument-Patches (.nki, .exs ...) liegen auch Sample-Packs bei: kein Ausschluss, nur Hinweis
+        public static readonly HashSet<string> PatchExt = new HashSet<string>(new string[] { ".nki", ".nkm", ".nkb", ".ens", ".exs", ".gig", ".sf2" }, StringComparer.OrdinalIgnoreCase);
         static readonly string[] Reserviert = new string[] { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9" };
 
         public static string L(string p) {
@@ -52,8 +56,8 @@ namespace SamplesWerkzeuge {
         }
 
         // Inhaltsverzeichnis lesen (zentrales Verzeichnis, auch ZIP64); entpackt nichts
-        public static List<ZipEintrag300> Liste(string pfad) {
-            List<ZipEintrag300> liste = new List<ZipEintrag300>();
+        public static List<ZipEintrag301> Liste(string pfad) {
+            List<ZipEintrag301> liste = new List<ZipEintrag301>();
             using (FileStream fs = new FileStream(L(pfad), FileMode.Open, FileAccess.Read, FileShare.ReadWrite)) {
                 long len = fs.Length;
                 if (len < 22) throw new InvalidDataException("keine gültige ZIP-Datei (Download unvollständig oder beschädigt?)");
@@ -74,7 +78,7 @@ namespace SamplesWerkzeuge {
                 try { alt = Encoding.GetEncoding(437); } catch (Exception) { alt = Encoding.GetEncoding("ISO-8859-1"); }
                 long p = 0;
                 while (p + 46 <= v.Length && U32(v, p) == 0x02014b50) {
-                    ZipEintrag300 en = new ZipEintrag300();
+                    ZipEintrag301 en = new ZipEintrag301();
                     uint flags = U16(v, p + 8);
                     en.Methode = (int)U16(v, p + 10); en.Crc = U32(v, p + 16);
                     ulong gepackt = U32(v, p + 20), roh = U32(v, p + 24), off = U32(v, p + 42);
@@ -145,12 +149,12 @@ namespace SamplesWerkzeuge {
 
         // Entpackt ein ZIP in den Ordner ziel. Prueft jede Datei per CRC32. Programme, macOS-Reste und unsichere
         // Pfade werden nicht entpackt. maxBytes: Obergrenze fuer die entpackte Groesse (Schutz vor "ZIP-Bomben").
-        public static ZipErgebnis300 Entpacken(string zip, string ziel, long maxBytes) {
-            ZipErgebnis300 r = new ZipErgebnis300();
-            List<ZipEintrag300> liste;
+        public static ZipErgebnis301 Entpacken(string zip, string ziel, long maxBytes) {
+            ZipErgebnis301 r = new ZipErgebnis301();
+            List<ZipEintrag301> liste;
             try { liste = Liste(zip); } catch (Exception ex) { r.Fehler = ex.Message; return r; }
             long summe = 0;
-            foreach (ZipEintrag300 en in liste) {
+            foreach (ZipEintrag301 en in liste) {
                 if (en.Ordner) continue;
                 if (en.Verschluesselt) { r.Fehler = "verschlüsselt (Kennwort nötig) – nicht unterstützt"; return r; }
                 if (en.Methode != 0 && en.Methode != 8) { r.Fehler = "Komprimierungsart " + en.Methode + " wird nicht unterstützt"; return r; }
@@ -161,7 +165,7 @@ namespace SamplesWerkzeuge {
             Directory.CreateDirectory(L(ziel));
             byte[] puffer = new byte[1 << 16];
             using (FileStream fs = new FileStream(L(zip), FileMode.Open, FileAccess.Read, FileShare.ReadWrite)) {
-                foreach (ZipEintrag300 en in liste) {
+                foreach (ZipEintrag301 en in liste) {
                     if (en.Ordner) continue;
                     if (MacRest(en.Name)) continue;
                     string rel = SichererName(en.Name);
@@ -210,8 +214,10 @@ namespace SamplesWerkzeuge {
         }
 
         // Groessen aller Audiodateien in einem Ordner (fuer "schon vollstaendig im Ziel")
-        public static OrdnerAudio300 Ordner(string pfad) {
-            OrdnerAudio300 o = new OrdnerAudio300();
+        public static OrdnerAudio301 Ordner(string pfad) { return Ordner(pfad, false); }
+        // stopp: beim ersten Bibliotheks-Datei aufhoeren (grosse Plugin-Ordner nicht ganz durchzaehlen)
+        public static OrdnerAudio301 Ordner(string pfad, bool stopp) {
+            OrdnerAudio301 o = new OrdnerAudio301();
             Stack<string> st = new Stack<string>(); st.Push(pfad);
             while (st.Count > 0) {
                 string d = st.Pop();
@@ -223,7 +229,10 @@ namespace SamplesWerkzeuge {
                         }
                         long n = ((FileInfo)e).Length; o.Bytes += n;
                         if (e.LastWriteTime > o.Neu) o.Neu = e.LastWriteTime;
-                        if (AudioExt.Contains(Ext(e.Name)) && !e.Name.StartsWith("._")) { o.Audio++; o.AudioBytes += n; o.Groessen.Add(n); }
+                        string x = Ext(e.Name);
+                        if (AudioExt.Contains(x) && !e.Name.StartsWith("._")) { o.Audio++; o.AudioBytes += n; o.Groessen.Add(n); }
+                        else if (BibliothekExt.Contains(x)) { o.Instrument++; if (stopp) return o; }
+                        else if (PatchExt.Contains(x)) o.Patches++;
                     }
                 } catch (Exception) { }
             }
@@ -241,42 +250,107 @@ namespace SamplesWerkzeuge {
 }
 
 # ---------------------------------------------------------------------------
+# Pack-Art eines Downloads (3.0.1): wie bei Fundorten. Durch Huellen mit nur einem Unterordner hinab bis zur
+# Verzweigung; sind die Ordner dort eigenstaendige Packs (z. B. "Smooth Vocal Hooks Vol 1"), ist es eine
+# Sammlung, sonst ein Pack. Liefert Art, die Ebene (relativer Weg ab dem Download) und die Pack-Namen.
+# ---------------------------------------------------------------------------
+function Get-ImportArtAusBaum($kinder, $eigen, [string]$name) {
+    # $kinder: Hashtable Ordner -> Liste Unterordner mit Audio; $eigen: Hashtable Ordner -> Zahl Audiodateien direkt darin
+    $unter = { param($o) if ($kinder.ContainsKey($o)) { @($kinder[$o] | Where-Object { $_ -and [IO.Path]::GetFileName($_).ToLowerInvariant() -notmatch $RxPackNeutral }) } else { @() } }
+    $anzahl = { param($o) if ($eigen.ContainsKey($o)) { [int]$eigen[$o] } else { 0 } }
+    $w = ''
+    for ($i = 0; $i -lt 6; $i++) {
+        $k = @(& $unter $w)
+        if ((& $anzahl $w) -gt 0 -or $k.Count -ne 1) { break }
+        $w = [string]$k[0]
+    }
+    $namen = @(& $unter $w | ForEach-Object { [IO.Path]::GetFileName($_) })
+    $leaf = if ($w) { [IO.Path]::GetFileName($w) } else { $name }
+    $art = if ($namen.Count -ge 2) { Get-QuellArtVorschlag $namen (& $anzahl $w) $leaf } else { 'Pack' }
+    return [pscustomobject]@{ Art = $art; Ebene = $w; Packs = @($namen) }
+}
+function Get-ZipImportArt($dateien, [string]$name) {
+    $kinder = @{}; $eigen = @{}
+    foreach ($d in $dateien) {
+        if (-not [SamplesWerkzeuge.ZipWerkzeug301]::AudioExt.Contains([SamplesWerkzeuge.ZipWerkzeug301]::Ext($d.Name))) { continue }
+        $teile = @($d.Name.Replace('\', '/').Split('/') | Where-Object { $_ })
+        $o = ''
+        for ($i = 0; $i -lt $teile.Count - 1; $i++) {
+            $n = if ($o) { "$o/$($teile[$i])" } else { $teile[$i] }
+            if (-not $kinder.ContainsKey($o)) { $kinder[$o] = New-Object System.Collections.Generic.List[string] }
+            if (-not $kinder[$o].Contains($n)) { $kinder[$o].Add($n) }
+            $o = $n
+        }
+        $eigen[$o] = [int]$eigen[$o] + 1
+    }
+    return Get-ImportArtAusBaum $kinder $eigen $name
+}
+function Get-OrdnerImportArt([string]$pfad) {
+    $kinder = @{}; $eigen = @{}
+    $w = ''; $basis = $pfad.TrimEnd('\', '/')
+    for ($i = 0; $i -lt 7; $i++) {
+        $voll = if ($w) { Join-Path $basis $w } else { $basis }
+        $k = @(); try { $k = @([IO.Directory]::EnumerateDirectories((Get-LangPfad $voll)) | Where-Object { Test-HatAudio ($_ -replace '^\\\\\?\\', '') } | ForEach-Object { if ($w) { Join-Path $w ([IO.Path]::GetFileName($_)) } else { [IO.Path]::GetFileName($_) } }) } catch { }
+        $kinder[$w] = $k
+        $n = 0; try { $n = @([IO.Directory]::EnumerateFiles((Get-LangPfad $voll)) | Where-Object { $_ -match $RxAudio }).Count } catch { }
+        $eigen[$w] = $n
+        $kk = @($k | Where-Object { [IO.Path]::GetFileName($_).ToLowerInvariant() -notmatch $RxPackNeutral })
+        if ($n -gt 0 -or $kk.Count -ne 1) { break }
+        $w = $kk[0]
+    }
+    $r = Get-ImportArtAusBaum $kinder $eigen ([IO.Path]::GetFileName($basis))
+    $r | Add-Member NoteProperty Pfad $(if ($r.Ebene) { Join-Path $basis $r.Ebene } else { $basis })
+    return $r
+}
+
+# ---------------------------------------------------------------------------
 # Neue Sample-Packs im Download-Ordner (IMP-02): ZIP-Archive und Ordner mit Audiodateien.
-# Liefert je Kandidat: Name, Pfad, Art (ZIP/Ordner/RAR/7z), Bytes (entpackt), Audio, Datum, Anhakbar, Hinweis.
+# Liefert je Kandidat: Name, Pfad, Art (ZIP/Ordner/RAR/7z), Bytes (entpackt), Audio, Datum, Anhakbar, Hinweis,
+# PackArt (Pack/Sammlung) und Packs (Namen bei einer Sammlung).
 # "Schon vollstaendig im Ziel": alle Audiodateien haben eine gleich grosse Datei im Ziel (ab 3 Dateien;
 # der Import selbst prueft ohnehin per Pruefsumme).
+# 3.0.1: Instrument-Bibliotheken (Herstellername oder Bibliotheks-Dateien wie .nicnt, .vstsound) sind grau.
 # ---------------------------------------------------------------------------
 function Get-ImportKandidaten {
     $e = Get-Einstellungen
     $dl = [string]$e.Downloads
     $erg = New-Object System.Collections.Generic.List[object]
     if (-not $dl -or -not (Test-Path -LiteralPath $dl -PathType Container)) { return $erg }
-    $zielGroessen = [SamplesWerkzeuge.ZipWerkzeug300]::GroessenIndex([string]$e.Ziel)
+    $zielGroessen = [SamplesWerkzeuge.ZipWerkzeug301]::GroessenIndex([string]$e.Ziel)
     $aus = @([string]$e.DownloadArchiv, [string]$e.Ziel, $wurzel, (Split-Path -Parent $wurzel)) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\', '/') }
     $quellen = @($e.Quellen | ForEach-Object { ([string]$_.Pfad).TrimEnd('\', '/') })
-    $neu = { param($name, $pfad, $art, $bytes, $audio, $datum, $an, $hinweis, $voll)
-        [pscustomobject]@{ Name = $name; Pfad = $pfad; Art = $art; Bytes = [long]$bytes; Audio = [int]$audio; Datum = $datum; Anhakbar = [bool]$an; Hinweis = $hinweis; Vollstaendig = [bool]$voll } }
+    $BIB = 'Instrument-Bibliothek – nicht importierbar (gehört zum Plugin)'
+    $neu = { param($name, $pfad, $art, $bytes, $audio, $datum, $an, $hinweis, $voll, $packArt, $packs)
+        [pscustomobject]@{ Name = $name; Pfad = $pfad; Art = $art; Bytes = [long]$bytes; Audio = [int]$audio; Datum = $datum; Anhakbar = [bool]$an; Hinweis = $hinweis; Vollstaendig = [bool]$voll
+                           PackArt = $(if ($packArt) { $packArt } else { 'Pack' }); Packs = @($packs) } }
     $alleIm = { param($groessen) $n = 0; foreach ($g in $groessen) { if ($zielGroessen.Contains([long]$g)) { $n++ } }; return $n }
     foreach ($x in @(Get-ChildItem -LiteralPath $dl -Force -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)) {
         $voll = $x.FullName.TrimEnd('\', '/')
         if ($aus -contains $voll -or $x.Name -like '_Samples-Werkzeuge*') { continue }
         if ($x.PSIsContainer) {
             if ($x.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
-            $o = [SamplesWerkzeuge.ZipWerkzeug300]::Ordner($voll)
+            # Name eines Plugin-Herstellers: nicht erst durchzaehlen
+            if ($x.Name -match $RxInstrNamen) { $erg.Add((& $neu $x.Name $voll 'Ordner' 0 0 $x.LastWriteTime $false $BIB $false)); continue }
+            $o = [SamplesWerkzeuge.ZipWerkzeug301]::Ordner($voll, $true)
+            if ($o.Instrument) { $erg.Add((& $neu $x.Name $voll 'Ordner' 0 0 $x.LastWriteTime $false $BIB $false)); continue }
             if ($o.Audio -eq 0) { continue }
             $im = & $alleIm $o.Groessen
             $v = ($o.Audio -ge 3 -and $im -eq $o.Audio)
             $h = @(); if ($v) { $h += 'schon vollständig im Ziel – nicht importierbar' } elseif ($im) { $h += "$im von $($o.Audio) schon im Ziel" }
+            if ($o.Patches) { $h += "enthält $($o.Patches) Instrument-Patch(es) – werden nicht übernommen" }
             if ($quellen -contains $voll) { $h += 'auch als Quelle eingetragen' }
-            $erg.Add((& $neu $x.Name $voll 'Ordner' $o.Bytes $o.Audio $x.LastWriteTime (-not $v) ($h -join '; ') $v))
+            $pa = Get-OrdnerImportArt $voll
+            $erg.Add((& $neu $x.Name $voll 'Ordner' $o.Bytes $o.Audio $x.LastWriteTime (-not $v) ($h -join '; ') $v $pa.Art $pa.Packs))
         } elseif ($x.Extension -ieq '.zip') {
-            try { $l = [SamplesWerkzeuge.ZipWerkzeug300]::Liste($voll) }
+            try { $l = [SamplesWerkzeuge.ZipWerkzeug301]::Liste($voll) }
             catch { $m = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }; $erg.Add((& $neu $x.Name $voll 'ZIP' 0 0 $x.LastWriteTime $false "nicht lesbar: $m" $false)); continue }
-            $dateien = @($l | Where-Object { -not $_.Ordner -and -not [SamplesWerkzeuge.ZipWerkzeug300]::MacRest($_.Name) })
-            $audio = @($dateien | Where-Object { [SamplesWerkzeuge.ZipWerkzeug300]::AudioExt.Contains([SamplesWerkzeuge.ZipWerkzeug300]::Ext($_.Name)) })
-            $innen = @($dateien | Where-Object { [SamplesWerkzeuge.ZipWerkzeug300]::Ext($_.Name) -ieq '.zip' }).Count
-            if (-not $audio.Count -and -not $innen) { continue }   # kein Sample-Pack (z. B. Installer, Dokumente)
+            $dateien = @($l | Where-Object { -not $_.Ordner -and -not [SamplesWerkzeuge.ZipWerkzeug301]::MacRest($_.Name) })
+            $audio = @($dateien | Where-Object { [SamplesWerkzeuge.ZipWerkzeug301]::AudioExt.Contains([SamplesWerkzeuge.ZipWerkzeug301]::Ext($_.Name)) })
+            $innen = @($dateien | Where-Object { [SamplesWerkzeuge.ZipWerkzeug301]::Ext($_.Name) -ieq '.zip' }).Count
+            $bib = @($dateien | Where-Object { [SamplesWerkzeuge.ZipWerkzeug301]::BibliothekExt.Contains([SamplesWerkzeuge.ZipWerkzeug301]::Ext($_.Name)) }).Count
+            if (-not $audio.Count -and -not $innen -and -not $bib) { continue }   # kein Sample-Pack (z. B. Installer, Dokumente)
             $bytes = [long](($dateien | Measure-Object Groesse -Sum).Sum)
+            if ($bib -or $x.Name -match $RxInstrNamen) { $erg.Add((& $neu $x.Name $voll 'ZIP' $bytes $audio.Count $x.LastWriteTime $false $BIB $false)); continue }
             $h = @(); $an = $true
             if (@($dateien | Where-Object { $_.Verschluesselt }).Count) { $an = $false; $h += 'verschlüsselt – nicht unterstützt' }
             elseif (@($dateien | Where-Object { $_.Methode -ne 0 -and $_.Methode -ne 8 }).Count) { $an = $false; $h += 'Komprimierungsart nicht unterstützt' }
@@ -284,7 +358,10 @@ function Get-ImportKandidaten {
             $v = ($audio.Count -ge 3 -and -not $innen -and $im -eq $audio.Count)
             if ($v) { $an = $false; $h = @('schon vollständig im Ziel – nicht importierbar') + $h } elseif ($im) { $h += "$im von $($audio.Count) schon im Ziel" }
             if ($innen) { $h += "enthält $innen weitere(s) ZIP (wird mit entpackt)" }
-            $erg.Add((& $neu $x.Name $voll 'ZIP' $bytes $audio.Count $x.LastWriteTime $an ($h -join '; ') $v))
+            $patch = @($dateien | Where-Object { [SamplesWerkzeuge.ZipWerkzeug301]::PatchExt.Contains([SamplesWerkzeuge.ZipWerkzeug301]::Ext($_.Name)) }).Count
+            if ($patch) { $h += "enthält $patch Instrument-Patch(es) – werden nicht übernommen" }
+            $pa = Get-ZipImportArt $dateien (Get-ImportPackName $x.Name)
+            $erg.Add((& $neu $x.Name $voll 'ZIP' $bytes $audio.Count $x.LastWriteTime $an ($h -join '; ') $v $pa.Art $pa.Packs))
         } elseif ($x.Extension -in '.rar', '.7z') {
             $erg.Add((& $neu $x.Name $voll ($x.Extension.TrimStart('.').ToUpperInvariant()) $x.Length 0 $x.LastWriteTime $false 'RAR/7z – nicht unterstützt (bitte selbst entpacken)' $false))
         }

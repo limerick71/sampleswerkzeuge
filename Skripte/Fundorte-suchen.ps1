@@ -413,7 +413,7 @@ foreach ($t in $treffer) {
 # ---------------------------------------------------------------------------
 # Einschaetzen (QLN-02)
 # ---------------------------------------------------------------------------
-$InstrNamen = 'Native Instruments|Kontakt|Spitfire|Sonokinetic|Muse ?Hub|Arturia|\bUVI\b|Vienna|\bVSL\b|EastWest|East West|Toontrack|Superior Drummer|EZdrummer|Steinberg|HALion|Komplete|Heavyocity|8Dio|Orchestral Tools|Cinesamples|XLN Audio|Addictive|Spectrasonics|Omnisphere|Keyscape|Trilian|Factory Packs|Core Library|Output Arcade|Soundiron|Impact Soundworks|Best Service|Garritan|Embertone'
+$InstrNamen = $RxInstrNamen   # 3.0.1: Liste in Gemeinsam.ps1 (auch fuer den Import)
 # Ableton (2.3.2): eigene und mitgelieferte Klaenge der Ableton-Library; Projektordner mit ihren Unterordnern
 $AbletonLibrary = '[\\/](User Library|ABL Assets)([\\/]|$)'
 $SystemPfade = @($env:windir, $env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramData) | Where-Object { $_ }
