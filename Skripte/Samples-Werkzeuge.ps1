@@ -659,7 +659,8 @@ function Show-DownloadImport {
     $d.MaximizeBox = $false; $d.MinimizeBox = $false
     $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
     $y = 14
-    $l = New-Hinweis $d "Neue Sample-Packs in $($e.Downloads). Die angehakten werden entpackt und nach den Regeln von „Samples sortieren“ einsortiert. Vorher zeigt ein Fenster die Vorschau; kopiert wird erst nach 'J'." 16 $y $innen
+    # Typografische Anfuehrungszeichen nur in einfachen Anfuehrungszeichen (in doppelten beenden sie den Text)
+    $l = New-Hinweis $d ('Neue Sample-Packs in ' + $e.Downloads + '. Die angehakten werden entpackt und nach den Regeln von „Samples sortieren“ einsortiert. Vorher zeigt ein Fenster die Vorschau; kopiert wird erst nach „J“.') 16 $y $innen
     $l.ForeColor = [System.Drawing.Color]::Black
     $y += $l.PreferredHeight + 10
     $lv = New-Object System.Windows.Forms.ListView
