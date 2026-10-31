@@ -1,7 +1,7 @@
 @echo off
 rem (c) 2026 Herbert Stoecker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Veroeffentlichung geaenderter Fassungen nur mit Zustimmung.
-title Inventur
-rem Erfasst die Sample-Bibliothek und erstellt Liste und HTML-Bericht. Veraendert nichts.
+title Sample-Bibliothek einlesen
+rem Liest die Sample-Bibliothek (Ziel) ein und erstellt Liste und HTML-Bericht. Veraendert nichts.
 if not exist "%~dp0Skripte\Inventur.ps1" (
   echo.
   echo   Der Ordner "Skripte" wurde nicht gefunden.

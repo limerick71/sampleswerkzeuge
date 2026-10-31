@@ -2,14 +2,26 @@
 # (c) 2026 Herbert Stoecker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Veroeffentlichung geaenderter Fassungen nur mit Zustimmung.
 <#
 .SYNOPSIS
-    Samples-Werkzeuge (Version 2.1): Oberfläche für Sortieren, Inventur mit Bericht, Aufräumen und Einstellungen (Zahnrad).
+    Samples-Werkzeuge (Version 4): Hauptfenster mit gefuehrtem Ablauf (Quellen, Sortieren, Aufraeumen)
+    und der Sample-Bibliothek zum Durchhoeren.
 
 .DESCRIPTION
-    Start per Doppelklick auf "GUI_Samples-Werkzeuge.cmd" im Programmordner oder über die
-    Desktop-Verknüpfung. Die Skripte laufen jeweils in einem eigenen Fenster, zeigen zuerst
-    eine Vorschau und fragen vor jeder Änderung nach.
+    Start per Doppelklick auf "GUI_Samples-Werkzeuge.cmd" im Programmordner oder ueber die
+    Desktop-Verknuepfung. Das Hauptfenster ist seit 4.0 in WPF gebaut (GUI-07); die Dialoge
+    (Einstellungen, Import, Aufraeumen ...) stehen in Dialoge.ps1 (WinForms).
+    Die Skripte laufen ohne eigenes Konsolenfenster; Fortschritt, Ausgabe und Rueckfragen
+    erscheinen im Hauptfenster (GUI-04).
 #>
 $ErrorActionPreference = 'Continue'
+
+$psExe = Join-Path $PSHOME 'powershell.exe'
+if (-not (Test-Path -LiteralPath $psExe)) { $psExe = 'powershell.exe' }
+
+# WPF braucht einen STA-Thread (Windows PowerShell 5.1 startet normalerweise so)
+if ([Threading.Thread]::CurrentThread.ApartmentState -ne 'STA') {
+    Start-Process -FilePath $psExe -ArgumentList "-STA -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`"" -WindowStyle Hidden
+    exit
+}
 
 # Eigenes Konsolenfenster ausblenden (falls Windows es trotz -WindowStyle Hidden anzeigt)
 try {
@@ -19,6 +31,7 @@ try {
 } catch { }
 
 try {
+    Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -27,16 +40,15 @@ try {
     exit 1
 }
 
-# Gemeinsame Pfade und Einstellungen (siehe Gemeinsam.ps1)
+# Gemeinsame Pfade und Einstellungen (siehe Gemeinsam.ps1), Dialoge (WinForms)
 . (Join-Path $PSScriptRoot 'Gemeinsam.ps1')
 . (Join-Path $PSScriptRoot 'Fundorte-Bericht.ps1')
+. (Join-Path $PSScriptRoot 'Dialoge.ps1')
 $basis = $wurzel
 
 # Internet-Markierung (heruntergeladene ZIP-Datei) von allen Dateien entfernen
 try { Get-ChildItem -LiteralPath $wurzel -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue } catch { }
 
-$psExe = Join-Path $PSHOME 'powershell.exe'
-if (-not (Test-Path -LiteralPath $psExe)) { $psExe = 'powershell.exe' }
 # Klassische Konsole: dort wirkt -WindowStyle Hidden auch, wenn Windows Terminal Standard ist
 $conhost      = Join-Path $env:SystemRoot 'System32\conhost.exe'
 $verknuepfung = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Samples-Werkzeuge.lnk'
@@ -44,870 +56,401 @@ $symbolQuelle = $psExe
 $dokuPfad     = Join-Path $wurzel 'Dokumentation Samples-Werkzeuge.rtf'
 
 # ---------------------------------------------------------------------------
-# Hilfsfunktionen
+# Skriptlauf im Hintergrund (GUI-04): liest die Ausgabe zeilenweise in eine Warteschlange,
+# die das Fenster per Zeitgeber abholt (kein Skriptcode auf fremden Threads).
 # ---------------------------------------------------------------------------
-function Show-Meldung([string]$text, [string]$art = 'Information') {
-    [void][System.Windows.Forms.MessageBox]::Show($text, 'Samples-Werkzeuge', 'OK', $art)
-}
-function Show-Frage([string]$text) {
-    return ([System.Windows.Forms.MessageBox]::Show($text, 'Samples-Werkzeuge', 'YesNo', 'Question', 'Button2') -eq 'Yes')
-}
-
-# Skript in eigenem Fenster starten; das Fenster bleibt bis Enter offen
-function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 'Samples-Werkzeuge') {
-    $pfad = Join-Path $skriptOrdner $datei
-    if (-not (Test-Path -LiteralPath $pfad)) { Show-Meldung "Datei nicht gefunden:`n$pfad" 'Error'; return $false }
-    $p = $pfad.Replace("'", "''")
-    $t = $titel.Replace("'", "''")
-    $befehl = "`$Host.UI.RawUI.WindowTitle = '$t'; try { & '$p' $argumente } catch { Write-Host ''; Write-Host ('FEHLER: ' + `$_.Exception.Message) -ForegroundColor Red }; Write-Host ''; `$null = Read-Host '  Fertig. Fenster mit Enter schliessen'"
-    $kodiert = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($befehl))
-    try {
-        Start-Process -FilePath $psExe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $kodiert" -WorkingDirectory $basis -ErrorAction Stop
-        return $true
-    } catch {
-        Show-Meldung "Start fehlgeschlagen:`n$($_.Exception.Message)" 'Error'
-        return $false
-    }
-}
-
-# Neuesten Bericht oeffnen: ueber den lokalen Bericht-Dienst (Loeschen aus dem Bericht, Abspielen);
-# klappt das nicht, wird die HTML-Datei direkt geoeffnet
-function Open-Bericht {
-    $c = Get-NeuesteInventur 'Sample'
-    if (-not $c) { Show-Meldung 'Noch keine Inventur vorhanden.' 'Warning'; return }
-    try {
-        Start-Process -FilePath $psExe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $skriptOrdner 'Bericht-Dienst.ps1')`"" -WindowStyle Hidden -ErrorAction Stop
-    } catch {
-        $html = [IO.Path]::ChangeExtension($c.FullName, '.html')
-        if (Test-Path -LiteralPath $html) { Open-Pfad $html } else { Show-Meldung 'Der Bericht konnte nicht geöffnet werden.' 'Error' }
-    }
-}
-
-function Open-Pfad([string]$pfad) {
-    if (-not $pfad -or -not (Test-Path -LiteralPath $pfad)) { Show-Meldung "Nicht vorhanden:`n$pfad" 'Warning'; return }
-    try { Invoke-Item -LiteralPath $pfad } catch { Show-Meldung "Öffnen fehlgeschlagen:`n$($_.Exception.Message)" 'Error' }
-}
-
-function New-DesktopVerknuepfung([switch]$Still) {
-    try {
-        $sh = New-Object -ComObject WScript.Shell
-        $s = $sh.CreateShortcut($verknuepfung)
-        $psArg = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $skriptOrdner 'Samples-Werkzeuge.ps1')`""
-        if (Test-Path -LiteralPath $conhost) { $s.TargetPath = $conhost; $s.Arguments = "`"$psExe`" $psArg" }
-        else { $s.TargetPath = $psExe; $s.Arguments = $psArg }
-        $s.WorkingDirectory = $basis
-        if (Test-Path -LiteralPath $symbolQuelle) { $s.IconLocation = "$symbolQuelle,0" }
-        $s.Description = "Samples sortieren und verwalten (Version $ProgrammVersion)"
-        $s.WindowStyle = 7
-        $s.Save()
-        if (-not $Still) { Show-Meldung "Die Verknüpfung 'Samples-Werkzeuge' auf dem Desktop öffnet jetzt diese Version." }
-    } catch {
-        Show-Meldung "Verknüpfung konnte nicht angelegt werden:`n$($_.Exception.Message)" 'Error'
-    }
-}
-
-# Vor Sortieren/Duplikaten: Ordner pruefen und verstaendlich melden
-function Test-OrdnerBereit([switch]$NurQuelle) {
-    $e = Get-Einstellungen
-    $aktiv = @($e.Quellen | Where-Object { $_.Aktiv })
-    if (-not $aktiv.Count) { Show-Meldung "Es ist keine Quelle aktiv.`n`nBitte über ⚙ Einstellungen eine Quelle hinzufügen oder anhaken." 'Warning'; return $false }
-    $fehlt = @($aktiv | Where-Object { -not (Test-Path -LiteralPath $_.Pfad) } | ForEach-Object { $_.Pfad })
-    if ($fehlt.Count) {
-        Show-Meldung ("Diese Quelle(n) wurden nicht gefunden:`n" + ($fehlt -join "`n") + "`n`nBitte über ⚙ Einstellungen korrigieren oder den Haken entfernen.") 'Warning'
-        return $false
-    }
-    if (-not $NurQuelle) {
-        foreach ($q in $aktiv) {
-            $f = Test-QuelleZiel $q.Pfad $e.Ziel (Get-QuellArtName $q.Art)
-            if ($f) { Show-Meldung "$f`n($($q.Pfad))`n`nBitte über ⚙ Einstellungen korrigieren." 'Warning'; return $false }
+if (-not ('SamplesWerkzeuge.SkriptLauf400' -as [type])) {
+  try {
+    Add-Type -ErrorAction Stop -TypeDefinition @'
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Text;
+namespace SamplesWerkzeuge {
+    public class SkriptLauf400 {
+        private Process p;
+        private ConcurrentQueue<string> q = new ConcurrentQueue<string>();
+        public void Start(string exe, string args, string wd) {
+            ProcessStartInfo si = new ProcessStartInfo(exe, args);
+            si.UseShellExecute = false; si.CreateNoWindow = true; si.WorkingDirectory = wd;
+            si.RedirectStandardOutput = true; si.RedirectStandardError = true; si.RedirectStandardInput = true;
+            si.StandardOutputEncoding = new UTF8Encoding(false); si.StandardErrorEncoding = new UTF8Encoding(false);
+            si.EnvironmentVariables["SW_GUI"] = "1";
+            p = new Process(); p.StartInfo = si;
+            p.OutputDataReceived += (s, e) => { if (e.Data != null) q.Enqueue(e.Data); };
+            p.ErrorDataReceived += (s, e) => { if (e.Data != null) q.Enqueue("##E##" + e.Data); };
+            p.Start(); p.BeginOutputReadLine(); p.BeginErrorReadLine();
         }
-        $zs = Get-OrdnerStatus $e.Ziel
-        if ($zs.Fehlt) { Show-Meldung "Der Zielordner ist nicht erreichbar:`n$($e.Ziel)`n$($zs.Text)`n`nBitte über ⚙ Einstellungen den richtigen Ordner wählen." 'Warning'; return $false }
-    }
-    return $true
-}
-
-# ---------------------------------------------------------------------------
-# Dialog: Begruessung beim ersten Start
-# ---------------------------------------------------------------------------
-function Show-Begruessung {
-    $d = New-Object System.Windows.Forms.Form
-    $d.Text = 'Willkommen'
-    $d.StartPosition = 'CenterParent'
-    $d.FormBorderStyle = 'FixedDialog'
-    $d.MaximizeBox = $false; $d.MinimizeBox = $false
-    $d.ClientSize = New-Object System.Drawing.Size(520, 418)
-    $d.Font = $schrift
-    $d.BackColor = [System.Drawing.Color]::White
-
-    $t = New-Object System.Windows.Forms.Label
-    $t.Text = "Samples-Werkzeuge $ProgrammVersion"
-    $t.Font = $schriftTitel
-    $t.Location = New-Object System.Drawing.Point(18, 14); $t.AutoSize = $true
-    $d.Controls.Add($t)
-
-    $txt = "Dieses Programm kopiert Sample-Packs aus einem Quellordner sortiert nach Instrument in eine " +
-           "Sample-Bibliothek und entfernt auf Wunsch doppelte Samples im Quellordner.`n`n" +
-           "Bitte zuerst unter 'Einstellungen' prüfen, ob Quelle und Ziel stimmen.`n`n" +
-           "Vor jeder Änderung zeigt das Programm eine Vorschau und fragt nach. Beim Sortieren wird nur kopiert, " +
-           "nichts gelöscht oder überschrieben. Doppelte Samples gehen in den Windows-Papierkorb. " +
-           "Die Nutzung erfolgt auf eigene Verantwortung.`n`n" +
-           $Urheberhinweis
-    $l = New-Object System.Windows.Forms.Label
-    $l.Text = $txt
-    $l.Location = New-Object System.Drawing.Point(20, 56)
-    $l.Size = New-Object System.Drawing.Size(480, 250)
-    $d.Controls.Add($l)
-
-    $dl = New-Object System.Windows.Forms.LinkLabel
-    $dl.Text = "Download-Seite: $DownloadSeite"
-    $dl.Location = New-Object System.Drawing.Point(20, 310); $dl.AutoSize = $true
-    $dl.Add_LinkClicked({ try { Start-Process $DownloadSeite } catch { } })
-    $d.Controls.Add($dl)
-
-    $cb = New-Object System.Windows.Forms.CheckBox
-    $cb.Text = 'Verknüpfung auf dem Desktop anlegen'
-    $lnkZiel = ''
-    if (Test-Path -LiteralPath $verknuepfung) { try { $lnkZiel = (New-Object -ComObject WScript.Shell).CreateShortcut($verknuepfung).Arguments } catch { } }
-    $cb.Checked = $true   # Standard: anlegen bzw. auf diese Version erneuern (W-01, 27.10.)
-    $cb.Location = New-Object System.Drawing.Point(20, 340); $cb.AutoSize = $true
-    $d.Controls.Add($cb)
-
-    $ok = New-Object System.Windows.Forms.Button
-    $ok.Text = 'Los geht''s'; $ok.FlatStyle = 'System'
-    $ok.Location = New-Object System.Drawing.Point(390, 372); $ok.Size = New-Object System.Drawing.Size(110, 32)
-    $ok.DialogResult = 'OK'
-    $d.Controls.Add($ok)
-    $d.AcceptButton = $ok
-
-    [void]$d.ShowDialog($form)
-    if ($cb.Checked) { New-DesktopVerknuepfung -Still }
-    $d.Dispose()
-    try { Set-Einstellung 'ErsterStartErledigt' $true } catch { }
-    Update-Status
-}
-
-# ---------------------------------------------------------------------------
-# Dialog: Einstellungen (Zahnrad) - Ordner und zusaetzliche Formate
-# ---------------------------------------------------------------------------
-function New-Hinweis($eltern, [string]$text, [int]$x, [int]$y, [int]$breiteMax) {
-    # GUI-06: Hinweistexte brechen selbst um (feste Breite statt fester Zeilenumbrueche)
-    $l = New-Object System.Windows.Forms.Label
-    $l.Text = $text; $l.Font = $schrift; $l.ForeColor = [System.Drawing.Color]::DimGray
-    $l.AutoSize = $true; $l.MaximumSize = New-Object System.Drawing.Size($breiteMax, 0)
-    $l.Location = New-Object System.Drawing.Point($x, $y)
-    $eltern.Controls.Add($l)
-    return $l
-}
-
-# ---------------------------------------------------------------------------
-# Infobox "Art einer Quelle" (2.3.2): erklaert die drei Arten am markierten Ordner
-# ---------------------------------------------------------------------------
-function Show-ArtInfo($zeile) {
-    $w = 640
-    $d = New-Object System.Windows.Forms.Form
-    $d.Text = 'Art einer Quelle'
-    $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'
-    $d.MaximizeBox = $false; $d.MinimizeBox = $false
-    $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
-    $rt = New-Object System.Windows.Forms.RichTextBox
-    $rt.ReadOnly = $true; $rt.BorderStyle = 'None'; $rt.BackColor = [System.Drawing.Color]::White; $rt.Font = $schrift
-    $rt.Location = New-Object System.Drawing.Point(16, 14); $rt.Size = New-Object System.Drawing.Size(($w - 32), 380)
-    $rt.DetectUrls = $false; $rt.TabStop = $false; $rt.ScrollBars = 'Vertical'
-    $d.Controls.Add($rt)
-    $fett = New-Object System.Drawing.Font($schrift, [System.Drawing.FontStyle]::Bold)
-    $schreibe = { param($text, $istFett, $farbe)
-        $rt.SelectionStart = $rt.TextLength; $rt.SelectionLength = 0
-        $rt.SelectionFont = $(if ($istFett) { $fett } else { $schrift })
-        $rt.SelectionColor = $(if ($farbe) { $farbe } else { [System.Drawing.Color]::Black })
-        $rt.AppendText($text)
-    }
-    & $schreibe ('Die Art legt fest, wie beim Sortieren die Packs im Ordner erkannt werden. Der Packname wird im Ziel zum Unterordner unter dem Instrument, z. B. 01 Drums\Kick\One-Shots\<Packname>\Datei.wav.' + "`n`n") $false ([System.Drawing.Color]::DimGray)
-    if (-not $zeile) {
-        & $schreibe ("Sammlung – jeder Unterordner ist ein eigener Pack (z. B. Quelle_Samples).`nEin Pack – alles im Ordner gehört zu einem Pack, Packname = Ordnername (z. B. ein heruntergeladenes Pack).`nNur lose Dateien – nur die Dateien direkt im Ordner, Unterordner werden übergangen (z. B. Downloads).`n`n") $false $null
-        & $schreibe 'Tipp: Eine Quelle in der Liste anklicken und dann ⓘ wählen – dann zeigt diese Box am Ordner selbst, was jede Art bewirkt.' $false ([System.Drawing.Color]::DimGray)
-    } elseif (-not (Test-Path -LiteralPath $zeile.Text -PathType Container)) {
-        & $schreibe "Der Ordner $($zeile.Text) wurde nicht gefunden." $true ([System.Drawing.Color]::Firebrick)
-    } else {
-        $d.Cursor = 'WaitCursor'
-        $v = Get-ArtVorschau $zeile.Text
-        $empf = $v.Empfehlung; $jetzt = [string]$zeile.Tag
-        & $schreibe ('So würde der Ordner „' + $v.Name + '“ gelesen' + "`n") $true $null
-        & $schreibe ('(… steht für den Instrument-Ordner im Ziel, z. B. 07 Vocals oder 01 Drums\Kick\One-Shots)' + "`n`n") $false ([System.Drawing.Color]::DimGray)
-        foreach ($a in (Get-ArtVorschauAbschnitte $v)) {
-            $marke = @(); if ($a.Art -eq $jetzt) { $marke += 'eingestellt' }; if ($a.Art -eq $empf) { $marke += 'empfohlen' }
-            & $schreibe $a.Titel $true $(if ($a.Art -eq $jetzt) { [System.Drawing.Color]::FromArgb(31, 78, 121) } else { $null })
-            if ($marke.Count) { & $schreibe ('   ◀ ' + ($marke -join ', ')) $true ([System.Drawing.Color]::FromArgb(26, 127, 55)) }
-            & $schreibe "`n" $false $null
-            foreach ($z in $a.Zeilen) { & $schreibe ("     $z`n") $false $null }
-            & $schreibe "`n" $false $null
+        public string[] Hole() {
+            List<string> l = new List<string>(); string s;
+            while (l.Count < 400 && q.TryDequeue(out s)) l.Add(s.TrimStart('﻿'));
+            return l.ToArray();
         }
-        if ($v.Sammelordner) { & $schreibe "Das ist ein Sammelordner (z. B. Downloads, Dokumente): Hier passt nur 'Nur lose Dateien'. Packs darin bitte einzeln als 'Ein Pack' eintragen – oder über 'Fundorte suchen ...', das macht es in einem Schritt.`n" $true ([System.Drawing.Color]::FromArgb(138, 90, 0)) }
-        if ($v.PackEbene) { & $schreibe ("Tipp: Die Packs liegen erst in " + $v.PackEbene + ". Diesen Ordner als 'Sammlung' eintragen, dann behält jedes Pack seinen Namen.`n") $true ([System.Drawing.Color]::FromArgb(138, 90, 0)) }
-        if ($v.Unvollstaendig) { & $schreibe "Sehr großer Ordner: gezählt wurden die ersten 50.000 Audiodateien.`n" $false ([System.Drawing.Color]::DimGray) }
-        $d.Cursor = 'Default'
+        public bool Leer { get { return q.IsEmpty; } }
+        public bool Beendet { get { try { return p == null || p.HasExited; } catch { return true; } } }
+        public int Code { get { try { return p.ExitCode; } catch { return -1; } } }
+        public void Antwort(string a) { try { p.StandardInput.WriteLine(a); p.StandardInput.Flush(); } catch { } }
+        public void Beenden() { try { if (!p.HasExited) p.Kill(); } catch { } }
     }
-    $rt.SelectionStart = 0
-    $h = [Math]::Min(540, [Math]::Max(300, $rt.GetPositionFromCharIndex([Math]::Max(0, $rt.TextLength - 1)).Y + 40))
-    $rt.Height = $h
-    $ok = New-Object System.Windows.Forms.Button
-    $ok.Text = 'Schließen'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
-    $ok.Location = New-Object System.Drawing.Point(($w - 16 - 110), (14 + $h + 10)); $ok.Size = New-Object System.Drawing.Size(110, 32)
-    $d.Controls.Add($ok); $d.AcceptButton = $ok; $d.CancelButton = $ok
-    $d.ClientSize = New-Object System.Drawing.Size($w, (14 + $h + 10 + 48))
-    $d.Add_Shown({ $ok.Focus() })
-    $besitzer = [System.Windows.Forms.Form]::ActiveForm; if (-not $besitzer) { $besitzer = $form }
-    [void]$d.ShowDialog($besitzer)
-    $d.Dispose()
+}
+'@
+  } catch {
+    Write-FehlerLog "Oberfläche (SkriptLauf): $($_.Exception.Message)"
+    [void][System.Windows.Forms.MessageBox]::Show("Die Oberfläche kann nicht gestartet werden:`n$($_.Exception.Message)", 'Samples-Werkzeuge', 'OK', 'Error')
+    exit 1
+  }
 }
 
-function Show-Einstellungen {
-    $d = New-Object System.Windows.Forms.Form
-    $d.Text = 'Einstellungen'
-    $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'
-    $d.MaximizeBox = $false; $d.MinimizeBox = $false
-    $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
-    $tt = New-Object System.Windows.Forms.ToolTip; $tt.AutoPopDelay = 15000
-    $w = 640; $dy = 14; $gb = $w - 32
-
-    # --- Quellen (QLN-04) ---
-    $g0 = New-Object System.Windows.Forms.GroupBox
-    $g0.Text = 'Quellen'; $g0.Font = $schriftFett
-    $g0.Location = New-Object System.Drawing.Point(16, $dy); $g0.Width = $gb
-    $d.Controls.Add($g0)
-    $lv = New-Object System.Windows.Forms.ListView
-    $lv.View = 'Details'; $lv.CheckBoxes = $true; $lv.FullRowSelect = $true; $lv.HideSelection = $false; $lv.MultiSelect = $false
-    $lv.Font = $schrift; $lv.Location = New-Object System.Drawing.Point(12, 26); $lv.Size = New-Object System.Drawing.Size(($gb - 24), 132)
-    [void]$lv.Columns.Add('Ordner', 270); [void]$lv.Columns.Add('Art', 110); [void]$lv.Columns.Add('Herkunft', 120); [void]$lv.Columns.Add('Zustand', ($gb - 24 - 270 - 110 - 120 - 24))
-    $g0.Controls.Add($lv)
-    $script:qLaedt = $false; $script:qStand = -1   # -1: beim ersten Aktivieren (Fenster sichtbar) einlesen
-    $lWarn = New-Object System.Windows.Forms.LinkLabel
-    $lWarn.Font = $schriftFett; $lWarn.ForeColor = [System.Drawing.Color]::FromArgb(160, 70, 0); $lWarn.AutoEllipsis = $true; $lWarn.Visible = $false
-    $lWarn.Add_LinkClicked({ foreach ($it in @($lv.Items)) { if ($script:tiefer -contains $it.Text) { & $umstellen $it.Text ([string]$it.Tag); break } } })
-    # Stand der Einstellungsdatei: neu eingelesen wird nur, wenn sie sich geaendert hat (2.3.2)
-    $stand = { try { (Get-Item -LiteralPath $einstellungsPfad -ErrorAction Stop).LastWriteTimeUtc.Ticks } catch { 0 } }
-    $artText = { param($k) $QuellArten[$k] + '  ▾' }
-    # 2.3.4: Ebene, auf der die Packs einer Sammlung liegen (z. B. Splice -> Samples\packs); je Pfad einmal ermittelt
-    $script:ebenen = @{}
-    $ebeneVon = { param($p, $art)
-        if ($art -eq 'Lose') { return $null }   # 2.3.5: auch bei "Ein Pack" (sonst landet alles unter einem Pack-Namen)
-        $k = $p.ToLowerInvariant()
-        if (-not $script:ebenen.ContainsKey($k)) { $script:ebenen[$k] = $(try { Get-PackEbene $p } catch { $null }) }
-        return $script:ebenen[$k]
-    }
-    $fuelle = {
-        $script:qLaedt = $true
-        $markiert = if ($lv.SelectedItems.Count) { $lv.SelectedItems[0].Text } else { '' }
-        $lv.BeginUpdate(); $lv.Items.Clear(); $script:tiefer = @()
-        foreach ($q in @((Get-Einstellungen).Quellen)) {
-            $it = New-Object System.Windows.Forms.ListViewItem($q.Pfad)
-            [void]$it.SubItems.Add((& $artText (Get-QuellArtName $q.Art)))
-            [void]$it.SubItems.Add($q.Herkunft)
-            $it.Tag = (Get-QuellArtName $q.Art)
-            $da = Test-Path -LiteralPath $q.Pfad
-            $eb = if ($da) { & $ebeneVon $q.Pfad (Get-QuellArtName $q.Art) } else { $null }
-            $zst = $it.SubItems.Add($(if (-not $da) { 'NICHT GEFUNDEN' } elseif ($eb) { 'Packs liegen tiefer ▸ umstellen' } else { 'gefunden' }))
-            # 2.3.5: ganze Zeile hervorheben und unter der Liste darauf hinweisen
-            if ($eb) { $it.BackColor = [System.Drawing.Color]::FromArgb(255, 232, 200); $it.ForeColor = [System.Drawing.Color]::FromArgb(140, 60, 0); $script:tiefer += $q.Pfad }
-            $it.Checked = [bool]$q.Aktiv
-            [void]$lv.Items.Add($it)
-            if ($markiert -and $q.Pfad -eq $markiert) { $it.Selected = $true }
-        }
-        $lv.EndUpdate()
-        if ($script:tiefer.Count) {
-            $link = 'Jetzt umstellen …'
-            $lWarn.Text = $link + '   ⚠ Packs liegen tiefer bei ' + $(if ($script:tiefer.Count -eq 1) { $script:tiefer[0] } else { "$($script:tiefer.Count) Quellen (orange Zeilen)" })
-            $lWarn.LinkArea = New-Object System.Windows.Forms.LinkArea(0, $link.Length)
-            $lWarn.Visible = $true
-        } else { $lWarn.Visible = $false }
-        $script:qStand = & $stand
-        $script:qLaedt = $false
-    }
-    $speichern = {
-        # Liste nur speichern, wenn alle Zeilen vollstaendig gelesen werden koennen - sonst lieber nichts aendern
-        $zeilen = @($lv.Items | Where-Object { $_ -and $_.SubItems.Count -ge 3 })
-        if ($zeilen.Count -ne $lv.Items.Count) { Write-FehlerLog 'Einstellungen: Quellenliste unvollständig gelesen, nicht gespeichert'; return }
-        $liste = @(foreach ($it in $zeilen) { [pscustomobject]@{ Pfad = $it.Text; Aktiv = $it.Checked; Herkunft = $it.SubItems[2].Text; Art = [string]$it.Tag } })
-        try { Set-Quellen $liste } catch { Show-Meldung "Speichern fehlgeschlagen:`n$($_.Exception.Message)" 'Error' }
-        $script:qStand = & $stand
-    }
-    # Nur echte Klicks speichern: beim Anlegen der Liste meldet Windows die Haken ebenfalls (2.3.2)
-    $lv.Add_ItemChecked({ if (-not $script:qLaedt -and $script:qStand -ne -1 -and $lv.IsHandleCreated) { & $speichern } })
-    $lv.Add_DoubleClick({ if ($lv.SelectedItems.Count) { Open-Pfad $lv.SelectedItems[0].Text } })
-    $tt.SetToolTip($lv, 'Haken = aktiv: Sortieren und Aufräumen lesen alle angehakten Quellen. Klick auf die Art: Art ändern. Zustand „Packs liegen tiefer“: anklicken, um die Quelle auf die Ebene der Packs umzustellen. Doppelklick öffnet den Ordner im Explorer.')
-    # Art direkt in der Liste waehlen (2.3.2): Klick auf die Spalte "Art" oeffnet die Auswahl
-    $artMenue = New-Object System.Windows.Forms.ContextMenuStrip
-    $artMenue.Font = $schrift
-    foreach ($k in $QuellArten.Keys) { $mi = $artMenue.Items.Add($QuellArten[$k]); $mi.Tag = $k }
-    $script:artZeile = $null
-    $artMenue.Add_ItemClicked({
-        param($sender, $ev)
-        $it = $script:artZeile; if (-not $it) { return }
-        $neuArt = [string]$ev.ClickedItem.Tag
-        if ($neuArt -eq [string]$it.Tag) { return }
-        if ($neuArt -ne 'Lose' -and (Test-Sammelordner $it.Text)) {
-            $artMenue.Close()
-            if (-not (Show-Frage ("$($it.Text) ist ein Sammelordner (z. B. Downloads, Dokumente).`n`nAls '$($QuellArten[$neuArt])' würde das Sortieren alles darin lesen - auch Programme, Dokumente und fremde Unterordner - und unter einem Namen einsortieren. Richtig ist 'Nur lose Dateien'; Packs darin bitte einzeln hinzufügen.`n`nTrotzdem ändern?"))) { return }
-        }
-        $e = Get-Einstellungen
-        $f = Test-NeueQuelle $it.Text $e.Quellen $e.Ziel $it.Text $neuArt
-        if ($f) { $artMenue.Close(); Show-Meldung "$f`n`nDie Art wurde nicht geändert." 'Warning'; return }
-        $it.Tag = $neuArt; $it.SubItems[1].Text = (& $artText $neuArt); & $speichern; & $fuelle   # 2.3.5: Zustand neu bestimmen
-    })
-    $lv.Add_MouseClick({
-        param($sender, $ev)
-        $h = $lv.HitTest($ev.Location)
-        if (-not $h.Item -or -not $h.SubItem) { return }
-        $spalte = $h.Item.SubItems.IndexOf($h.SubItem)
-        # 2.3.4: Klick auf "Packs liegen tiefer" bietet an, die Quelle auf die Pack-Ebene umzustellen
-        if ($spalte -eq 3) { & $umstellen $h.Item.Text ([string]$h.Item.Tag); return }
-        if ($spalte -ne 1) { return }
-        $script:artZeile = $h.Item
-        foreach ($mi in $artMenue.Items) { $mi.Checked = ([string]$mi.Tag -eq [string]$h.Item.Tag) }
-        $artMenue.Show($lv, $ev.Location)
-    })
-    $umstellen = { param($alt, $art)
-            $eb = & $ebeneVon $alt $art
-            if (-not $eb) { return }
-            $name = ($eb.Substring($alt.TrimEnd('\').Length).TrimStart('\') -split '\\')[0]
-            if (-not (Show-Frage "Die Packs dieser Quelle liegen erst in`n$eb`n`nSo wie eingetragen würde beim Sortieren '$name' zum Pack-Namen, statt der Namen der einzelnen Packs.`n`nQuelle auf diesen Ordner umstellen (Art 'Sammlung')?`nAm Ordner selbst wird nichts geändert. Schon Einsortiertes bleibt, wie es ist.")) { return }
-            $e = Get-Einstellungen
-            $f = Test-NeueQuelle $eb $e.Quellen $e.Ziel $alt 'Sammlung'
-            if ($f) { Show-Meldung "$f`n`nDie Quelle wurde nicht umgestellt." 'Warning'; return }
-            $neu = @(foreach ($q in @($e.Quellen)) { if ($q.Pfad -eq $alt) { [pscustomobject]@{ Pfad = $eb; Aktiv = [bool]$q.Aktiv; Herkunft = $q.Herkunft; Art = 'Sammlung' } } else { $q } })
-            try { Set-Quellen $neu } catch { Show-Meldung "Speichern fehlgeschlagen:`n$($_.Exception.Message)" 'Error'; return }
-            & $fuelle
-    }
-    $by = 26 + 132 + 8
-    $bAdd = New-Object System.Windows.Forms.Button
-    $bAdd.Text = 'Hinzufügen ...'; $bAdd.Font = $schrift; $bAdd.FlatStyle = 'System'
-    $bAdd.Location = New-Object System.Drawing.Point(12, $by); $bAdd.Size = New-Object System.Drawing.Size(130, 30)
-    $bAdd.Add_Click({
-        $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
-        $dlg.Description = 'Ordner mit Sample-Packs als weitere Quelle hinzufügen'; $dlg.ShowNewFolderButton = $false
-        if ($dlg.ShowDialog($d) -ne 'OK') { return }
-        $neu = $dlg.SelectedPath.TrimEnd('\')
-        $e = Get-Einstellungen
-        $art = Get-QuellArtFuerOrdner $neu
-        # 2.3.3: Liegen die Packs erst tiefer (z. B. Splice\Samples\packs), diese Ebene als Sammlung vorschlagen
-        if ($art -ne 'Lose') {
-            $ebene = Get-PackEbene $neu
-            if ($ebene -and (Show-Frage "Die Packs in diesem Ordner liegen erst in`n$ebene`n`nDiesen Ordner als 'Sammlung' eintragen (empfohlen)? Dann behält jedes Pack im Ziel seinen Namen.`n`nNein: $neu wird so eingetragen, wie gewählt.")) { $neu = $ebene; $art = 'Sammlung' }
-        }
-        $f = Test-NeueQuelle $neu $e.Quellen $e.Ziel '' $art
-        if ($f) { Show-Meldung "$f`n`nDie Quelle wurde nicht hinzugefügt." 'Warning'; return }
-        Set-Quellen (@($e.Quellen) + [pscustomobject]@{ Pfad = $neu; Aktiv = $true; Herkunft = 'manuell'; Art = $art })
-        & $fuelle
-        Show-Meldung "Hinzugefügt als '$($QuellArten[$art])'.`n`nFalls das nicht passt: in der Liste auf die Art klicken und ändern (Erklärung unter ⓘ)."
-    })
-    $g0.Controls.Add($bAdd)
-    $bWeg = New-Object System.Windows.Forms.Button
-    $bWeg.Text = 'Entfernen'; $bWeg.Font = $schrift; $bWeg.FlatStyle = 'System'
-    $bWeg.Location = New-Object System.Drawing.Point(150, $by); $bWeg.Size = New-Object System.Drawing.Size(110, 30)
-    $bWeg.Add_Click({
-        if (-not $lv.SelectedItems.Count) { Show-Meldung 'Bitte zuerst eine Quelle in der Liste anklicken.' 'Warning'; return }
-        # Quelle vor der Rueckfrage merken: beim Schliessen der Rueckfrage kann die Markierung verloren gehen (2.3.2)
-        $pf = $lv.SelectedItems[0].Text
-        if (-not (Show-Frage "Diese Quelle aus der Liste nehmen?`n$pf`n`nDer Ordner selbst bleibt unverändert.")) { return }
-        foreach ($x in @($lv.Items)) { if ($x.Text -eq $pf) { $lv.Items.Remove($x) } }
-        & $speichern; & $fuelle
-    })
-    $tt.SetToolTip($bWeg, 'Nimmt die markierte Quelle aus der Liste. Am Ordner wird nichts geändert.')
-    $g0.Controls.Add($bWeg)
-    $bSuch = New-Object System.Windows.Forms.Button
-    $bSuch.Text = 'Fundorte suchen ...'; $bSuch.Font = $schrift; $bSuch.FlatStyle = 'System'
-    $bSuch.Location = New-Object System.Drawing.Point(268, $by); $bSuch.Size = New-Object System.Drawing.Size(150, 30)
-    $bSuch.Add_Click({ Show-FundorteSuchen })
-    $tt.SetToolTip($bSuch, 'Sucht auf Laufwerken und in Ordnern nach Sample-Packs und zeigt die Fundorte im Browser. Dort lassen sie sich als Quellen übernehmen.')
-    $g0.Controls.Add($bSuch)
-    $bInfo = New-Object System.Windows.Forms.Button
-    $bInfo.Text = 'ⓘ'; $bInfo.Font = New-Object System.Drawing.Font('Segoe UI Symbol', 11); $bInfo.FlatStyle = 'System'
-    $bInfo.Location = New-Object System.Drawing.Point(426, $by); $bInfo.Size = New-Object System.Drawing.Size(34, 30)
-    $bInfo.Add_Click({ Show-ArtInfo $(if ($lv.SelectedItems.Count) { $lv.SelectedItems[0] } else { $null }) })
-    $tt.SetToolTip($bInfo, 'Was bedeutet die Art? Zeigt am markierten Ordner, was jede Art bewirkt.')
-    $g0.Controls.Add($bInfo)
-    $ay = $by + 40
-    # 2.3.5: deutlicher Hinweis, wenn bei einer Quelle die Packs tiefer liegen
-    $lWarn.Location = New-Object System.Drawing.Point(12, $ay); $lWarn.Size = New-Object System.Drawing.Size(($gb - 24), 22)
-    $g0.Controls.Add($lWarn)
-    $ay += 26
-    $lq = New-Hinweis $g0 'Haken = aktiv: Sortieren und „Quelle aufräumen“ lesen alle aktiven Quellen. Art = wie die Packs im Ordner erkannt werden – zum Ändern auf die Art klicken, Erklärung unter ⓘ. Doppelklick öffnet einen Ordner.' 12 $ay ($gb - 24)
-    $g0.Height = $ay + $lq.PreferredHeight + 14
-    $dy += $g0.Height + 10
-    # Nach "Fundorte suchen" (Uebernahme im Browser) neu einlesen - nur wenn sich die Einstellungen geaendert haben
-    $d.Add_Activated({ if ((& $stand) -ne $script:qStand) { & $fuelle } })
-
-    # --- Ordner ---
-    $g1 = New-Object System.Windows.Forms.GroupBox
-    $g1.Text = 'Ordner'; $g1.Font = $schriftFett
-    $g1.Location = New-Object System.Drawing.Point(16, $dy); $g1.Width = $gb
-    $d.Controls.Add($g1)
-    $gy = 26
-    $felder = @{}
-    foreach ($pe in @($PfadEinstellungen | Where-Object { $_.Name -ne 'Quelle' })) {
-        $l = New-Object System.Windows.Forms.Label
-        $l.Text = "$($pe.Text):"; $l.Font = $schrift; $l.AutoSize = $true
-        $l.Location = New-Object System.Drawing.Point(12, ($gy + 4)); $tt.SetToolTip($l, $pe.Hinweis); $g1.Controls.Add($l)
-        $tb = New-Object System.Windows.Forms.TextBox
-        $tb.Font = $schrift; $tb.ReadOnly = $true; $tb.BackColor = [System.Drawing.Color]::White; $tb.TabStop = $false
-        $tb.Location = New-Object System.Drawing.Point(124, $gy); $tb.Size = New-Object System.Drawing.Size(($gb - 124 - 98), 26)
-        $tb.Text = [string](Get-Einstellungen)[$pe.Name]; $tt.SetToolTip($tb, $pe.Hinweis); $g1.Controls.Add($tb)
-        $felder[$pe.Name] = $tb
-        $b = New-Object System.Windows.Forms.Button
-        $b.Text = 'Ändern ...'; $b.Font = $schrift; $b.FlatStyle = 'System'
-        $b.Location = New-Object System.Drawing.Point(($gb - 92), ($gy - 2)); $b.Size = New-Object System.Drawing.Size(80, 28)
-        $b.Tag = $pe
-        $b.Add_Click({
-            param($sender, $ev)
-            $pe = $sender.Tag
-            $alt = (Get-Einstellungen)[$pe.Name]
-            $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
-            $dlg.Description = "$($pe.Text): $($pe.Hinweis)"; $dlg.ShowNewFolderButton = $true
-            if ($alt -and (Test-Path -LiteralPath $alt)) { $dlg.SelectedPath = $alt }
-            if ($dlg.ShowDialog($d) -ne 'OK') { return }
-            $neu = $dlg.SelectedPath.TrimEnd('\')
-            $e = Get-Einstellungen
-            $f = ''
-            if ($pe.Name -eq 'Ziel') { foreach ($q in @($e.Quellen)) { if (-not $f) { $f = Test-QuelleZiel $q.Pfad $neu (Get-QuellArtName $q.Art) } } }
-            if ($f) { Show-Meldung "$f`n`nDie Einstellung wurde nicht geändert." 'Warning'; return }
-            try { Set-Einstellung $pe.Name $neu; $felder[$pe.Name].Text = $neu } catch { Show-Meldung "Speichern fehlgeschlagen:`n$($_.Exception.Message)" 'Error' }
-        })
-        $tt.SetToolTip($b, "Ordner für '$($pe.Text)' auswählen. Die Auswahl wird gespeichert.")
-        $g1.Controls.Add($b)
-        $gy += 32
-    }
-    $lh = New-Hinweis $g1 'Downloads und Download-Archiv nutzt „Download importieren …“: dort wird nach neuen Packs gesucht, ins Download-Archiv kommen auf Wunsch die Originale.' 12 ($gy + 2) ($gb - 24)
-    $g1.Height = $gy + 2 + $lh.PreferredHeight + 14
-    $dy += $g1.Height + 10
-
-    # --- Formate ---
-    $g2 = New-Object System.Windows.Forms.GroupBox
-    $g2.Text = 'Formate beim Sortieren (WAV ist Standard)'; $g2.Font = $schriftFett
-    $g2.Location = New-Object System.Drawing.Point(16, $dy); $g2.Width = $gb
-    $d.Controls.Add($g2)
-    $l2 = New-Object System.Windows.Forms.Label
-    $l2.Text = 'Zusätzlich zur WAV behalten:'; $l2.Font = $schrift; $l2.AutoSize = $true
-    $l2.Location = New-Object System.Drawing.Point(12, 30); $g2.Controls.Add($l2)
-    $haken = @()
-    $x = 210
-    foreach ($fmt in @(@('RX2', 'RX2Beibehalten'), @('MP3', 'MP3Beibehalten'), @('AIFF', 'AIFFBeibehalten'))) {
-        $cb = New-Object System.Windows.Forms.CheckBox
-        $cb.Text = $fmt[0]; $cb.Font = $schrift; $cb.AutoSize = $true; $cb.Tag = $fmt[1]
-        $cb.Location = New-Object System.Drawing.Point($x, 28); $cb.Checked = (Get-Einstellungen)[$fmt[1]]
-        $cb.Add_CheckedChanged({ param($sender, $ev) try { Set-Einstellung $sender.Tag $sender.Checked } catch { } })
-        $tt.SetToolTip($cb, "Haken: $($fmt[0])-Dateien werden mitsortiert.`nOhne Haken: Liegt im selben Pack eine WAV mit gleichem Namen (auch in einem anderen Unterordner, z. B. '...-Wav' neben '...-Rex2'), wird die $($fmt[0])-Datei nicht kopiert (sie bleibt in der Quelle). Ohne WAV-Gegenstück wird sie immer einsortiert.")
-        $g2.Controls.Add($cb); $haken += $cb
-        $x += 90
-    }
-    $bNur = New-Object System.Windows.Forms.Button
-    $bNur.Text = 'Nur WAV'; $bNur.Font = $schrift; $bNur.FlatStyle = 'System'
-    $bNur.Location = New-Object System.Drawing.Point(210, 60); $bNur.Size = New-Object System.Drawing.Size(110, 30)
-    $bNur.Add_Click({ foreach ($c in $haken) { $c.Checked = $false } })
-    $tt.SetToolTip($bNur, 'Entfernt alle drei Haken: Gibt es eine gleichnamige WAV, kommt nur die WAV in die Bibliothek.')
-    $g2.Controls.Add($bNur)
-    $bAlle = New-Object System.Windows.Forms.Button
-    $bAlle.Text = 'Alle'; $bAlle.Font = $schrift; $bAlle.FlatStyle = 'System'
-    $bAlle.Location = New-Object System.Drawing.Point(328, 60); $bAlle.Size = New-Object System.Drawing.Size(80, 30)
-    $bAlle.Add_Click({ foreach ($c in $haken) { $c.Checked = $true } })
-    $g2.Controls.Add($bAlle)
-    $l3 = New-Hinweis $g2 'Die Haken gelten nur für das Sortieren. Nicht kopierte Dateien entfernt man mit „Quelle aufräumen …“.' 12 100 ($gb - 24)
-    $g2.Height = 100 + $l3.PreferredHeight + 14
-    $dy += $g2.Height + 14
-
-    $ok = New-Object System.Windows.Forms.Button
-    $ok.Text = 'Schließen'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
-    $ok.Location = New-Object System.Drawing.Point(($w - 16 - 110), $dy); $ok.Size = New-Object System.Drawing.Size(110, 32)
-    $d.Controls.Add($ok); $d.AcceptButton = $ok; $d.CancelButton = $ok
-    $d.ClientSize = New-Object System.Drawing.Size($w, ($dy + 48))
-    $d.Add_Shown({ $ok.Focus() })   # GUI-06: kein markiertes Textfeld beim Öffnen
-    [void]$d.ShowDialog($form)
-    $d.Dispose()
-    Update-Status
+# Besitzer fuer die WinForms-Dialoge: das Hauptfenster (macht sie modal und zentriert sie darueber)
+if (-not ('SamplesWerkzeuge.Besitzer400' -as [type])) {
+    try { Add-Type -ReferencedAssemblies ([System.Windows.Forms.Form].Assembly.Location) -TypeDefinition 'namespace SamplesWerkzeuge { public class Besitzer400 : System.Windows.Forms.IWin32Window { public System.IntPtr Handle { get; set; } } }' -ErrorAction Stop }
+    catch { Write-FehlerLog "Oberfläche (Besitzer): $($_.Exception.Message)" }
 }
 
 # ---------------------------------------------------------------------------
-# Dialog: Fundorte suchen (QLN-01) - wo gesucht wird
+# Oberflaeche (XAML)
 # ---------------------------------------------------------------------------
-function Show-FundorteSuchen {
-    $w = 600; $innen = $w - 32
-    $d = New-Object System.Windows.Forms.Form
-    $d.Text = 'Fundorte suchen'
-    $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'
-    $d.MaximizeBox = $false; $d.MinimizeBox = $false
-    $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
-    $l = New-Hinweis $d 'Wo soll nach Sample-Packs gesucht werden? Es werden nur Ordner- und Dateinamen gelesen (bei Archiven das Inhaltsverzeichnis), nichts verändert, nichts entpackt und keine Cloud-Dateien heruntergeladen. Windows-, Programm- und Anwendungsordner sowie das Ziel werden ausgelassen.' 16 14 $innen
-    $l.ForeColor = [System.Drawing.Color]::Black
-    $y = 14 + $l.PreferredHeight + 12
-    $clb = New-Object System.Windows.Forms.CheckedListBox
-    $clb.CheckOnClick = $true; $clb.IntegralHeight = $false
-    $clb.Location = New-Object System.Drawing.Point(16, $y); $clb.Size = New-Object System.Drawing.Size($innen, 200)
-    $d.Controls.Add($clb)
-    $orte = New-Object System.Collections.Generic.List[string]
-    # 2.3.5: Auswahl merken - angehakte Orte und selbst hinzugefuegte Ordner stehen in den Einstellungen
-    $einstF = Get-Einstellungen
-    $gemerkt = @(([string]$einstF.FundortAn) -split '\|' | Where-Object { $_ })
-    $zusatz = @(([string]$einstF.FundortZusatz) -split '\|' | Where-Object { $_ })
-    $standard = New-Object System.Collections.Generic.List[string]
-    $add = { param($pfad, $text, $an, $istStandard)
-        if ($pfad -and (Test-Path -LiteralPath $pfad) -and -not ($orte -contains $pfad)) {
-            if ($gemerkt.Count) { $an = ($gemerkt -contains $pfad) }
-            $orte.Add($pfad); [void]$clb.Items.Add($text, [bool]$an)
-            if ($istStandard) { $standard.Add($pfad) }
-        } }
-    & $add (Get-StandardDownloads) "Downloads  ($(Get-StandardDownloads))" $true $true
-    & $add ([Environment]::GetFolderPath('MyDocuments')) "Dokumente  ($([Environment]::GetFolderPath('MyDocuments')))" $true $true
-    & $add ([Environment]::GetFolderPath('Desktop')) "Desktop  ($([Environment]::GetFolderPath('Desktop')))" $true $true
-    & $add ([Environment]::GetFolderPath('MyMusic')) "Musik  ($([Environment]::GetFolderPath('MyMusic')))" $true $true
-    $sys = "$env:SystemDrive\"
-    foreach ($lw in [IO.DriveInfo]::GetDrives()) {
-        try {
-            if (-not $lw.IsReady -or $lw.DriveType -notin 'Fixed', 'Removable') { continue }
-            $frei = '{0:N0} GB belegt' -f (($lw.TotalSize - $lw.TotalFreeSpace) / 1GB)
-            $name = if ($lw.VolumeLabel) { " $($lw.VolumeLabel)" } else { '' }
-            if ($lw.RootDirectory.FullName -ieq $sys) { & $add $lw.RootDirectory.FullName "Laufwerk $($lw.Name)$name ganz  ($frei, Systemlaufwerk – dauert länger)" $false $true }
-            elseif ($lw.DriveType -eq 'Removable') { & $add $lw.RootDirectory.FullName "Laufwerk $($lw.Name)$name ganz  ($frei, Wechseldatenträger)" $false $true }
-            else { & $add $lw.RootDirectory.FullName "Laufwerk $($lw.Name)$name ganz  ($frei)" $true $true }
-        } catch { }
-    }
-    foreach ($z in $zusatz) { & $add $z $z $true $false }
-    $y += 200 + 8
-    $bOrd = New-Object System.Windows.Forms.Button
-    $bOrd.Text = 'Ordner hinzufügen ...'; $bOrd.FlatStyle = 'System'
-    $bOrd.Location = New-Object System.Drawing.Point(16, $y); $bOrd.Size = New-Object System.Drawing.Size(170, 30)
-    $bOrd.Add_Click({
-        $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
-        $dlg.Description = 'Zusätzlichen Ordner durchsuchen'; $dlg.ShowNewFolderButton = $false
-        if ($dlg.ShowDialog($d) -eq 'OK') { $sp = $dlg.SelectedPath; if ($sp.Length -gt 3) { $sp = $sp.TrimEnd('\') }; $gemerkt = @(); & $add $sp $sp $true $false }
-    })
-    $d.Controls.Add($bOrd)
-    # 2.3.5: selbst hinzugefuegte Ordner wieder entfernen; die Standardorte lassen sich nur abhaken
-    $bWegO = New-Object System.Windows.Forms.Button
-    $bWegO.Text = 'Entfernen'; $bWegO.FlatStyle = 'System'; $bWegO.Enabled = $false
-    $bWegO.Location = New-Object System.Drawing.Point(16, ($y + 38)); $bWegO.Size = New-Object System.Drawing.Size(170, 30)
-    $clb.Add_SelectedIndexChanged({ $i = $clb.SelectedIndex; $bWegO.Enabled = ($i -ge 0 -and -not ($standard -contains $orte[$i])) })
-    $bWegO.Add_Click({
-        $i = $clb.SelectedIndex
-        if ($i -lt 0 -or ($standard -contains $orte[$i])) { return }
-        $orte.RemoveAt($i); $clb.Items.RemoveAt($i); $bWegO.Enabled = $false
-    })
-    $d.Controls.Add($bWegO)
-    # 2.3.2: in ZIP-Archive hineinschauen (nur Inhaltsverzeichnis)
-    $cbZip = New-Object System.Windows.Forms.CheckBox
-    $cbZip.Text = 'In ZIP-Archive hineinschauen (dauert etwas länger)'; $cbZip.AutoSize = $true; $cbZip.Checked = [bool]$einstF.FundortZip
-    $cbZip.Location = New-Object System.Drawing.Point(200, ($y + 5))
-    $tt2 = New-Object System.Windows.Forms.ToolTip; $tt2.AutoPopDelay = 15000
-    $tt2.SetToolTip($cbZip, "Liest bei ZIP-Archiven (mit Windows 11 auch RAR und 7z) das Inhaltsverzeichnis: Wie viele Audiodateien sind darin?`nArchive ohne Audiodateien werden dann nicht mehr gezeigt. Es wird nichts entpackt; Archive, die nur in der Cloud liegen, werden nicht geöffnet.")
-    $d.Controls.Add($cbZip)
-    $tt2.SetToolTip($bWegO, 'Nimmt einen selbst hinzugefügten Ordner wieder aus der Liste. Downloads, Dokumente, Desktop, Musik und Laufwerke lassen sich nur abhaken.')
-    $y += 38 + 44
-    # 2.3.2: letzten Bericht ohne neuen Suchlauf oeffnen
-    $letzter = $null; try { $letzter = Get-LetzterFundortBericht } catch { }
-    $bLetzt = New-Object System.Windows.Forms.Button
-    $bLetzt.FlatStyle = 'System'
-    $bLetzt.Text = $(if ($letzter) { 'Letzten Bericht öffnen (' + $letzter.LastWriteTime.ToString('dd.MM.yyyy HH:mm') + ')' } else { 'Letzten Bericht öffnen' })
-    $bLetzt.Enabled = [bool]$letzter
-    $bLetzt.Location = New-Object System.Drawing.Point(16, $y); $bLetzt.Size = New-Object System.Drawing.Size(320, 32)
-    $tt2.SetToolTip($bLetzt, $(if ($letzter) { "Öffnet den Bericht des letzten Suchlaufs ohne neue Suche.`n$($letzter.FullName)" } else { 'Es gibt noch keinen Bericht – bitte zuerst suchen.' }))
-    $bLetzt.DialogResult = 'Retry'
-    $d.Controls.Add($bLetzt)
-    $ok = New-Object System.Windows.Forms.Button
-    $ok.Text = 'Suchen'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
-    $ok.Location = New-Object System.Drawing.Point(($w - 16 - 230), $y); $ok.Size = New-Object System.Drawing.Size(110, 32)
-    $ab = New-Object System.Windows.Forms.Button
-    $ab.Text = 'Abbrechen'; $ab.FlatStyle = 'System'; $ab.DialogResult = 'Cancel'
-    $ab.Location = New-Object System.Drawing.Point(($w - 16 - 110), $y); $ab.Size = New-Object System.Drawing.Size(110, 32)
-    $d.Controls.Add($ok); $d.Controls.Add($ab); $d.AcceptButton = $ok; $d.CancelButton = $ab
-    $d.ClientSize = New-Object System.Drawing.Size($w, ($y + 48))
-    $d.Add_Shown({ $ok.Focus() })
-    $besitzer = [System.Windows.Forms.Form]::ActiveForm; if (-not $besitzer) { $besitzer = $form }
-    $r = $d.ShowDialog($besitzer)
-    $gewaehlt = @(for ($i = 0; $i -lt $clb.Items.Count; $i++) { if ($clb.GetItemChecked($i)) { $orte[$i] } })
-    $mitZip = $cbZip.Checked
-    $d.Dispose()
-    # 2.3.5: Auswahl fuer das naechste Mal merken (nur wenn etwas angehakt ist)
-    try {
-        $zus = @($orte | Where-Object { -not ($standard -contains $_) })
-        if ($gewaehlt.Count) { Set-Einstellung 'FundortAn' ($gewaehlt -join '|') }
-        Set-Einstellung 'FundortZusatz' ($zus -join '|')
-        Set-Einstellung 'FundortZip' $mitZip
-    } catch { Write-FehlerLog "Fundorte-Auswahl nicht gespeichert: $($_.Exception.Message)" }
-    if ($r -eq 'Retry' -and $letzter) {
-        if (-not (Start-FundortBericht $letzter.FullName)) { Show-Meldung "Der Bericht konnte nicht geöffnet werden.`n$($letzter.FullName)" 'Warning' }
-        return
-    }
-    if ($r -ne 'OK') { return }
-    if (-not $gewaehlt.Count) { Show-Meldung 'Es ist kein Ort ausgewählt.' 'Warning'; return }
-    $zusatz = if ($mitZip) { '' } else { ' -OhneArchivinhalt' }
-    [void](Start-Skript 'Fundorte-suchen.ps1' "-Orte '$(($gewaehlt -join '|').Replace("'", "''"))'$zusatz" 'Fundorte suchen')
+$xaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Samples-Werkzeuge" Width="1000" Height="920" MinWidth="820" MinHeight="560"
+        WindowStartupLocation="CenterScreen" Background="#E9EDF2"
+        FontFamily="Segoe UI" FontSize="13.5" Foreground="#1D2430"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+  <Window.Resources>
+    <SolidColorBrush x:Key="Akzent" Color="#2C5AA0"/>
+    <SolidColorBrush x:Key="Linie" Color="#D6DCE4"/>
+    <SolidColorBrush x:Key="Leise" Color="#5E6A7A"/>
+    <Style x:Key="Knopf" TargetType="Button">
+      <Setter Property="Foreground" Value="#1D2430"/>
+      <Setter Property="Background" Value="#F3F5F8"/>
+      <Setter Property="BorderBrush" Value="#C9D1DC"/>
+      <Setter Property="Padding" Value="14,7"/>
+      <Setter Property="Margin" Value="0,0,10,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="R" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="5" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="R" Property="BorderBrush" Value="#2C5AA0"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="R" Property="Opacity" Value="0.45"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="KnopfHaupt" TargetType="Button" BasedOn="{StaticResource Knopf}">
+      <Setter Property="Background" Value="#2C5AA0"/>
+      <Setter Property="BorderBrush" Value="#2C5AA0"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style x:Key="Link" TargetType="Button">
+      <Setter Property="Foreground" Value="#2C5AA0"/>
+      <Setter Property="Margin" Value="0,0,14,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <TextBlock x:Name="T" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Padding="2,4"/>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="T" Property="TextDecorations" Value="Underline"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="T" Property="Opacity" Value="0.4"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="Titel2" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Margin" Value="0,0,0,3"/>
+    </Style>
+    <Style x:Key="Lead" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="#5E6A7A"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="Margin" Value="0,0,0,12"/>
+    </Style>
+  </Window.Resources>
+
+  <DockPanel>
+    <!-- Fusszeile -->
+    <Border DockPanel.Dock="Bottom" Background="#F3F5F8" BorderBrush="{StaticResource Linie}" BorderThickness="0,1,0,0" Padding="24,12">
+      <DockPanel LastChildFill="False">
+        <Button x:Name="BtnEinstellungen" DockPanel.Dock="Left" Style="{StaticResource Knopf}" Content="⚙  Einstellungen" ToolTip="Quellen, Ordner (Ziel, Downloads, Berichte …) und Formate einstellen."/>
+        <Button x:Name="BtnDoku" DockPanel.Dock="Left" Style="{StaticResource Knopf}" Content="Dokumentation" ToolTip="Öffnet die Dokumentation (RTF) mit allen Funktionen des Programms."/>
+        <Button x:Name="LnkProtokolle" DockPanel.Dock="Left" Style="{StaticResource Link}" Content="Protokolle" ToolTip="Öffnet den Ordner mit allen Vorschauen und Protokollen."/>
+        <Button x:Name="LnkProgramm" DockPanel.Dock="Left" Style="{StaticResource Link}" Content="Programmordner"/>
+        <Button x:Name="LnkVerknuepfung" DockPanel.Dock="Left" Style="{StaticResource Link}" Content="Desktop-Verknüpfung anlegen" ToolTip="Legt die Verknüpfung „Samples-Werkzeuge“ auf dem Desktop an bzw. lässt sie auf diese Version zeigen."/>
+        <Button x:Name="BtnSchliessen" DockPanel.Dock="Right" Style="{StaticResource Knopf}" Content="Schließen" Margin="0" IsCancel="True"/>
+        <TextBlock x:Name="TxtUrheber" DockPanel.Dock="Right" Foreground="{StaticResource Leise}" FontSize="12" VerticalAlignment="Center" Margin="0,0,14,0"/>
+      </DockPanel>
+    </Border>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Background="White">
+      <StackPanel Margin="24,16,24,22">
+        <!-- Kopf -->
+        <WrapPanel Margin="0,0,0,10">
+          <TextBlock Text="Samples-Werkzeuge" FontSize="24" FontWeight="SemiBold" Foreground="#1F3F74" Margin="0,0,14,0"/>
+          <TextBlock x:Name="TxtUnter" Foreground="{StaticResource Leise}" VerticalAlignment="Bottom" Margin="0,0,0,4"/>
+        </WrapPanel>
+
+        <!-- Abkuerzung: Download importieren -->
+        <Grid Margin="0,4,0,0">
+          <Rectangle x:Name="ImportRahmen" RadiusX="8" RadiusY="8" Stroke="#2C5AA0" StrokeThickness="1.2" StrokeDashArray="4 3" Fill="#E6EDF8"/>
+          <DockPanel Margin="16,11">
+            <Button x:Name="BtnImport" DockPanel.Dock="Right" Style="{StaticResource KnopfHaupt}" Content="Download importieren …" Margin="0" VerticalAlignment="Center"
+                    ToolTip="Frisch heruntergeladene Sample-Packs (ZIP oder Ordner im Download-Ordner) in einem Schritt entpacken, einsortieren und das Original ins Download-Archiv verschieben, liegen lassen oder in den Papierkorb legen. Mit Vorschau und Rückfrage."/>
+            <TextBlock Text="⬇" FontSize="22" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="#2C5AA0"/>
+            <StackPanel VerticalAlignment="Center">
+              <TextBlock x:Name="TxtImport1" FontWeight="SemiBold" TextWrapping="Wrap"/>
+              <TextBlock Text="Abkürzung durch alle drei Schritte: entpacken, einsortieren, Original ins Download-Archiv." Foreground="{StaticResource Leise}" FontSize="12.5" TextWrapping="Wrap"/>
+            </StackPanel>
+          </DockPanel>
+        </Grid>
+
+        <!-- Der Ablauf -->
+        <Border Margin="0,18,0,0" BorderBrush="#2C5AA0" BorderThickness="2" CornerRadius="12" Background="#EEF3FB">
+          <StackPanel>
+            <Border Background="#2C5AA0" CornerRadius="9,9,0,0" Padding="16,9">
+              <TextBlock Foreground="White"><Run Text="▶  Der Ablauf" FontWeight="SemiBold"/><Run Text="   ·  in drei Schritten von den Quellen zur sortierten Bibliothek" Foreground="#DCE6F5"/></TextBlock>
+            </Border>
+            <Grid Margin="16,16,16,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/><ColumnDefinition Width="34"/><ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="12"/></Grid.RowDefinitions>
+              <Border x:Name="Schritt1" Grid.Column="0" CornerRadius="10" BorderThickness="2" Padding="14,12" Cursor="Hand">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal">
+                    <Border x:Name="Num1" Width="34" Height="34" CornerRadius="17"><TextBlock x:Name="NumT1" Text="1" FontWeight="Bold" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                    <TextBlock x:Name="Name1" Text="Quellen" FontSize="17" FontWeight="Bold" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                  </StackPanel>
+                  <TextBlock x:Name="Stand1" Margin="0,8,0,0" FontSize="12.5" TextWrapping="Wrap"/>
+                  <Border x:Name="Pille1" HorizontalAlignment="Left" CornerRadius="10" Padding="8,1" Margin="0,6,0,0"><TextBlock x:Name="PilleT1" FontSize="11.5"/></Border>
+                </StackPanel>
+              </Border>
+              <TextBlock Grid.Column="1" Text="➜" FontSize="22" FontWeight="Bold" Foreground="#2C5AA0" HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Segoe UI Symbol"/>
+              <Border x:Name="Schritt2" Grid.Column="2" CornerRadius="10" BorderThickness="2" Padding="14,12" Cursor="Hand">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal">
+                    <Border x:Name="Num2" Width="34" Height="34" CornerRadius="17"><TextBlock x:Name="NumT2" Text="2" FontWeight="Bold" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                    <TextBlock x:Name="Name2" Text="Sortieren" FontSize="17" FontWeight="Bold" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                  </StackPanel>
+                  <TextBlock x:Name="Stand2" Margin="0,8,0,0" FontSize="12.5" TextWrapping="Wrap"/>
+                  <Border x:Name="Pille2" HorizontalAlignment="Left" CornerRadius="10" Padding="8,1" Margin="0,6,0,0"><TextBlock x:Name="PilleT2" FontSize="11.5"/></Border>
+                </StackPanel>
+              </Border>
+              <TextBlock Grid.Column="3" Text="➜" FontSize="22" FontWeight="Bold" Foreground="#2C5AA0" HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Segoe UI Symbol"/>
+              <Border x:Name="Schritt3" Grid.Column="4" CornerRadius="10" BorderThickness="2" Padding="14,12" Cursor="Hand">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal">
+                    <Border x:Name="Num3" Width="34" Height="34" CornerRadius="17"><TextBlock x:Name="NumT3" Text="3" FontWeight="Bold" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                    <TextBlock x:Name="Name3" Text="Aufräumen" FontSize="17" FontWeight="Bold" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                  </StackPanel>
+                  <TextBlock x:Name="Stand3" Margin="0,8,0,0" FontSize="12.5" TextWrapping="Wrap"/>
+                  <Border x:Name="Pille3" HorizontalAlignment="Left" CornerRadius="10" Padding="8,1" Margin="0,6,0,0"><TextBlock x:Name="PilleT3" FontSize="11.5"/></Border>
+                </StackPanel>
+              </Border>
+              <Polygon x:Name="Spitze" Grid.Row="1" Grid.Column="2" Points="0,0 18,0 9,10" Fill="#2C5AA0" HorizontalAlignment="Center" VerticalAlignment="Top"/>
+            </Grid>
+
+            <!-- Inhalt des gewaehlten Schritts -->
+            <Border Margin="16,2,16,0" BorderBrush="#2C5AA0" BorderThickness="2" CornerRadius="10" Background="White" Padding="18,16">
+              <Grid>
+                <StackPanel x:Name="Feld1">
+                  <TextBlock Style="{StaticResource Titel2}" Text="1 · Woher kommen die Samples?"/>
+                  <TextBlock Style="{StaticResource Lead}" Text="Alle Ordner, aus denen sortiert wird. Neue Orte findet der Suchlauf „Fundorte suchen“; übernommen werden sie im Bericht oder in den Einstellungen."/>
+                  <Border BorderBrush="{StaticResource Linie}" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12"><StackPanel x:Name="QuellListe"/></Border>
+                  <WrapPanel>
+                    <Button x:Name="BtnFundorte" Style="{StaticResource KnopfHaupt}" Content="Fundorte suchen …" ToolTip="Sucht auf Laufwerken und in Ordnern nach Sample-Packs und zeigt die Fundorte im Browser; dort lassen sie sich als Quellen übernehmen. Es wird nichts verändert."/>
+                    <Button x:Name="BtnQuellen" Style="{StaticResource Knopf}" Content="Quellen bearbeiten …" ToolTip="Quellen hinzufügen, entfernen, an- und abhaken, Art ändern (in den Einstellungen)."/>
+                  </WrapPanel>
+                  <TextBlock x:Name="TxtZiel1" Margin="0,12,0,0" Padding="0,10,0,0" Foreground="{StaticResource Leise}" FontSize="12.5" TextWrapping="Wrap"/>
+                </StackPanel>
+                <StackPanel x:Name="Feld2" Visibility="Collapsed">
+                  <TextBlock Style="{StaticResource Titel2}" Text="2 · Einsortieren nach Instrument"/>
+                  <TextBlock Style="{StaticResource Lead}" Text="Kopiert neue Samples aus den aktiven Quellen ins Ziel. Die Quellen bleiben unverändert. Erst Vorschau, dann die Rückfrage hier im Fenster."/>
+                  <WrapPanel x:Name="Fakten2" Margin="0,0,0,14"/>
+                  <WrapPanel>
+                    <Button x:Name="BtnSortieren" Style="{StaticResource KnopfHaupt}" Content="Vorschau und sortieren …" ToolTip="Zeigt zuerst eine Vorschau (auch als CSV für Excel) und fragt dann, ob kopiert werden soll. Es wird nur kopiert, nichts überschrieben; vorhandener Inhalt wird übersprungen."/>
+                    <Button x:Name="BtnZielOeffnen" Style="{StaticResource Knopf}" Content="Ziel öffnen" ToolTip="Öffnet die sortierte Sample-Bibliothek im Explorer."/>
+                    <Button x:Name="LnkSortProt" Style="{StaticResource Link}" Content="Letztes Sortier-Protokoll"/>
+                    <Button x:Name="LnkImportProt" Style="{StaticResource Link}" Content="Letztes Import-Protokoll"/>
+                  </WrapPanel>
+                </StackPanel>
+                <StackPanel x:Name="Feld3" Visibility="Collapsed">
+                  <TextBlock Style="{StaticResource Titel2}" Text="3 · Aufräumen"/>
+                  <TextBlock Style="{StaticResource Lead}" Text="Entfernt nur, was im Ziel per Prüfsumme bestätigt ist, und nur nach Vorschau und Rückfrage. Alles geht in den Windows-Papierkorb."/>
+                  <WrapPanel x:Name="Fakten3" Margin="0,0,0,14"/>
+                  <WrapPanel>
+                    <Button x:Name="BtnQuelleAuf" Style="{StaticResource KnopfHaupt}" Content="Quellen aufräumen …" ToolTip="Entfernt Entbehrliches aus den Quellen: Duplikate, macOS-Reste, RX2/MP3/AIFF neben einer WAV oder Originale, deren Kopie im Ziel bestätigt ist."/>
+                    <Button x:Name="BtnZielDup" Style="{StaticResource Knopf}" Content="Duplikate im Ziel …" ToolTip="Duplikate der Bibliothek (je Gruppe bleibt ein Exemplar, Kits bleiben vollständig) und auf Wunsch RX2/MP3/AIFF neben einer gleichnamigen WAV in den Papierkorb. Grundlage: der letzte Stand der Sample-Bibliothek."/>
+                    <Button x:Name="LnkPapierkorb" Style="{StaticResource Link}" Content="Papierkorb öffnen"/>
+                  </WrapPanel>
+                </StackPanel>
+              </Grid>
+            </Border>
+
+            <!-- Laufender Vorgang: Fortschritt, Rueckfrage, Ausgabe (GUI-04) -->
+            <Border x:Name="Lauf" Visibility="Collapsed" Margin="16,12,16,0" BorderBrush="{StaticResource Linie}" BorderThickness="1" CornerRadius="8" Background="White">
+              <StackPanel>
+                <Border Background="#F3F5F8" CornerRadius="8,8,0,0" Padding="12,7">
+                  <DockPanel>
+                    <Button x:Name="LnkLaufZu" DockPanel.Dock="Right" Style="{StaticResource Link}" Content="Ausblenden" Margin="10,0,0,0"/>
+                    <Button x:Name="LnkLogUmschalten" DockPanel.Dock="Right" Style="{StaticResource Link}" Content="Ausgabe ausblenden" Margin="10,0,0,0"/>
+                    <TextBlock x:Name="LaufTitel" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <ProgressBar x:Name="LaufBalken" Width="220" Height="8" VerticalAlignment="Center" Foreground="#2C5AA0" Background="#D6DCE4" BorderThickness="0" Margin="0,0,10,0"/>
+                    <TextBlock x:Name="LaufStatus" Foreground="{StaticResource Leise}" FontSize="12.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                  </DockPanel>
+                </Border>
+                <Border x:Name="FrageLeiste" Visibility="Collapsed" Background="#FDF1DC" Padding="12,10" BorderBrush="#E8C98F" BorderThickness="0,1">
+                  <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                      <Button x:Name="LnkFrageDatei" Style="{StaticResource Link}" Content="Vorschau öffnen" Visibility="Collapsed"/>
+                      <Button x:Name="BtnJa" Style="{StaticResource KnopfHaupt}" Content="Ja, ausführen"/>
+                      <Button x:Name="BtnNein" Style="{StaticResource Knopf}" Content="Nein" Margin="0"/>
+                    </StackPanel>
+                    <TextBlock x:Name="FrageText" FontWeight="SemiBold" Foreground="#7A4A00" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                  </DockPanel>
+                </Border>
+                <Border x:Name="EndeLeiste" Visibility="Collapsed" Padding="12,8" BorderBrush="{StaticResource Linie}" BorderThickness="0,1,0,0">
+                  <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                      <Button x:Name="LnkEndeDatei" Style="{StaticResource Link}" Content="Protokoll öffnen" Visibility="Collapsed"/>
+                    </StackPanel>
+                    <TextBlock x:Name="EndeText" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                  </DockPanel>
+                </Border>
+                <ListBox x:Name="LaufLog" Height="210" BorderThickness="0" FontFamily="Consolas" FontSize="12" Padding="6,4"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto" VirtualizingStackPanel.IsVirtualizing="True"/>
+              </StackPanel>
+            </Border>
+            <Border Height="16"/>
+          </StackPanel>
+        </Border>
+
+        <!-- Danach: Sample-Bibliothek -->
+        <Grid Margin="0,22,0,8">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Rectangle Height="1" Fill="{StaticResource Linie}" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="1" Text="DANACH: DURCHHÖREN UND STÖBERN" Foreground="{StaticResource Leise}" FontSize="12" Margin="12,0"/>
+          <Rectangle Grid.Column="2" Height="1" Fill="{StaticResource Linie}" VerticalAlignment="Center"/>
+        </Grid>
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="1.35*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Border BorderBrush="{StaticResource Linie}" BorderThickness="1" CornerRadius="8" Padding="18,16">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#E6EDF8" Offset="0"/><GradientStop Color="White" Offset="1"/></LinearGradientBrush>
+            </Border.Background>
+            <StackPanel>
+              <TextBlock Text="🎧  Sample-Bibliothek" FontSize="19" FontWeight="SemiBold" Foreground="#1F3F74" FontFamily="Segoe UI Emoji, Segoe UI"/>
+              <TextBlock Text="Alles im Ziel durchhören, suchen und filtern – nach Instrument, Pack, Tempo und Tonart." Foreground="{StaticResource Leise}" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,12"/>
+              <WrapPanel Margin="0,0,0,12">
+                <StackPanel Margin="0,0,22,0"><TextBlock x:Name="KpiSamples" FontSize="21" FontWeight="SemiBold" Text="–"/><TextBlock Text="Samples" Foreground="{StaticResource Leise}" FontSize="12"/></StackPanel>
+                <StackPanel Margin="0,0,22,0"><TextBlock x:Name="KpiPacks" FontSize="21" FontWeight="SemiBold" Text="–"/><TextBlock Text="Packs" Foreground="{StaticResource Leise}" FontSize="12"/></StackPanel>
+                <StackPanel Margin="0,0,22,0"><TextBlock x:Name="KpiGroesse" FontSize="21" FontWeight="SemiBold" Text="–"/><TextBlock Text="Größe" Foreground="{StaticResource Leise}" FontSize="12"/></StackPanel>
+              </WrapPanel>
+              <TextBlock x:Name="TxtBibStand" FontSize="12.5" TextWrapping="Wrap" Margin="0,0,0,12"/>
+              <WrapPanel>
+                <Button x:Name="BtnBibliothek" Style="{StaticResource KnopfHaupt}" Content="Bibliothek öffnen" ToolTip="Öffnet die Sample-Bibliothek im Browser: Samples, Packs und Duplikate mit Suche, Gliederung, Filtern und Abspielen. Fragt vorher, ob das Ziel neu eingelesen werden soll."/>
+                <Button x:Name="LnkExcel" Style="{StaticResource Link}" Content="Als Excel-Liste" ToolTip="Öffnet den letzten Stand als CSV-Datei (eine Zeile je Sample), z. B. in Excel."/>
+              </WrapPanel>
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="2" BorderBrush="{StaticResource Linie}" BorderThickness="1" CornerRadius="8" Padding="18,16">
+            <StackPanel>
+              <TextBlock Text="Beim letzten Einlesen" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,6"/>
+              <StackPanel x:Name="BibAenderungen"/>
+              <WrapPanel Margin="0,10,0,0">
+                <Button x:Name="LnkAenderungen" Style="{StaticResource Link}" Content="Änderungen anzeigen" ToolTip="Öffnet den Vergleich mit dem vorherigen Stand: neu, entfernt, verschoben."/>
+                <Button x:Name="LnkPackArten" Style="{StaticResource Link}" Content="Pack-Arten korrigieren" ToolTip="Öffnet Pack-Arten.csv. Dort lässt sich die automatisch bestimmte Pack-Art einzelner Packs überschreiben; gilt ab dem nächsten Einlesen."/>
+              </WrapPanel>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>
+'@
+
+# Kleiner Dialog: Sample-Bibliothek oeffnen (neu einlesen?)
+$xamlBib = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sample-Bibliothek öffnen" Width="480" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" Background="White" ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="13.5" Foreground="#1D2430" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+  <StackPanel Margin="22,18,22,18">
+    <TextBlock x:Name="DTitel" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,8"/>
+    <TextBlock x:Name="DText" TextWrapping="Wrap" Margin="0,0,0,10"/>
+    <Border x:Name="DWarnRahmen" Background="#FDF1DC" CornerRadius="6" Padding="10,8" Margin="0,0,0,10">
+      <TextBlock x:Name="DWarn" Foreground="#7A4A00" TextWrapping="Wrap"/>
+    </Border>
+    <TextBlock Text="Das Einlesen ändert nichts an den Dateien. Bei vielen Samples dauert es einige Minuten; der Fortschritt erscheint im Hauptfenster." Foreground="#5E6A7A" FontSize="12.5" TextWrapping="Wrap" Margin="0,0,0,16"/>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button x:Name="DAlt" Padding="14,7" Margin="0,0,10,0" MinWidth="120"/>
+      <Button x:Name="DNeu" Padding="14,7" MinWidth="120"/>
+    </StackPanel>
+  </StackPanel>
+</Window>
+'@
+
+try {
+    $win = [Windows.Markup.XamlReader]::Parse($xaml)
+} catch {
+    $m = $_.Exception.Message; if ($_.Exception.InnerException) { $m += "`n" + $_.Exception.InnerException.Message }
+    Write-FehlerLog "Oberfläche (XAML): $m"
+    [void][System.Windows.Forms.MessageBox]::Show("Die Oberfläche konnte nicht aufgebaut werden:`n$m", 'Samples-Werkzeuge', 'OK', 'Error')
+    exit 1
+}
+$ui = @{}
+foreach ($n in @('BtnEinstellungen', 'BtnDoku', 'LnkProtokolle', 'LnkProgramm', 'LnkVerknuepfung', 'BtnSchliessen', 'TxtUrheber', 'TxtUnter',
+                 'ImportRahmen', 'BtnImport', 'TxtImport1',
+                 'Schritt1', 'Schritt2', 'Schritt3', 'Num1', 'Num2', 'Num3', 'NumT1', 'NumT2', 'NumT3', 'Name1', 'Name2', 'Name3',
+                 'Stand1', 'Stand2', 'Stand3', 'Pille1', 'Pille2', 'Pille3', 'PilleT1', 'PilleT2', 'PilleT3', 'Spitze',
+                 'Feld1', 'Feld2', 'Feld3', 'QuellListe', 'BtnFundorte', 'BtnQuellen', 'TxtZiel1', 'Fakten2', 'BtnSortieren', 'BtnZielOeffnen',
+                 'LnkSortProt', 'LnkImportProt', 'Fakten3', 'BtnQuelleAuf', 'BtnZielDup', 'LnkPapierkorb',
+                 'Lauf', 'LnkLaufZu', 'LnkLogUmschalten', 'LaufTitel', 'LaufBalken', 'LaufStatus', 'FrageLeiste', 'LnkFrageDatei', 'BtnJa', 'BtnNein',
+                 'FrageText', 'EndeLeiste', 'LnkEndeDatei', 'EndeText', 'LaufLog',
+                 'KpiSamples', 'KpiPacks', 'KpiGroesse', 'TxtBibStand', 'BtnBibliothek', 'LnkExcel', 'BibAenderungen', 'LnkAenderungen', 'LnkPackArten')) {
+    $ui[$n] = $win.FindName($n)
+}
+$win.Title = "Samples-Werkzeuge $ProgrammVersion"
+$ui.TxtUnter.Text = "Version $ProgrammVersion  ·  Sample-Packs finden, einsortieren, aufräumen – und dann durchhören."
+$ui.TxtUrheber.Text = $UrheberKurz
+$ui.TxtUrheber.ToolTip = $Urheberhinweis
+$ui.LnkProgramm.ToolTip = $basis
+try {
+    $h = [System.Windows.SystemParameters]::WorkArea.Height - 30
+    if ($h -gt 400 -and $win.Height -gt $h) { $win.Height = $h }
+} catch { }
+try { if (Test-Path -LiteralPath $symbolQuelle) { $ic = [System.Drawing.Icon]::ExtractAssociatedIcon($symbolQuelle); $win.Icon = [System.Windows.Interop.Imaging]::CreateBitmapSourceFromHIcon($ic.Handle, [System.Windows.Int32Rect]::Empty, [System.Windows.Media.Imaging.BitmapSizeOptions]::FromEmptyOptions()) } } catch { }
+
+# Farben
+$bc = New-Object System.Windows.Media.BrushConverter
+function Get-Pinsel([string]$hex) { return $bc.ConvertFromString($hex) }
+$SWF = @{
+    Akzent = Get-Pinsel '#2C5AA0'; Weiss = Get-Pinsel '#FFFFFF'; Text = Get-Pinsel '#1D2430'; Leise = Get-Pinsel '#5E6A7A'; Linie = Get-Pinsel '#D6DCE4'
+    Ok = Get-Pinsel '#2F7D4A'; OkSanft = Get-Pinsel '#E5F3EA'; Warn = Get-Pinsel '#A86400'; WarnSanft = Get-Pinsel '#FDF1DC'
+    Rot = Get-Pinsel '#B3261E'; RotSanft = Get-Pinsel '#FBE4E2'; Grau = Get-Pinsel '#9AA4B2'; Hell = Get-Pinsel '#DCE6F5'; Cyan = Get-Pinsel '#1F6F9F'
+    ImportAn = Get-Pinsel '#E6EDF8'; ImportAus = Get-Pinsel '#F7F8FA'
 }
 
-# ---------------------------------------------------------------------------
-# Dialog: Download importieren (Version 3, IMP-01 bis IMP-10)
-# ---------------------------------------------------------------------------
-function Show-DownloadImport {
-    $e = Get-Einstellungen
-    $zs = Get-OrdnerStatus $e.Ziel
-    if ($zs.Fehlt) { Show-Meldung "Der Zielordner ist nicht erreichbar:`n$($e.Ziel)`n$($zs.Text)`n`nBitte über ⚙ Einstellungen den richtigen Ordner wählen." 'Warning'; return }
-    if (-not $e.Downloads -or -not (Test-Path -LiteralPath $e.Downloads -PathType Container)) { Show-Meldung "Der Download-Ordner wurde nicht gefunden:`n$($e.Downloads)`n`nBitte über ⚙ Einstellungen einstellen." 'Warning'; return }
-    $form.Cursor = 'WaitCursor'
-    try { . (Join-Path $skriptOrdner 'Import.ps1'); $kand = @(Get-ImportKandidaten) } finally { $form.Cursor = 'Default' }
-    if (-not $kand.Count) { Show-Meldung "Im Download-Ordner wurden keine Sample-Packs gefunden:`n$($e.Downloads)`n`nGesucht wird nach ZIP-Dateien und Ordnern mit Audiodateien direkt im Download-Ordner."; return }
-    $w = 900; $innen = $w - 32
-    $d = New-Object System.Windows.Forms.Form
-    $d.Text = 'Download importieren'
-    $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'
-    $d.MaximizeBox = $false; $d.MinimizeBox = $false
-    $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
-    $y = 14
-    # Typografische Anfuehrungszeichen nur in einfachen Anfuehrungszeichen (in doppelten beenden sie den Text)
-    $l = New-Hinweis $d ('Neue Sample-Packs in ' + $e.Downloads + '. Die angehakten werden entpackt und nach den Regeln von „Samples sortieren“ einsortiert. Vorher zeigt ein Fenster die Vorschau; kopiert wird erst nach „J“.') 16 $y $innen
-    $l.ForeColor = [System.Drawing.Color]::Black
-    $y += $l.PreferredHeight + 10
-    $lv = New-Object System.Windows.Forms.ListView
-    $lv.View = 'Details'; $lv.CheckBoxes = $true; $lv.FullRowSelect = $true; $lv.MultiSelect = $false; $lv.Font = $schrift
-    $lv.Location = New-Object System.Drawing.Point(16, $y); $lv.Size = New-Object System.Drawing.Size($innen, 220)
-    [void]$lv.Columns.Add('Download', 280); [void]$lv.Columns.Add('Typ', 55); [void]$lv.Columns.Add('Pack-Art', 130); [void]$lv.Columns.Add('Größe', 70, 'Right'); [void]$lv.Columns.Add('Audio', 55, 'Right'); [void]$lv.Columns.Add('Datum', 80); [void]$lv.Columns.Add('Hinweis', ($innen - 280 - 55 - 130 - 70 - 55 - 80 - 24))
-    # 3.0.1: Pack-Art je Download (erkannt wie bei Fundorten), per Klick änderbar
-    $artText = { param($k) if ($k.Wahl -eq 'Sammlung') { "Sammlung ($(@($k.Packs).Count)) ▾" } else { 'Ein Pack  ▾' } }
-    foreach ($k in $kand) {
-        $k | Add-Member NoteProperty Wahl $k.PackArt -Force
-        $it = New-Object System.Windows.Forms.ListViewItem($k.Name)
-        [void]$it.SubItems.Add($k.Art)
-        [void]$it.SubItems.Add($(if ($k.Anhakbar) { & $artText $k } else { '' }))
-        [void]$it.SubItems.Add($(if ($k.Bytes -ge 1GB) { '{0:N1} GB' -f ($k.Bytes / 1GB) } elseif ($k.Bytes) { '{0:N0} MB' -f [Math]::Max(1, $k.Bytes / 1MB) } else { '' }))
-        [void]$it.SubItems.Add($(if ($k.Audio) { '{0:N0}' -f $k.Audio } else { '' }))
-        [void]$it.SubItems.Add($k.Datum.ToString('dd.MM.yyyy'))
-        [void]$it.SubItems.Add($k.Hinweis)
-        $it.Tag = $k
-        if (-not $k.Anhakbar) { $it.ForeColor = [System.Drawing.Color]::Gray }
-        [void]$lv.Items.Add($it)
-        $it.Checked = $k.Anhakbar
-    }
-    # Nicht importierbare Zeilen (schon vollständig im Ziel, RAR/7z, nicht lesbar) lassen sich nicht anhaken
-    $lv.Add_ItemCheck({ param($s, $ev) if (-not $lv.Items[$ev.Index].Tag.Anhakbar) { $ev.NewValue = 'Unchecked' } })
-    $artMenue = New-Object System.Windows.Forms.ContextMenuStrip; $artMenue.Font = $schrift
-    foreach ($a in @(@('Pack', 'Ein Pack – alles unter dem Namen des Downloads'), @('Sammlung', 'Sammlung – jeder Unterordner ist ein eigenes Pack'))) { $mi = $artMenue.Items.Add($a[1]); $mi.Tag = $a[0] }
-    $script:importZeile = $null
-    $artMenue.Add_ItemClicked({ param($s, $ev) $it = $script:importZeile; if (-not $it) { return }; $it.Tag.Wahl = [string]$ev.ClickedItem.Tag; $it.SubItems[2].Text = (& $artText $it.Tag) })
-    $lv.Add_MouseClick({ param($s, $ev)
-        $h = $lv.HitTest($ev.Location)
-        if (-not $h.Item -or -not $h.SubItem -or -not $h.Item.Tag.Anhakbar) { return }
-        if ($h.Item.SubItems.IndexOf($h.SubItem) -ne 2) { return }
-        $script:importZeile = $h.Item
-        foreach ($mi in $artMenue.Items) { $mi.Checked = ([string]$mi.Tag -eq [string]$h.Item.Tag.Wahl) }
-        $artMenue.Show($lv, $ev.Location) })
-    $tt3 = New-Object System.Windows.Forms.ToolTip; $tt3.AutoPopDelay = 15000
-    $tt3.SetToolTip($lv, 'Klick auf die Pack-Art: ändern. Sammlung = der Download enthält mehrere eigenständige Packs (z. B. „Vol 1“, „Vol 2“); jedes wird unter seinem eigenen Namen einsortiert.')
-    $d.Controls.Add($lv)
-    $y += 220 + 12
-    $lo = New-Object System.Windows.Forms.Label
-    $lo.Text = 'Danach mit dem Original:'; $lo.Font = $schriftFett; $lo.AutoSize = $true; $lo.Location = New-Object System.Drawing.Point(16, $y)
-    $d.Controls.Add($lo); $y += 26
-    $wahl = [string]$e.ImportOriginal; if ($wahl -notin 'Archiv', 'Behalten', 'Papierkorb') { $wahl = 'Archiv' }
-    $radios = @{}
-    foreach ($o in @(@('Archiv', "ins Download-Archiv verschieben  ($($e.DownloadArchiv))"), @('Behalten', 'im Download-Ordner lassen'), @('Papierkorb', 'in den Papierkorb'))) {
-        $rb = New-Object System.Windows.Forms.RadioButton
-        $rb.Text = $o[1]; $rb.Tag = $o[0]; $rb.AutoSize = $true; $rb.Checked = ($o[0] -eq $wahl)
-        $rb.Location = New-Object System.Drawing.Point(24, $y); $d.Controls.Add($rb); $radios[$o[0]] = $rb; $y += 26
-    }
-    $lh = New-Hinweis $d 'Verschoben oder gelöscht wird ein Original nur, wenn alle seine Dateien per Prüfsumme bestätigt im Ziel liegen; sonst bleibt es im Download-Ordner. Der Arbeitsordner zum Entpacken wird danach immer entfernt.' 24 ($y + 2) ($innen - 10)
-    $y += $lh.PreferredHeight + 16
-    $ok = New-Object System.Windows.Forms.Button
-    $ok.Text = 'Weiter ...'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
-    $ok.Location = New-Object System.Drawing.Point(($w - 16 - 230), $y); $ok.Size = New-Object System.Drawing.Size(110, 32)
-    $ab = New-Object System.Windows.Forms.Button
-    $ab.Text = 'Abbrechen'; $ab.FlatStyle = 'System'; $ab.DialogResult = 'Cancel'
-    $ab.Location = New-Object System.Drawing.Point(($w - 16 - 110), $y); $ab.Size = New-Object System.Drawing.Size(110, 32)
-    $d.Controls.Add($ok); $d.Controls.Add($ab); $d.AcceptButton = $ok; $d.CancelButton = $ab
-    $d.ClientSize = New-Object System.Drawing.Size($w, ($y + 48))
-    $d.Add_Shown({ $ok.Focus() })
-    $r = $d.ShowDialog($form)
-    $gewaehlt = @($lv.Items | Where-Object { $_.Checked -and $_.Tag.Anhakbar } | ForEach-Object { $_.Tag.Name })
-    $arten = @($lv.Items | Where-Object { $_.Checked -and $_.Tag.Anhakbar } | ForEach-Object { "$($_.Tag.Name)*$($_.Tag.Wahl)" }) -join '|'
-    $orig = @($radios.Keys | Where-Object { $radios[$_].Checked }) | Select-Object -First 1
-    $d.Dispose()
-    if ($r -ne 'OK') { return }
-    if (-not $gewaehlt.Count) { Show-Meldung 'Es ist kein Pack angehakt.' 'Warning'; return }
-    try { Set-Einstellung 'ImportOriginal' $orig } catch { }
-    [void](Start-Skript 'Download-importieren.ps1' "-Auswahl '$(($gewaehlt -join '|').Replace("'", "''"))' -Arten '$($arten.Replace("'", "''"))' -Original $orig" 'Download importieren')
+# Besitzer fuer die WinForms-Dialoge (macht sie modal zum Hauptfenster)
+$form = $null
+function Set-Wartezeiger([bool]$an) {
+    $win.Cursor = $(if ($an) { [System.Windows.Input.Cursors]::Wait } else { $null })
+    [System.Windows.Forms.Cursor]::Current = $(if ($an) { [System.Windows.Forms.Cursors]::WaitCursor } else { [System.Windows.Forms.Cursors]::Default })
 }
 
-# ---------------------------------------------------------------------------
-# Dialog: Ziel aufraeumen (2.3.3) - Duplikate und Formate neben gleichnamiger WAV
-# ---------------------------------------------------------------------------
-function Show-ZielAufraeumen {
-    $w = 640; $innen = $w - 32
-    $d = New-Object System.Windows.Forms.Form
-    $d.Text = 'Duplikate und Formate im Ziel entfernen'
-    $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'
-    $d.MaximizeBox = $false; $d.MinimizeBox = $false
-    $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
-    $y = 14
-    $l = New-Hinweis $d "Was soll aus der Bibliothek (Ziel) in den Papierkorb? Grundlage ist die neueste Inventur. Danach zeigt ein Fenster die Vorschau; entfernt wird erst nach 'J'." 16 $y $innen
-    $l.ForeColor = [System.Drawing.Color]::Black
-    $y += $l.PreferredHeight + 14
-    $c1 = New-Object System.Windows.Forms.CheckBox
-    $c1.Text = 'Duplikate (inhaltsgleich; je Gruppe bleibt ein Exemplar, Kits bleiben vollständig)'; $c1.AutoSize = $true; $c1.Checked = $true
-    $c1.Location = New-Object System.Drawing.Point(18, $y); $d.Controls.Add($c1); $y += 28
-    $c2 = New-Object System.Windows.Forms.CheckBox
-    $c2.Text = 'Formate neben einer gleichnamigen WAV aus demselben Pack:'; $c2.AutoSize = $true; $c2.Checked = $false
-    $c2.Location = New-Object System.Drawing.Point(18, $y); $d.Controls.Add($c2); $y += 26
-    $fHaken = @(); $x = 40
-    foreach ($fmt in 'RX2', 'MP3', 'AIFF') {
-        $c = New-Object System.Windows.Forms.CheckBox
-        $c.Text = $fmt; $c.AutoSize = $true; $c.Checked = $true; $c.Enabled = $false
-        $c.Location = New-Object System.Drawing.Point($x, $y); $d.Controls.Add($c); $fHaken += $c; $x += 90
-    }
-    $y += 28
-    $lf = New-Hinweis $d 'Entfernt wird nur, wenn die WAV wirklich da ist. Nützlich, wenn beim Sortieren der Haken „Zusätzlich zur WAV behalten“ noch gesetzt war.' 40 $y ($innen - 30)
-    $y += $lf.PreferredHeight + 14
-    $c2.Add_CheckedChanged({ foreach ($cb in $fHaken) { $cb.Enabled = $c2.Checked } })
-    $ok = New-Object System.Windows.Forms.Button
-    $ok.Text = 'Weiter ...'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
-    $ok.Location = New-Object System.Drawing.Point(($w - 16 - 230), $y); $ok.Size = New-Object System.Drawing.Size(110, 32)
-    $ab = New-Object System.Windows.Forms.Button
-    $ab.Text = 'Abbrechen'; $ab.FlatStyle = 'System'; $ab.DialogResult = 'Cancel'
-    $ab.Location = New-Object System.Drawing.Point(($w - 16 - 110), $y); $ab.Size = New-Object System.Drawing.Size(110, 32)
-    $d.Controls.Add($ok); $d.Controls.Add($ab); $d.AcceptButton = $ok; $d.CancelButton = $ab
-    $d.ClientSize = New-Object System.Drawing.Size($w, ($y + 48))
-    $d.Add_Shown({ $ok.Focus() })
-    $r = $d.ShowDialog($form)
-    $arg = @()
-    if ($c1.Checked) { $arg += '-Duplikate' }
-    $fl = @($fHaken | Where-Object { $_.Checked } | ForEach-Object { $_.Text })
-    if ($c2.Checked -and $fl.Count) { $arg += '-Formate'; $arg += "-Formatliste '$($fl -join ',')'" }
-    $d.Dispose()
-    if ($r -ne 'OK') { return }
-    if (-not $arg.Count) { Show-Meldung 'Es ist nichts ausgewählt.' 'Warning'; return }
-    [void](Start-Skript 'Ziel-Duplikate-entfernen.ps1' ($arg -join ' ') 'Duplikate und Formate im Ziel entfernen')
-}
-
-# ---------------------------------------------------------------------------
-# Dialog: Quelle aufraeumen - Auswahl der Gruppen
-# ---------------------------------------------------------------------------
-function Show-QuelleAufraeumen {
-    if (-not (Test-OrdnerBereit -NurQuelle)) { return }
-    $e = Get-Einstellungen
-    $aus = @(@('RX2', 'RX2Beibehalten'), @('MP3', 'MP3Beibehalten'), @('AIFF', 'AIFFBeibehalten') | Where-Object { -not $e[$_[1]] } | ForEach-Object { $_[0] })
-    $aktiv = @($e.Quellen | Where-Object { $_.Aktiv })
-    $w = 640; $innen = $w - 32
-    $d = New-Object System.Windows.Forms.Form
-    $d.Text = 'Quelle aufräumen'
-    $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'
-    $d.MaximizeBox = $false; $d.MinimizeBox = $false
-    $d.Font = $schrift; $d.BackColor = [System.Drawing.Color]::White
-    $y = 14
-    $l = New-Hinweis $d "Was soll aus welcher Quelle in den Papierkorb? Danach zeigt ein Fenster die Vorschau; entfernt wird erst nach 'J'." 16 $y $innen
-    $l.ForeColor = [System.Drawing.Color]::Black
-    $y += $l.PreferredHeight + 14
-    function New-Haken([string]$text, [int]$x, [bool]$an) {
-        $c = New-Object System.Windows.Forms.CheckBox
-        $c.Text = $text; $c.AutoSize = $true; $c.Location = New-Object System.Drawing.Point($x, $script:hy); $c.Checked = $an
-        $d.Controls.Add($c); return $c
-    }
-    $script:hy = $y
-    # QLN-05, 2.3.5: zuerst waehlen, welche Quellen aufgeraeumt werden - immer sichtbar, auch bei nur einer aktiven Quelle
-    $qHaken = @()
-    $lq = New-Object System.Windows.Forms.Label
-    $lq.Text = 'Welche Quellen?'; $lq.Font = $schriftFett; $lq.AutoSize = $true; $lq.Location = New-Object System.Drawing.Point(16, $script:hy)
-    $d.Controls.Add($lq); $script:hy += 26
-    foreach ($q in $aktiv) { $c = New-Haken $q.Pfad 18 $true; $c.AutoSize = $false; $c.Width = $innen; $qHaken += $c; $script:hy += 26 }
-    $script:hy += 8
-    $lw = New-Object System.Windows.Forms.Label
-    $lw.Text = 'Was soll entfernt werden?'; $lw.Font = $schriftFett; $lw.AutoSize = $true; $lw.Location = New-Object System.Drawing.Point(16, $script:hy)
-    $d.Controls.Add($lw); $script:hy += 26
-    $c1 = New-Haken 'Duplikate (beim Sortieren als doppelt erkannt, Prüfung gegen das behaltene Exemplar)' 18 $true; $script:hy += 28
-    $c2 = New-Haken 'macOS-Reste (._-Dateien, .DS_Store, __MACOSX – am Dateikopf erkannt)' 18 $true; $script:hy += 28
-    # GUI-06: verständlicher Text; CLN-12: eigene Format-Haken
-    $c3 = New-Haken 'Formate (nur wenn die gleichnamige WAV aus demselben Pack im Ziel liegt):' 18 ([bool]$aus.Count); $script:hy += 26
-    $fHaken = @(); $x = 40
-    foreach ($fmt in 'RX2', 'MP3', 'AIFF') { $fHaken += New-Haken $fmt $x (($aus -contains $fmt) -or (-not $aus.Count)); $x += 90 }
-    $script:hy += 26
-    $lf = New-Hinweis $d 'Unabhängig von den Haken unter ⚙ Einstellungen – die gelten nur für das Sortieren.' 40 $script:hy ($innen - 30)
-    $script:hy += $lf.PreferredHeight + 10
-    $c3.Add_CheckedChanged({ foreach ($cb in $fHaken) { $cb.Enabled = $c3.Checked } })
-    foreach ($cb in $fHaken) { $cb.Enabled = $c3.Checked }
-    $c4 = New-Haken 'Originale, deren Kopie im Ziel per Prüfsumme bestätigt ist (leert die Quelle weitgehend)' 18 $false; $script:hy += 26
-    $l4 = New-Hinweis $d 'Nie Kopiertes bleibt liegen (Hilfsdateien, ausgeschlossene Formate, ModX).' 40 $script:hy ($innen - 30)
-    $script:hy += $l4.PreferredHeight + 12
-    $y = $script:hy + 6
-    $ok = New-Object System.Windows.Forms.Button
-    $ok.Text = 'Weiter ...'; $ok.FlatStyle = 'System'; $ok.DialogResult = 'OK'
-    $ok.Location = New-Object System.Drawing.Point(($w - 16 - 230), $y); $ok.Size = New-Object System.Drawing.Size(110, 32)
-    $ab = New-Object System.Windows.Forms.Button
-    $ab.Text = 'Abbrechen'; $ab.FlatStyle = 'System'; $ab.DialogResult = 'Cancel'
-    $ab.Location = New-Object System.Drawing.Point(($w - 16 - 110), $y); $ab.Size = New-Object System.Drawing.Size(110, 32)
-    $d.Controls.Add($ok); $d.Controls.Add($ab); $d.AcceptButton = $ok; $d.CancelButton = $ab
-    $d.ClientSize = New-Object System.Drawing.Size($w, ($y + 48))
-    $d.Add_Shown({ $ok.Focus() })
-    $r = $d.ShowDialog($form)
-    $arg = @()
-    if ($c1.Checked) { $arg += '-Duplikate' }
-    if ($c2.Checked) { $arg += '-MacReste' }
-    $fl = @($fHaken | Where-Object { $_.Checked } | ForEach-Object { $_.Text })
-    if ($c3.Checked -and $fl.Count) { $arg += '-Formate'; $arg += "-Formatliste '$($fl -join ',')'" }
-    if ($c4.Checked) { $arg += '-Originale' }
-    $qWahl = @($qHaken | Where-Object { $_.Checked } | ForEach-Object { $_.Text })
-    $d.Dispose()
-    if ($r -ne 'OK') { return }
-    if (-not $arg.Count) { Show-Meldung 'Es ist nichts ausgewählt.' 'Warning'; return }
-    if ($qHaken.Count) {
-        if (-not $qWahl.Count) { Show-Meldung 'Es ist keine Quelle ausgewählt.' 'Warning'; return }
-        $arg += "-Quellen '$(($qWahl -join '|').Replace("'", "''"))'"
-    }
-    [void](Start-Skript 'Quelle-aufraeumen.ps1' ($arg -join ' ') 'Quelle aufräumen')
-}
-
-# ---------------------------------------------------------------------------
-# Hauptfenster (Aufbau von oben nach unten, Hoehen ergeben sich automatisch)
-# ---------------------------------------------------------------------------
-$schrift      = New-Object System.Drawing.Font('Segoe UI', 9.5)
-$schriftFett  = New-Object System.Drawing.Font('Segoe UI', 9.5, [System.Drawing.FontStyle]::Bold)
-$schriftTitel = New-Object System.Drawing.Font('Segoe UI Semibold', 14)
-$breite = 560
-
-$form = New-Object System.Windows.Forms.Form
-$form.Text = "Samples-Werkzeuge $ProgrammVersion"
-$form.StartPosition = 'CenterScreen'
-$form.FormBorderStyle = 'FixedDialog'
-$form.MaximizeBox = $false
-$form.Font = $schrift
-$form.BackColor = [System.Drawing.Color]::White
-try { if (Test-Path -LiteralPath $symbolQuelle) { $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($symbolQuelle) } } catch { }
-
-$tipp = New-Object System.Windows.Forms.ToolTip
-$tipp.AutoPopDelay = 15000
-
-$titel = New-Object System.Windows.Forms.Label
-$titel.Text = 'Samples-Werkzeuge'
-$titel.Font = $schriftTitel
-$titel.Location = New-Object System.Drawing.Point(20, 14)
-$titel.AutoSize = $true
-$form.Controls.Add($titel)
-
-$unter = New-Object System.Windows.Forms.Label
-$unter.Text = "Version $ProgrammVersion - Sortieren, Inventur, Bericht und Bereinigung"
-$unter.ForeColor = [System.Drawing.Color]::DimGray
-$unter.Location = New-Object System.Drawing.Point(22, 46)
-$unter.AutoSize = $true
-$form.Controls.Add($unter)
-
-$y = 78
-function New-Gruppe([string]$text) {
-    $g = New-Object System.Windows.Forms.GroupBox
-    $g.Text = $text
-    $g.Font = $schriftFett
-    $g.Location = New-Object System.Drawing.Point(18, $script:y)
-    $g.Width = $breite - 36
-    $form.Controls.Add($g)
-    return $g
-}
-function Close-Gruppe($g, [int]$innenHoehe) {
-    $g.Height = $innenHoehe
-    $script:y += $innenHoehe + 10
-}
-# Fehler in einer Schaltflaeche abfangen (2.3.2): Meldung mit Zeile und Eintrag in Fehler.log statt
-# des Windows-Fensters "Unbehandelte Ausnahme"
+# Fehler in einer Schaltflaeche abfangen: Meldung mit Zeile und Eintrag in Fehler.log
 function Invoke-Sicher([scriptblock]$aktion) {
     try { & $aktion }
     catch {
@@ -917,229 +460,517 @@ function Invoke-Sicher([scriptblock]$aktion) {
         Show-Meldung "Es ist ein Fehler aufgetreten:`n$($_.Exception.Message)`n`n$ort`n`nDetails stehen in Skripte\Fehler.log." 'Error'
     }
 }
-
-function New-Knopf($gruppe, [string]$text, [int]$spalte, [int]$gy, [string]$hinweis, [scriptblock]$aktion) {
-    $b = New-Object System.Windows.Forms.Button
-    $b.Text = $text
-    $b.Font = $schrift
-    $bw = [int](($breite - 36 - 42) / 2)
-    $b.Location = New-Object System.Drawing.Point((14 + $spalte * ($bw + 14)), $gy)
-    $b.Size = New-Object System.Drawing.Size($bw, 34)
-    $b.FlatStyle = 'System'
-    $b.Tag = $aktion; $b.Add_Click({ param($sender, $ev) Invoke-Sicher $sender.Tag })
-    if ($hinweis) { $tipp.SetToolTip($b, $hinweis) }
-    $gruppe.Controls.Add($b)
-    return $b
-}
-
-# --- Status
-$gStatus = New-Gruppe 'Status'
-$lblStatus = New-Object System.Windows.Forms.Label
-$lblStatus.Font = $schrift
-$lblStatus.Location = New-Object System.Drawing.Point(14, 24)
-$lblStatus.Size = New-Object System.Drawing.Size(($breite - 36 - 28), 190)
-$gStatus.Controls.Add($lblStatus)
-Close-Gruppe $gStatus 222
-
-# --- 1 Sortieren
-$gSort = New-Gruppe '1  Sortieren'
-$gy = 24
-$null = New-Knopf $gSort 'Samples sortieren ...' 0 $gy `
-    "Zeigt zuerst eine Vorschau (auch als CSV für Excel) und fragt dann, ob kopiert werden soll. Die Quelle bleibt unverändert; es wird nur kopiert, nichts überschrieben. Bereits vorhandener Inhalt wird übersprungen." `
-    { if (Test-OrdnerBereit) { [void](Start-Skript 'Samples-sortieren.ps1' '' 'Samples sortieren') } }
-$btnProt = New-Knopf $gSort 'Letztes Sortier-Protokoll öffnen' 1 $gy `
-    "Öffnet das Protokoll des letzten Sortierlaufs (CSV, z. B. in Excel)." `
-    { $p = Get-NeuestesProtokoll 'Protokoll_*.csv'; if ($p) { Open-Pfad $p.FullName } else { Show-Meldung 'Noch kein Sortierlauf mit dieser Version.' 'Warning' } }
-$gy += 44
-$null = New-Knopf $gSort 'Ziel öffnen' 0 $gy "Öffnet die sortierte Sample-Bibliothek im Explorer." { Open-Pfad (Get-Einstellungen).Ziel }
-$null = New-Knopf $gSort 'Fundorte suchen ...' 1 $gy "Sucht auf Laufwerken und in Ordnern nach Sample-Packs und zeigt die Fundorte im Browser; dort lassen sie sich als Quellen übernehmen. Es wird nichts verändert." { Show-FundorteSuchen }
-$gy += 44
-# Version 3: Download importieren - entpacken, einsortieren und das Original wegräumen in einem Schritt
-$null = New-Knopf $gSort 'Download importieren ...' 0 $gy `
-    "Frisch heruntergeladene Sample-Packs (ZIP oder Ordner im Download-Ordner) in einem Schritt entpacken, einsortieren und das Original ins Download-Archiv verschieben, liegen lassen oder in den Papierkorb legen. Mit Vorschau und Rückfrage." `
-    { Show-DownloadImport }
-$null = New-Knopf $gSort 'Letztes Import-Protokoll öffnen' 1 $gy `
-    "Öffnet das Protokoll des letzten Imports (CSV): je Download, ob er importiert wurde und was mit dem Original geschah." `
-    { $p = Get-NeuestesProtokoll 'Import-Protokoll_*.csv'; if ($p) { Open-Pfad $p.FullName } else { Show-Meldung 'Noch kein Import mit dieser Version.' 'Warning' } }
-$gy += 44
-Close-Gruppe $gSort ($gy + 2)
-
-# --- 2 Inventur und Bericht
-$gInv = New-Gruppe '2  Inventur und Bericht'
-$gy = 24
-$null = New-Knopf $gInv 'Inventur starten' 0 $gy `
-    "Erfasst alle Samples und Packs im Ziel (Audio-Eigenschaften, BPM, Tonart, Pack-Art), sucht Duplikate, vergleicht mit der letzten Inventur und erstellt Liste und HTML-Bericht. Es wird nichts verändert." `
-    {
-        $zs = Get-OrdnerStatus (Get-Einstellungen).Ziel
-        if ($zs.Fehlt -or $zs.Text -ne 'vorhanden') { Show-Meldung "Der Zielordner ist nicht vorhanden:`n$((Get-Einstellungen).Ziel)`n`nBitte zuerst sortieren oder über ⚙ Einstellungen den richtigen Ordner wählen." 'Warning'; return }
-        [void](Start-Skript 'Inventur.ps1' '' 'Inventur')
-    }
-$btnBericht = New-Knopf $gInv 'Bericht öffnen' 1 $gy `
-    "Öffnet den Bericht der neuesten Inventur im Browser: Samples, Packs und Duplikate mit Suche, Gliederung, Filtern, Abspielen. In der Ansicht Duplikate lassen sich Samples markieren und in den Papierkorb verschieben." `
-    { Open-Bericht }
-$gy += 44
-$btnCsv = New-Knopf $gInv 'Liste öffnen (Excel)' 0 $gy `
-    "Öffnet die neueste Inventur als CSV-Datei (eine Zeile je Sample), z. B. in Excel." `
-    { $c = Get-NeuesteInventur 'Sample'; if ($c) { Open-Pfad $c.FullName } else { Show-Meldung 'Noch keine Inventur vorhanden.' 'Warning' } }
-$btnVgl = New-Knopf $gInv 'Änderungen anzeigen' 1 $gy `
-    "Öffnet den Vergleich der letzten mit der vorherigen Inventur: neu, entfernt, verschoben." `
-    { $c = Get-NeuesterVergleich; if ($c) { Open-Pfad $c.FullName } else { Show-Meldung 'Noch kein Vergleich vorhanden (entsteht ab der zweiten Inventur).' 'Warning' } }
-$gy += 44
-$null = New-Knopf $gInv 'Pack-Arten korrigieren' 0 $gy `
-    "Öffnet Pack-Arten.csv. Dort lässt sich die automatisch bestimmte Pack-Art einzelner Packs überschreiben; gilt ab der nächsten Inventur." `
-    {
-        if (-not (Test-Path -LiteralPath $packArtenPfad)) { Set-Content -LiteralPath $packArtenPfad -Value 'Pack;Pack-Art' -Encoding UTF8 }
-        Show-Meldung ("Eine Zeile je Pack: Name des Packs (wie im Bericht), Semikolon, Pack-Art.`nBeispiel:  Lofi Forest;Atmos/Field Recording`n`nMögliche Pack-Arten:`n" + ($PackArten -join ', ') + "`n`nDie Korrektur gilt ab der nächsten Inventur.")
-        Open-Pfad $packArtenPfad
-    }
-$btnZielDup = New-Knopf $gInv 'Duplikate/Formate im Ziel ...' 1 $gy `
-    "Verschiebt Duplikate der Bibliothek (je Gruppe bleibt ein Exemplar, Kits bleiben vollständig) und auf Wunsch RX2/MP3/AIFF neben einer gleichnamigen WAV in den Papierkorb. Grundlage: neueste Inventur; Vorschau und Rückfrage. Einzelne Duplikate lassen sich auch im Bericht markieren und entfernen." `
-    { Show-ZielAufraeumen }
-$gy += 44
-Close-Gruppe $gInv ($gy + 2)
-
-# --- 3 Quelle aufraeumen
-$gDup = New-Gruppe '3  Quelle aufräumen'
-$gy = 24
-$null = New-Knopf $gDup 'Quelle aufräumen ...' 0 $gy `
-    "Entfernt bewusst Entbehrliches aus der Quelle: Duplikate, macOS-Reste und – wenn unter ⚙ abgewählt – RX2/MP3/AIFF neben einer WAV, deren Kopie im Ziel bestätigt ist. Mit Auswahl, Vorschau und Rückfrage; Papierkorb." `
-    { Show-QuelleAufraeumen }
-$null = New-Knopf $gDup 'Papierkorb öffnen' 1 $gy `
-    "Öffnet den Windows-Papierkorb. Dort lässt sich alles Entfernte wiederherstellen." `
-    { try { Start-Process explorer.exe 'shell:RecycleBinFolder' } catch { } }
-$gy += 44
-$null = New-Knopf $gDup 'Protokolle öffnen' 0 $gy "Öffnet den Ordner mit allen Vorschauen und Protokollen." { Open-Pfad $protokollOrdner }
-$null = New-Knopf $gDup 'Programmordner öffnen' 1 $gy "Öffnet den Programmordner im Explorer." { Open-Pfad $basis }
-$gy += 44
-Close-Gruppe $gDup ($gy + 2)
-
-# --- Unten: Verknuepfung, Einstellungen (Zahnrad), Dokumentation, Schliessen
-function New-UntenKnopf([string]$text, [int]$x, [int]$b, [string]$hinweis, [scriptblock]$aktion) {
-    $k = New-Object System.Windows.Forms.Button
-    $k.Text = $text; $k.Location = New-Object System.Drawing.Point($x, $script:y); $k.Size = New-Object System.Drawing.Size($b, 34)
-    $k.FlatStyle = 'System'; $k.Tag = $aktion; $k.Add_Click({ param($sender, $ev) Invoke-Sicher $sender.Tag })
-    if ($hinweis) { $tipp.SetToolTip($k, $hinweis) }
-    $form.Controls.Add($k)
-    return $k
-}
-$btnLink = New-UntenKnopf '' 18 150 "Legt die Verknüpfung `"Samples-Werkzeuge`" auf dem Desktop an bzw. lässt sie auf diese Version zeigen." { New-DesktopVerknuepfung; Update-Status }
-$btnEin = New-UntenKnopf "$([char]0x2699) Einstellungen" 176 136 'Ordner (Quelle, Ziel, Berichte …) und Formate (RX2, MP3, AIFF zusätzlich zur WAV) einstellen.' { Show-Einstellungen }
-try { $btnEin.Font = New-Object System.Drawing.Font('Segoe UI Symbol', 9.5) } catch { }
-$null = New-UntenKnopf 'Dokumentation' 320 116 'Öffnet die Dokumentation (RTF) mit allen Funktionen des Programms.' { Open-Pfad $dokuPfad }
-$btnZu = New-UntenKnopf 'Schließen' 444 98 '' { $form.Close() }
-$btnZu.Width = $breite - 18 - 444
-$form.CancelButton = $btnZu
-$y += 46
-
-# Fusszeile: Urheberhinweis und Programmordner
-$fuss = New-Object System.Windows.Forms.Label
-$fuss.Text = $UrheberKurz
-$tipp.SetToolTip($fuss, $Urheberhinweis)
-$fuss.ForeColor = [System.Drawing.Color]::Gray
-$fuss.Location = New-Object System.Drawing.Point(20, $y)
-$fuss.Size = New-Object System.Drawing.Size(($breite - 40), 20)
-$form.Controls.Add($fuss)
-$y += 20
-$pfadLabel = New-Object System.Windows.Forms.Label
-$pfadLabel.Text = $basis
-$pfadLabel.AutoEllipsis = $true
-$tipp.SetToolTip($pfadLabel, $basis)
-$pfadLabel.ForeColor = [System.Drawing.Color]::Gray
-$pfadLabel.Location = New-Object System.Drawing.Point(20, $y)
-$pfadLabel.Size = New-Object System.Drawing.Size(($breite - 40), 20)
-$form.Controls.Add($pfadLabel)
-$y += 28
-# Kleiner Bildschirm: Fenster begrenzen und scrollbar machen
-$maxH = 0
-try { $maxH = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Height - 60 } catch { }
-if ($maxH -gt 300 -and $y -gt $maxH) {
-    $form.AutoScroll = $true
-    $form.ClientSize = New-Object System.Drawing.Size(($breite + [System.Windows.Forms.SystemInformation]::VerticalScrollBarWidth), $maxH)
-} else {
-    $form.ClientSize = New-Object System.Drawing.Size($breite, $y)
+function Set-Klick($element, [scriptblock]$aktion) {
+    $element.Tag = $aktion
+    $element.Add_Click({ param($s, $ev) Invoke-Sicher $s.Tag; Invoke-Sicher { Update-Status } })
 }
 
 # ---------------------------------------------------------------------------
-# Status aktualisieren (beim Start und immer, wenn das Fenster wieder aktiv wird)
+# Skript im Fenster ausfuehren (GUI-04)
+# ---------------------------------------------------------------------------
+$script:lauf = $null
+$script:laufNachher = $null
+$script:laufDatei = ''
+$script:laufFehler = $false
+$script:laufEnde = $null
+$zeitgeber = New-Object System.Windows.Threading.DispatcherTimer
+$zeitgeber.Interval = [TimeSpan]::FromMilliseconds(120)
+
+function Test-LaufAktiv { return ($null -ne $script:lauf) }
+
+function Add-LogZeile([string]$text, $pinsel) {
+    $tb = New-Object System.Windows.Controls.TextBlock
+    $tb.Text = $text
+    if ($pinsel) { $tb.Foreground = $pinsel }
+    [void]$ui.LaufLog.Items.Add($tb)
+    while ($ui.LaufLog.Items.Count -gt 4000) { $ui.LaufLog.Items.RemoveAt(0) }
+}
+
+function Set-Bedienbar([bool]$an) {
+    foreach ($n in @('BtnImport', 'BtnFundorte', 'BtnQuellen', 'BtnSortieren', 'BtnQuelleAuf', 'BtnZielDup', 'BtnBibliothek', 'BtnEinstellungen', 'LnkPackArten')) { $ui[$n].IsEnabled = $an }
+    $ui.LnkLaufZu.IsEnabled = $an
+}
+
+# Startet ein Skript; Ausgabe, Fortschritt und Rueckfragen erscheinen im Ablauf-Bereich.
+# $nachher: Skriptblock, der nach erfolgreichem Ende laeuft (z. B. Bericht oeffnen).
+function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 'Samples-Werkzeuge', [scriptblock]$nachher = $null) {
+    if (Test-LaufAktiv) { Show-Meldung 'Es läuft bereits ein Vorgang. Bitte warten, bis er fertig ist.' 'Warning'; return $false }
+    $pfad = Join-Path $skriptOrdner $datei
+    if (-not (Test-Path -LiteralPath $pfad)) { Show-Meldung "Datei nicht gefunden:`n$pfad" 'Error'; return $false }
+    $p = $pfad.Replace("'", "''")
+    $befehl = "try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding(`$false) } catch { }; " +
+              "try { & '$p' $argumente } catch { [Console]::Out.WriteLine('##T##Red##FEHLER: ' + `$_.Exception.Message); exit 1 }"
+    $kodiert = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($befehl))
+    $ui.LaufLog.Items.Clear()
+    $ui.LaufTitel.Text = $titel
+    $ui.LaufStatus.Text = 'läuft …'
+    $ui.LaufBalken.IsIndeterminate = $true
+    $ui.LaufBalken.Visibility = 'Visible'
+    $ui.FrageLeiste.Visibility = 'Collapsed'
+    $ui.EndeLeiste.Visibility = 'Collapsed'
+    $ui.LaufLog.Visibility = 'Visible'; $ui.LnkLogUmschalten.Content = 'Ausgabe ausblenden'
+    $ui.Lauf.Visibility = 'Visible'
+    $script:laufDatei = ''; $script:laufFehler = $false; $script:laufEnde = $null; $script:laufNachher = $nachher
+    try {
+        $l = New-Object SamplesWerkzeuge.SkriptLauf400
+        $l.Start($psExe, "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $kodiert", $basis)
+        $script:lauf = $l
+    } catch {
+        $ui.Lauf.Visibility = 'Collapsed'
+        Show-Meldung "Start fehlgeschlagen:`n$($_.Exception.Message)" 'Error'
+        return $false
+    }
+    Set-Bedienbar $false
+    $ui.Lauf.BringIntoView()
+    $zeitgeber.Start()
+    return $true
+}
+
+function Read-LaufZeilen {
+    foreach ($z in $script:lauf.Hole()) {
+        if ($z.StartsWith('##T##')) {
+            $rest = $z.Substring(5); $i = $rest.IndexOf('##')
+            $farbe = if ($i -ge 0) { $rest.Substring(0, $i) } else { '' }
+            $text = if ($i -ge 0) { $rest.Substring($i + 2) } else { $rest }
+            $pinsel = switch ($farbe) { 'Red' { $SWF.Rot } 'DarkRed' { $SWF.Rot } 'Green' { $SWF.Ok } 'DarkGreen' { $SWF.Ok } 'Yellow' { $SWF.Warn } 'DarkYellow' { $SWF.Warn }
+                                        'Cyan' { $SWF.Cyan } 'DarkCyan' { $SWF.Cyan } 'DarkGray' { $SWF.Leise } 'Gray' { $SWF.Leise } default { $null } }
+            if ($text -match '^\s*FEHLER') { $pinsel = $SWF.Rot; $script:laufFehler = $true }
+            Add-LogZeile $text $pinsel
+            # Zuletzt genannte Datei (Vorschau, Protokoll, Bericht) zum Oeffnen anbieten
+            if ($text -match '([A-Za-z]:\\[^<>|"*?]+\.(csv|html))\s*$') { $script:laufDatei = $Matches[1] }
+        } elseif ($z.StartsWith('##P##')) {
+            $teile = $z.Substring(5) -split '##', 3
+            if ($teile[0] -eq '-') { $ui.LaufBalken.IsIndeterminate = $true; $ui.LaufStatus.Text = 'läuft …' }
+            else {
+                $pz = 0; [void][int]::TryParse($teile[0], [ref]$pz)
+                if ($pz -ge 0) { $ui.LaufBalken.IsIndeterminate = $false; $ui.LaufBalken.Value = [Math]::Min(100, $pz) }
+                $ui.LaufStatus.Text = $(if ($teile.Count -ge 3 -and $teile[2]) { "$($teile[1]) · $($teile[2])" } else { $teile[1] })
+            }
+        } elseif ($z.StartsWith('##FRAGE##')) {
+            $ui.FrageText.Text = $z.Substring(9)
+            $ui.LnkFrageDatei.Visibility = $(if ($script:laufDatei -and (Test-Path -LiteralPath $script:laufDatei)) { 'Visible' } else { 'Collapsed' })
+            $ui.LnkFrageDatei.Content = $(if ($script:laufDatei -match 'Vorschau') { 'Vorschau öffnen' } else { 'Datei öffnen' })
+            $ui.FrageLeiste.Visibility = 'Visible'
+            $ui.LaufBalken.IsIndeterminate = $false; $ui.LaufBalken.Value = 0
+            $ui.LaufStatus.Text = 'wartet auf deine Antwort'
+            $ui.BtnNein.Focus() | Out-Null
+            $ui.FrageLeiste.BringIntoView()
+        } elseif ($z.StartsWith('##E##')) {
+            $t = $z.Substring(5)
+            if ($t.Trim()) { Add-LogZeile $t $SWF.Rot; $script:laufFehler = $true }
+        } else {
+            Add-LogZeile $z $null
+        }
+    }
+    if ($ui.LaufLog.Items.Count) { $ui.LaufLog.ScrollIntoView($ui.LaufLog.Items[$ui.LaufLog.Items.Count - 1]) }
+}
+
+function Stop-LaufAnzeige {
+    $zeitgeber.Stop()
+    $code = $script:lauf.Code
+    $script:lauf = $null
+    $ok = ($code -eq 0 -and -not $script:laufFehler)
+    $ui.FrageLeiste.Visibility = 'Collapsed'
+    $ui.LaufBalken.Visibility = 'Collapsed'
+    $ui.LaufStatus.Text = ''
+    $ui.EndeText.Text = $(if ($ok) { "$([char]0x2714)  Fertig." } else { "$([char]0x26A0)  Beendet mit Fehler – Details in der Ausgabe." })
+    $ui.EndeText.Foreground = $(if ($ok) { $SWF.Ok } else { $SWF.Rot })
+    $hatDatei = ($script:laufDatei -and (Test-Path -LiteralPath $script:laufDatei))
+    $ui.LnkEndeDatei.Visibility = $(if ($hatDatei) { 'Visible' } else { 'Collapsed' })
+    $ui.LnkEndeDatei.Content = $(if ($script:laufDatei -match '\.html$') { 'Bericht öffnen' } elseif ($script:laufDatei -match 'Vorschau') { 'Vorschau öffnen' } else { 'Protokoll öffnen' })
+    $ui.EndeLeiste.Visibility = 'Visible'
+    Set-Bedienbar $true
+    Update-Status
+    if ($ok -and $script:laufNachher) { Invoke-Sicher $script:laufNachher }
+    $script:laufNachher = $null
+}
+
+$zeitgeber.Add_Tick({
+    try {
+        if (-not $script:lauf) { $zeitgeber.Stop(); return }
+        Read-LaufZeilen
+        if ($script:lauf.Beendet) {
+            # Nach dem Ende noch kurz nachlesen (Ausgabe kann nachlaufen), dann abschliessen
+            if (-not $script:laufEnde) { $script:laufEnde = Get-Date }
+            elseif ($script:lauf.Leer -and ((Get-Date) - $script:laufEnde).TotalMilliseconds -gt 700) { Read-LaufZeilen; Stop-LaufAnzeige }
+        }
+    } catch {
+        Write-FehlerLog "Oberfläche (Ausgabe): $($_.Exception.Message)"
+    }
+})
+
+Set-Klick $ui.BtnJa {
+    if (-not $script:lauf) { return }
+    $ui.FrageLeiste.Visibility = 'Collapsed'; $ui.LaufBalken.IsIndeterminate = $true; $ui.LaufStatus.Text = 'läuft …'
+    Add-LogZeile "> $($ui.FrageText.Text)  Ja" $SWF.Akzent
+    $script:lauf.Antwort('J')
+}
+Set-Klick $ui.BtnNein {
+    if (-not $script:lauf) { return }
+    $ui.FrageLeiste.Visibility = 'Collapsed'; $ui.LaufBalken.IsIndeterminate = $true; $ui.LaufStatus.Text = 'läuft …'
+    Add-LogZeile "> $($ui.FrageText.Text)  Nein" $SWF.Akzent
+    $script:lauf.Antwort('N')
+}
+Set-Klick $ui.LnkFrageDatei { Open-Pfad $script:laufDatei }
+Set-Klick $ui.LnkEndeDatei {
+    if ($script:laufDatei -match '\.html$' -and $script:laufDatei -match 'Inventur') { Open-Bericht } else { Open-Pfad $script:laufDatei }
+}
+Set-Klick $ui.LnkLaufZu { $ui.Lauf.Visibility = 'Collapsed' }
+Set-Klick $ui.LnkLogUmschalten {
+    if ($ui.LaufLog.Visibility -eq 'Visible') { $ui.LaufLog.Visibility = 'Collapsed'; $ui.LnkLogUmschalten.Content = 'Ausgabe einblenden' }
+    else { $ui.LaufLog.Visibility = 'Visible'; $ui.LnkLogUmschalten.Content = 'Ausgabe ausblenden' }
+}
+
+# ---------------------------------------------------------------------------
+# Schritte des Ablaufs
+# ---------------------------------------------------------------------------
+$script:aktiverSchritt = 2
+$script:vglCache = @{ Schluessel = ''; Werte = $null }
+$script:bibVeraltet = $false
+$script:schrittZustand = @{ 1 = 'neutral'; 2 = 'neutral'; 3 = 'neutral' }
+
+function Set-Schritt([int]$n) {
+    $script:aktiverSchritt = $n
+    foreach ($i in 1..3) { $ui["Feld$i"].Visibility = $(if ($i -eq $n) { 'Visible' } else { 'Collapsed' }) }
+    [System.Windows.Controls.Grid]::SetColumn($ui.Spitze, ($n - 1) * 2)
+    Update-SchrittAussehen
+}
+
+function Update-SchrittAussehen {
+    foreach ($i in 1..3) {
+        $z = $script:schrittZustand[$i]; $aktiv = ($i -eq $script:aktiverSchritt)
+        $r = $ui["Schritt$i"]
+        if ($aktiv) {
+            $r.Background = $SWF.Akzent; $r.BorderBrush = $SWF.Akzent
+            $ui["Name$i"].Foreground = $SWF.Weiss; $ui["Stand$i"].Foreground = $SWF.Hell
+            $ui["Num$i"].Background = $SWF.Weiss; $ui["NumT$i"].Foreground = $SWF.Akzent
+        } else {
+            $r.Background = $SWF.Weiss
+            $r.BorderBrush = $(if ($z -eq 'ok') { $SWF.Ok } else { $SWF.Linie })
+            $ui["Name$i"].Foreground = $SWF.Text; $ui["Stand$i"].Foreground = $SWF.Leise
+            $ui["Num$i"].Background = $(if ($z -eq 'ok') { $SWF.Ok } else { $SWF.Linie }); $ui["NumT$i"].Foreground = $(if ($z -eq 'ok') { $SWF.Weiss } else { $SWF.Text })
+        }
+        $p = $ui["Pille$i"]; $pt = $ui["PilleT$i"]
+        switch ($z) {
+            'ok'     { $p.Background = $SWF.OkSanft;   $pt.Foreground = $SWF.Ok }
+            'warn'   { $p.Background = $SWF.WarnSanft; $pt.Foreground = $SWF.Warn }
+            'fehler' { $p.Background = $SWF.RotSanft;  $pt.Foreground = $SWF.Rot }
+            default  { $p.Background = $SWF.Linie;     $pt.Foreground = $SWF.Leise }
+        }
+        $p.Visibility = $(if ($pt.Text) { 'Visible' } else { 'Collapsed' })
+    }
+}
+foreach ($i in 1..3) {
+    $ui["Schritt$i"].Tag = $i
+    $ui["Schritt$i"].Add_MouseLeftButtonUp({ param($s, $ev) Invoke-Sicher { Set-Schritt ([int]$s.Tag) } })
+}
+
+function New-Fakt($eltern, [string]$schluessel, [string]$wert) {
+    $sp = New-Object System.Windows.Controls.StackPanel
+    $sp.Orientation = 'Horizontal'; $sp.Margin = '0,0,26,4'
+    $k = New-Object System.Windows.Controls.TextBlock; $k.Text = $schluessel; $k.Foreground = $SWF.Leise; $k.Margin = '0,0,8,0'
+    $w = New-Object System.Windows.Controls.TextBlock; $w.Text = $wert; $w.FontWeight = 'SemiBold'
+    [void]$sp.Children.Add($k); [void]$sp.Children.Add($w)
+    [void]$eltern.Children.Add($sp)
+}
+function Format-Zeit($t) { if ($t) { return $t.ToString('dd.MM.yyyy, HH:mm') } else { return '' } }
+
+# ---------------------------------------------------------------------------
+# Status (beim Start und immer, wenn das Fenster wieder aktiv wird)
 # ---------------------------------------------------------------------------
 function Update-Status {
+    if (-not $ui) { return }
     $e = Get-Einstellungen
-    $zeilen = @()
-    $zs = Get-OrdnerStatus $e.Ziel
-    $z = if ($zs.Fehlt) { "$($zs.Text) $([char]0x2013) über $([char]0x2699) Einstellungen ändern" } else { $zs.Text }
-    # Quellen (QLN-04): bis zu drei aktive einzeln, sonst zusammengefasst
-    $aktiv = @($e.Quellen | Where-Object { $_.Aktiv })
-    $fehlen = @($aktiv | Where-Object { -not (Test-Path -LiteralPath $_.Pfad) })
-    if (-not $aktiv.Count) { $zeilen += "Quelle:  keine aktiv $([char]0x2013) über $([char]0x2699) Einstellungen hinzufügen" }
-    elseif ($aktiv.Count -le 3) {
-        foreach ($q in $aktiv) {
-            $t = if (Test-Path -LiteralPath $q.Pfad) { 'gefunden' } else { "NICHT GEFUNDEN $([char]0x2013) über $([char]0x2699) Einstellungen ändern" }
-            $artText = if ((Get-QuellArtName $q.Art) -ne 'Sammlung') { "  ($($QuellArten[(Get-QuellArtName $q.Art)]))" } else { '' }
-            $zeilen += "Quelle:  $($q.Pfad)$artText  $([char]0x2013)  $t"
-        }
+    $strich = [char]0x2013
+
+    # --- Abkuerzung Import: ZIP-Archive im Download-Ordner
+    $nZip = 0
+    try { if ($e.Downloads -and (Test-Path -LiteralPath $e.Downloads)) { $nZip = @(Get-ChildItem -LiteralPath $e.Downloads -Filter '*.zip' -File -ErrorAction SilentlyContinue).Count } } catch { }
+    if ($nZip -gt 0) {
+        $ui.TxtImport1.Text = "Neuer Download? $nZip ZIP-Archiv$(if ($nZip -ne 1) { 'e' }) im Download-Ordner"
+        $ui.ImportRahmen.Fill = $SWF.ImportAn; $ui.ImportRahmen.Stroke = $SWF.Akzent
     } else {
-        $zeilen += "Quellen:  $($aktiv.Count) aktiv $([char]0x2013) " + $(if ($fehlen.Count) { "$($fehlen.Count) NICHT GEFUNDEN (siehe $([char]0x2699) Einstellungen)" } else { 'alle gefunden' })
+        $ui.TxtImport1.Text = 'Neuer Download? Frisch heruntergeladene Packs direkt einsortieren'
+        $ui.ImportRahmen.Fill = $SWF.ImportAus; $ui.ImportRahmen.Stroke = $SWF.Grau
     }
-    $zeilen += "Ziel:  $($e.Ziel)  $([char]0x2013)  $z"
-    $zus = @(@('RX2', 'RX2Beibehalten'), @('MP3', 'MP3Beibehalten'), @('AIFF', 'AIFFBeibehalten') | Where-Object { $e[$_[1]] } | ForEach-Object { $_[0] })
-    $zeilen += "Formate:  " + $(if ($zus.Count -eq 3) { 'alle (WAV, RX2, MP3, AIFF)' } elseif ($zus.Count -eq 0) { 'nur WAV, wenn vorhanden' } else { "WAV, zusätzlich $($zus -join ', ')" })
 
+    # --- 1 Quellen
+    $alle = @($e.Quellen); $aktiv = @($alle | Where-Object { $_.Aktiv })
+    $fehlen = @($aktiv | Where-Object { -not (Test-Path -LiteralPath $_.Pfad) })
+    $aus = $alle.Count - $aktiv.Count
+    $ui.Stand1.Text = $(if (-not $alle.Count) { 'noch keine Quelle eingetragen' } else { "$($aktiv.Count) Quelle$(if ($aktiv.Count -ne 1) { 'n' }) aktiv" + $(if ($aus) { ", $aus deaktiviert" } else { '' }) })
+    if (-not $aktiv.Count) { $script:schrittZustand[1] = 'warn'; $ui.PilleT1.Text = "$([char]0x25CF) Quelle hinzufügen" }
+    elseif ($fehlen.Count) { $script:schrittZustand[1] = 'fehler'; $ui.PilleT1.Text = "$([char]0x25CF) $($fehlen.Count) nicht gefunden" }
+    else { $script:schrittZustand[1] = 'ok'; $ui.PilleT1.Text = "$([char]0x2713) eingerichtet" }
+    $ui.QuellListe.Children.Clear()
+    if (-not $alle.Count) {
+        $tb = New-Object System.Windows.Controls.TextBlock; $tb.Text = 'Noch keine Quelle. „Fundorte suchen …“ findet Sample-Packs auf deinen Laufwerken.'; $tb.Margin = '10,8'; $tb.Foreground = $SWF.Leise; $tb.TextWrapping = 'Wrap'
+        [void]$ui.QuellListe.Children.Add($tb)
+    }
+    $erste = $true
+    foreach ($q in $alle) {
+        $g = New-Object System.Windows.Controls.DockPanel
+        $g.Margin = '0'
+        $rand = New-Object System.Windows.Controls.Border
+        $rand.BorderBrush = $SWF.Linie; $rand.BorderThickness = $(if ($erste) { '0' } else { '0,1,0,0' }); $rand.Padding = '10,6'; $erste = $false
+        $da = Test-Path -LiteralPath $q.Pfad
+        $haken = New-Object System.Windows.Controls.TextBlock; $haken.Text = $(if ($q.Aktiv) { [char]0x2611 } else { [char]0x2610 }); $haken.Margin = '0,0,10,0'; $haken.FontFamily = 'Segoe UI Symbol'
+        $zust = New-Object System.Windows.Controls.TextBlock; $zust.FontSize = 12; $zust.Margin = '12,0,0,0'
+        if (-not $q.Aktiv) { $zust.Text = 'deaktiviert'; $zust.Foreground = $SWF.Grau }
+        elseif (-not $da) { $zust.Text = 'NICHT GEFUNDEN'; $zust.Foreground = $SWF.Rot }
+        else { $zust.Text = 'gefunden'; $zust.Foreground = $SWF.Ok }
+        $art = New-Object System.Windows.Controls.TextBlock; $art.FontSize = 12; $art.Foreground = $SWF.Leise; $art.Margin = '12,0,0,0'
+        $an = Get-QuellArtName $q.Art; $art.Text = $(if ($an -eq 'Sammlung') { 'Sammlung' } else { $QuellArten[$an] })
+        $pf = New-Object System.Windows.Controls.TextBlock; $pf.Text = $q.Pfad; $pf.FontFamily = 'Consolas'; $pf.FontSize = 12.5; $pf.TextTrimming = 'CharacterEllipsis'; $pf.ToolTip = $q.Pfad
+        if (-not $q.Aktiv) { $pf.Foreground = $SWF.Grau }
+        [System.Windows.Controls.DockPanel]::SetDock($haken, 'Left'); [System.Windows.Controls.DockPanel]::SetDock($zust, 'Right'); [System.Windows.Controls.DockPanel]::SetDock($art, 'Right')
+        [void]$g.Children.Add($haken); [void]$g.Children.Add($zust); [void]$g.Children.Add($art); [void]$g.Children.Add($pf)
+        $rand.Child = $g
+        [void]$ui.QuellListe.Children.Add($rand)
+    }
+    $zs = Get-OrdnerStatus $e.Ziel
+    $ui.TxtZiel1.Text = "Ziel: $($e.Ziel)  $strich  $($zs.Text)   ·   Download-Ordner und Archiv unter $([char]0x2699) Einstellungen"
+
+    # --- 2 Sortieren
     $p = Get-NeuestesProtokoll 'Protokoll_*.csv'
-    if ($p) { $zeilen += "Letzter Sortierlauf:  $((Get-Protokollzeit $p).ToString('dd.MM.yyyy HH:mm'))" }
-    else    { $zeilen += 'Letzter Sortierlauf:  noch keiner mit dieser Version' }
+    $tSort = if ($p) { Get-Protokollzeit $p } else { $null }
     $ip = Get-NeuestesProtokoll 'Import-Protokoll_*.csv'
-    if ($ip) { $zeilen += "Letzter Import:  $((Get-Protokollzeit $ip).ToString('dd.MM.yyyy HH:mm'))" }
-    $btnProt.Enabled = [bool]$p
+    $tImp = if ($ip) { Get-Protokollzeit $ip } else { $null }
+    $ui.Stand2.Text = $(if ($tSort) { "Letzter Lauf: $(Format-Zeit $tSort)" } else { 'Noch kein Sortierlauf' })
+    # Neues in den Quellen? Aenderungszeit der Quelle und ihrer Unterordner (eine Ebene) gegen den letzten Lauf
+    $neuer = @()
+    if ($tSort) {
+        foreach ($q in $aktiv) {
+            try {
+                if (-not (Test-Path -LiteralPath $q.Pfad)) { continue }
+                $d = Get-Item -LiteralPath $q.Pfad -ErrorAction Stop
+                $t = $d.LastWriteTime
+                foreach ($u in @(Get-ChildItem -LiteralPath $q.Pfad -Directory -ErrorAction SilentlyContinue)) { if ($u.LastWriteTime -gt $t) { $t = $u.LastWriteTime } }
+                if ($t -gt $tSort.AddMinutes(1)) { $neuer += $q.Pfad }
+            } catch { }
+        }
+    }
+    if ($script:schrittZustand[1] -ne 'ok') { $script:schrittZustand[2] = 'neutral'; $ui.PilleT2.Text = 'erst Quellen einrichten' }
+    elseif (-not $tSort) { $script:schrittZustand[2] = 'warn'; $ui.PilleT2.Text = "$([char]0x25CF) noch nicht sortiert" }
+    elseif ($neuer.Count) { $script:schrittZustand[2] = 'warn'; $ui.PilleT2.Text = "$([char]0x25CF) Neues in $($neuer.Count) Quelle$(if ($neuer.Count -ne 1) { 'n' })" }
+    else { $script:schrittZustand[2] = 'ok'; $ui.PilleT2.Text = "$([char]0x2713) auf dem Stand" }
+    $ui.Fakten2.Children.Clear()
+    New-Fakt $ui.Fakten2 'Letzter Lauf' $(if ($tSort) { Format-Zeit $tSort } else { 'noch keiner' })
+    if ($tImp) { New-Fakt $ui.Fakten2 'Letzter Import' (Format-Zeit $tImp) }
+    $frei = ''
+    try { $dr = New-Object IO.DriveInfo ([IO.Path]::GetPathRoot($e.Ziel)); if ($dr.IsReady) { $frei = ' · {0:N0} GB frei' -f ($dr.AvailableFreeSpace / 1GB) } } catch { }
+    New-Fakt $ui.Fakten2 'Ziel' "$($e.Ziel)$frei"
+    $zus = @(@('RX2', 'RX2Beibehalten'), @('MP3', 'MP3Beibehalten'), @('AIFF', 'AIFFBeibehalten') | Where-Object { $e[$_[1]] } | ForEach-Object { $_[0] })
+    New-Fakt $ui.Fakten2 'Formate' $(if ($zus.Count -eq 3) { 'alle (WAV, RX2, MP3, AIFF)' } elseif ($zus.Count -eq 0) { 'nur WAV, wenn vorhanden' } else { "WAV, zusätzlich $($zus -join ', ')" })
+    if ($neuer.Count) { New-Fakt $ui.Fakten2 'Geändert seit dem letzten Lauf' ($neuer -join ', ') }
+    $ui.LnkSortProt.IsEnabled = [bool]$p
+    $ui.LnkImportProt.IsEnabled = [bool]$ip
 
-    $inv = Get-NeuesteInventur 'Sample'
-    if ($inv) {
-        $t = "Letzte Inventur:  $((Get-Protokollzeit $inv).ToString('dd.MM.yyyy HH:mm'))"
-        try {
-            $j = Get-Content -LiteralPath ([IO.Path]::ChangeExtension($inv.FullName, '.json')) -Raw -Encoding UTF8 | ConvertFrom-Json
-            $t += " $([char]0x2013) $($j.Samples) Samples in $($j.Packs) Packs, $($j.GroesseGB) GB"
-            if ([int]$j.DuplikatDateien -gt 0) { $t += ", $($j.DuplikatDateien) Duplikate" }
-        } catch { }
-        $zeilen += $t
-    } else { $zeilen += 'Letzte Inventur:  noch keine - "Inventur starten"' }
-    $btnBericht.Enabled = [bool]$inv
-    $btnCsv.Enabled = [bool]$inv
-    $btnVgl.Enabled = [bool](Get-NeuesterVergleich)
-    $btnZielDup.Enabled = [bool]$inv
-
+    # --- 3 Aufraeumen
     $dp = Get-NeuestesProtokoll 'Quelle-aufgeraeumt_*.csv'
     if (-not $dp) { $dp = Get-NeuestesProtokoll 'Duplikate-entfernt_*.csv' }
-    if ($dp) { $zeilen += "Quelle zuletzt aufgeräumt:  $((Get-Protokollzeit $dp).ToString('dd.MM.yyyy HH:mm'))" }
+    $zp = Get-NeuestesProtokoll 'Ziel-Duplikate-entfernt_*.csv'
+    $tAuf = if ($dp) { Get-Protokollzeit $dp } else { $null }
+    $tZiel = if ($zp) { Get-Protokollzeit $zp } else { $null }
+    $tLetzt = @($tAuf, $tZiel | Where-Object { $_ } | Sort-Object -Descending)[0]
+    $tNeuSort = @($tSort, $tImp | Where-Object { $_ } | Sort-Object -Descending)[0]
+    $ui.Stand3.Text = $(if ($tLetzt) { "Zuletzt aufgeräumt: $(Format-Zeit $tLetzt)" } else { 'Quellen und Ziel entschlacken' })
+    if (-not $tNeuSort) { $script:schrittZustand[3] = 'neutral'; $ui.PilleT3.Text = 'nach dem Sortieren' }
+    elseif (-not $tLetzt -or $tLetzt -lt $tNeuSort) { $script:schrittZustand[3] = 'warn'; $ui.PilleT3.Text = "$([char]0x25CF) seit dem Sortieren nicht aufgeräumt" }
+    else { $script:schrittZustand[3] = 'ok'; $ui.PilleT3.Text = "$([char]0x2713) aufgeräumt" }
+    $ui.Fakten3.Children.Clear()
+    New-Fakt $ui.Fakten3 'Quellen zuletzt' $(if ($tAuf) { Format-Zeit $tAuf } else { 'noch nie' })
+    New-Fakt $ui.Fakten3 'Ziel zuletzt' $(if ($tZiel) { Format-Zeit $tZiel } else { 'noch nie' })
 
-    $ziel = ''
-    if (Test-Path -LiteralPath $verknuepfung) {
-        try { $ziel = (New-Object -ComObject WScript.Shell).CreateShortcut($verknuepfung).Arguments } catch { }
-    }
-    if (-not (Test-Path -LiteralPath $verknuepfung)) {
-        $zeilen += 'Desktop-Verknüpfung:  noch nicht angelegt'
-        $btnLink.Text = 'Verknüpfung anlegen'
-    } elseif ($ziel -like "*$skriptOrdner*") {
-        $zeilen += 'Desktop-Verknüpfung:  vorhanden (öffnet diese Version)'
-        $btnLink.Text = 'Verknüpfung erneuern'
+    # --- Sample-Bibliothek (letzter Stand der Inventur)
+    $j = $null
+    $inv = Get-NeuesteInventur 'Sample'
+    $tInv = if ($inv) { Get-Protokollzeit $inv } else { $null }
+    $script:bibVeraltet = $false
+    if ($inv) {
+        try {
+            $j = Get-Content -LiteralPath ([IO.Path]::ChangeExtension($inv.FullName, '.json')) -Raw -Encoding UTF8 | ConvertFrom-Json
+            $ui.KpiSamples.Text = '{0:N0}' -f [int]$j.Samples
+            $ui.KpiPacks.Text = '{0:N0}' -f [int]$j.Packs
+            $ui.KpiGroesse.Text = $(if ([double]$j.GroesseGB -ge 10) { '{0:N0} GB' -f [double]$j.GroesseGB } else { '{0:N1} GB' -f [double]$j.GroesseGB })
+        } catch { $j = $null }
+        $danach = @()
+        if ($tSort -and $tSort -gt $tInv) { $danach += 'sortiert' }
+        if ($tImp -and $tImp -gt $tInv) { $danach += 'importiert' }
+        if ($tLetzt -and $tLetzt -gt $tInv) { $danach += 'aufgeräumt' }
+        if ($danach.Count) {
+            $script:bibVeraltet = $true
+            $ui.TxtBibStand.Text = "Stand $(Format-Zeit $tInv) · seitdem $($danach -join ', ') – neu einlesen empfohlen"
+            $ui.TxtBibStand.Foreground = $SWF.Warn
+        } else {
+            $ui.TxtBibStand.Text = "Stand $(Format-Zeit $tInv) · auf dem Stand"
+            $ui.TxtBibStand.Foreground = $SWF.Leise
+        }
     } else {
-        $zeilen += 'Desktop-Verknüpfung:  zeigt auf eine andere Version'
-        $btnLink.Text = "Verknüpfung auf $ProgrammVersion"
+        $ui.KpiSamples.Text = $strich; $ui.KpiPacks.Text = $strich; $ui.KpiGroesse.Text = $strich
+        $ui.TxtBibStand.Text = 'Noch nicht eingelesen – „Bibliothek öffnen“ liest das Ziel ein.'
+        $ui.TxtBibStand.Foreground = $SWF.Leise
     }
-    $lblStatus.Text = $zeilen -join "`n"
+    $ui.LnkExcel.IsEnabled = [bool]$inv
+    $ui.BtnZielDup.IsEnabled = ([bool]$inv -and -not (Test-LaufAktiv))
+    # Aenderungen beim letzten Einlesen (Vergleich mit dem Stand davor)
+    $ui.BibAenderungen.Children.Clear()
+    $vgl = Get-NeuesterVergleich
+    $zeilen = @()
+    if ($vgl) {
+        # Zaehlung zwischenspeichern: der Vergleich kann viele tausend Zeilen haben
+        $sch = "$($vgl.FullName)|$($vgl.LastWriteTime.Ticks)"
+        if ($script:vglCache.Schluessel -ne $sch) {
+            $zn = @{ neu = 0; entfernt = 0; verschoben = 0 }
+            try { foreach ($r in (Import-Csv -LiteralPath $vgl.FullName -Delimiter ';' -Encoding UTF8)) { if ($zn.ContainsKey([string]$r.Vergleich)) { $zn[[string]$r.Vergleich]++ } } } catch { }
+            $script:vglCache = @{ Schluessel = $sch; Werte = $zn }
+        }
+        $zn = $script:vglCache.Werte
+        $zeilen += , @('Neue Samples', $zn.neu)
+        $zeilen += , @('Entfernt', $zn.entfernt)
+        $zeilen += , @('Verschoben', $zn.verschoben)
+    }
+    if ($j) { $zeilen += , @('Duplikate (Dateien)', [int]$j.DuplikatDateien) }
+    if (-not $zeilen.Count) {
+        $tb = New-Object System.Windows.Controls.TextBlock; $tb.Text = 'Der Vergleich entsteht ab dem zweiten Einlesen.'; $tb.Foreground = $SWF.Leise; $tb.TextWrapping = 'Wrap'
+        [void]$ui.BibAenderungen.Children.Add($tb)
+    }
+    $erste = $true
+    foreach ($z in $zeilen) {
+        $b = New-Object System.Windows.Controls.Border; $b.BorderBrush = $SWF.Linie; $b.BorderThickness = $(if ($erste) { '0' } else { '0,1,0,0' }); $b.Padding = '0,5'; $erste = $false
+        $d = New-Object System.Windows.Controls.DockPanel
+        $w = New-Object System.Windows.Controls.TextBlock; $w.Text = '{0:N0}' -f [int]$z[1]; $w.FontWeight = 'SemiBold'
+        [System.Windows.Controls.DockPanel]::SetDock($w, 'Right')
+        $k = New-Object System.Windows.Controls.TextBlock; $k.Text = $z[0]
+        [void]$d.Children.Add($w); [void]$d.Children.Add($k); $b.Child = $d
+        [void]$ui.BibAenderungen.Children.Add($b)
+    }
+    $ui.LnkAenderungen.IsEnabled = [bool]$vgl
+
+    # --- Desktop-Verknuepfung
+    $lz = ''
+    if (Test-Path -LiteralPath $verknuepfung) { try { $lz = (New-Object -ComObject WScript.Shell).CreateShortcut($verknuepfung).Arguments } catch { } }
+    if (-not (Test-Path -LiteralPath $verknuepfung)) { $ui.LnkVerknuepfung.Content = 'Desktop-Verknüpfung anlegen'; $ui.LnkVerknuepfung.Visibility = 'Visible' }
+    elseif ($lz -like "*$skriptOrdner*") { $ui.LnkVerknuepfung.Visibility = 'Collapsed' }
+    else { $ui.LnkVerknuepfung.Content = "Desktop-Verknüpfung auf $ProgrammVersion umstellen"; $ui.LnkVerknuepfung.Visibility = 'Visible' }
+
+    if (Test-LaufAktiv) { Set-Bedienbar $false }
+    Update-SchrittAussehen
 }
 
+# ---------------------------------------------------------------------------
+# Sample-Bibliothek oeffnen: vorher fragen, ob das Ziel neu eingelesen werden soll
+# ---------------------------------------------------------------------------
+function Show-BibliothekOeffnen {
+    $zs = Get-OrdnerStatus (Get-Einstellungen).Ziel
+    $inv = Get-NeuesteInventur 'Sample'
+    if (-not $inv -and ($zs.Fehlt -or $zs.Text -ne 'vorhanden')) { Show-Meldung "Der Zielordner ist nicht vorhanden:`n$((Get-Einstellungen).Ziel)`n`nBitte zuerst sortieren oder über $([char]0x2699) Einstellungen den richtigen Ordner wählen." 'Warning'; return }
+    $d = [Windows.Markup.XamlReader]::Parse($xamlBib)
+    $d.Owner = $win
+    $dT = $d.FindName('DTitel'); $dX = $d.FindName('DText'); $dW = $d.FindName('DWarn'); $dWR = $d.FindName('DWarnRahmen')
+    $bAlt = $d.FindName('DAlt'); $bNeu = $d.FindName('DNeu')
+    $script:bibWahl = ''
+    $bAlt.Add_Click({ $script:bibWahl = $(if ($bAlt.Tag) { [string]$bAlt.Tag } else { '' }); $d.Close() })
+    $bNeu.Add_Click({ $script:bibWahl = 'neu'; $d.Close() })
+    $haupt = { param($b) $b.Background = $SWF.Akzent; $b.Foreground = $SWF.Weiss; $b.BorderBrush = $SWF.Akzent; $b.FontWeight = 'SemiBold'; $b.IsDefault = $true }
+    if (-not $inv) {
+        $dT.Text = 'Bibliothek einlesen?'
+        $dX.Text = 'Die Sample-Bibliothek wurde noch nicht eingelesen. Beim Einlesen werden alle Samples im Ziel erfasst (Audio-Eigenschaften, Tempo, Tonart, Pack-Art, Duplikate); danach öffnet sie sich im Browser.'
+        $dWR.Visibility = 'Collapsed'
+        $bAlt.Content = 'Abbrechen'; $bAlt.Tag = ''; $bAlt.IsCancel = $true
+        $bNeu.Content = 'Einlesen und öffnen'; & $haupt $bNeu
+    } else {
+        $tInv = Get-Protokollzeit $inv
+        $dT.Text = 'Neu einlesen?'
+        $dX.Text = "Der letzte Stand ist vom $(Format-Zeit $tInv)."
+        if ($script:bibVeraltet) {
+            $dW.Text = 'Seitdem wurde sortiert, importiert oder aufgeräumt. Neue oder entfernte Samples erscheinen erst nach dem Einlesen.'
+            $bNeu.Content = 'Neu einlesen und öffnen'; $bAlt.Content = 'Letzten Stand öffnen'; $bAlt.Tag = 'alt'
+            & $haupt $bNeu
+        } else {
+            $dW.Text = 'Seit dem letzten Einlesen wurde nichts sortiert, importiert oder aufgeräumt. Neu einlesen ist nur nötig, wenn du selbst etwas im Ziel geändert hast.'
+            $bNeu.Content = 'Neu einlesen und öffnen'; $bAlt.Content = 'Letzten Stand öffnen'; $bAlt.Tag = 'alt'
+            & $haupt $bAlt
+        }
+    }
+    [void]$d.ShowDialog()
+    switch ($script:bibWahl) {
+        'alt' { Open-Bericht }
+        'neu' { [void](Start-Skript 'Inventur.ps1' '' 'Sample-Bibliothek einlesen' { Open-Bericht }) }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Knoepfe
+# ---------------------------------------------------------------------------
+Set-Klick $ui.BtnImport { Show-DownloadImport }
+Set-Klick $ui.BtnFundorte { Show-FundorteSuchen }
+Set-Klick $ui.BtnQuellen { Show-Einstellungen }
+Set-Klick $ui.BtnSortieren { if (Test-OrdnerBereit) { [void](Start-Skript 'Samples-sortieren.ps1' '' 'Samples sortieren') } }
+Set-Klick $ui.BtnZielOeffnen { Open-Pfad (Get-Einstellungen).Ziel }
+Set-Klick $ui.LnkSortProt { $p = Get-NeuestesProtokoll 'Protokoll_*.csv'; if ($p) { Open-Pfad $p.FullName } else { Show-Meldung 'Noch kein Sortierlauf mit dieser Version.' 'Warning' } }
+Set-Klick $ui.LnkImportProt { $p = Get-NeuestesProtokoll 'Import-Protokoll_*.csv'; if ($p) { Open-Pfad $p.FullName } else { Show-Meldung 'Noch kein Import mit dieser Version.' 'Warning' } }
+Set-Klick $ui.BtnQuelleAuf { Show-QuelleAufraeumen }
+Set-Klick $ui.BtnZielDup { Show-ZielAufraeumen }
+Set-Klick $ui.LnkPapierkorb { try { Start-Process explorer.exe 'shell:RecycleBinFolder' } catch { } }
+Set-Klick $ui.BtnBibliothek { Show-BibliothekOeffnen }
+Set-Klick $ui.LnkExcel { $c = Get-NeuesteInventur 'Sample'; if ($c) { Open-Pfad $c.FullName } else { Show-Meldung 'Die Bibliothek wurde noch nicht eingelesen.' 'Warning' } }
+Set-Klick $ui.LnkAenderungen { $c = Get-NeuesterVergleich; if ($c) { Open-Pfad $c.FullName } else { Show-Meldung 'Noch kein Vergleich vorhanden (entsteht ab dem zweiten Einlesen).' 'Warning' } }
+Set-Klick $ui.LnkPackArten {
+    if (-not (Test-Path -LiteralPath $packArtenPfad)) { Set-Content -LiteralPath $packArtenPfad -Value 'Pack;Pack-Art' -Encoding UTF8 }
+    Show-Meldung ("Eine Zeile je Pack: Name des Packs (wie in der Bibliothek), Semikolon, Pack-Art.`nBeispiel:  Lofi Forest;Atmos/Field Recording`n`nMögliche Pack-Arten:`n" + ($PackArten -join ', ') + "`n`nDie Korrektur gilt ab dem nächsten Einlesen.")
+    Open-Pfad $packArtenPfad
+}
+Set-Klick $ui.BtnEinstellungen { Show-Einstellungen }
+Set-Klick $ui.BtnDoku { Open-Pfad $dokuPfad }
+Set-Klick $ui.LnkProtokolle { Open-Pfad $protokollOrdner }
+Set-Klick $ui.LnkProgramm { Open-Pfad $basis }
+Set-Klick $ui.LnkVerknuepfung { New-DesktopVerknuepfung }
+$ui.BtnSchliessen.Add_Click({ $win.Close() })
+
+# Schliessen waehrend eines Laufs: nur nach Rueckfrage (halb kopierte Dateien vermeiden)
+$win.Add_Closing({ param($s, $ev)
+    if (Test-LaufAktiv) {
+        $j = [System.Windows.MessageBox]::Show('Es läuft noch ein Vorgang. Wird das Programm jetzt geschlossen, bricht er ab; dabei können halb kopierte Dateien zurückbleiben.' + "`n`n" + 'Trotzdem schließen?', 'Samples-Werkzeuge', 'YesNo', 'Warning', 'No')
+        if ($j -ne 'Yes') { $ev.Cancel = $true; return }
+        try { $script:lauf.Beenden() } catch { }
+    }
+    $zeitgeber.Stop()
+})
+
+$win.Add_SourceInitialized({
+    try {
+        $script:form = New-Object SamplesWerkzeuge.Besitzer400
+        $script:form.Handle = (New-Object System.Windows.Interop.WindowInteropHelper($win)).Handle
+    } catch { $script:form = $null }
+})
+$win.Add_Activated({ if (-not (Test-LaufAktiv)) { Invoke-Sicher { Update-Status } } })
+
 $einst = Get-Einstellungen
-$form.Add_Activated({ Update-Status })
-$form.Add_Shown({
-    $form.TopMost = $true; $form.Activate(); $form.BringToFront(); $form.TopMost = $false
-    if (-not $einst.ErsterStartErledigt) { Show-Begruessung }
+$win.Add_ContentRendered({
+    # Empfohlener Schritt: der erste, bei dem etwas zu tun ist
+    Invoke-Sicher {
+        Update-Status
+        $n = 2
+        foreach ($i in 1..3) { if ($script:schrittZustand[$i] -in 'warn', 'fehler') { $n = $i; break } }
+        Set-Schritt $n
+        if (-not $einst.ErsterStartErledigt) { Show-Begruessung }
+    }
+})
+
+# Unerwartete Fehler in der Oberflaeche: melden und weiterarbeiten statt abzustuerzen
+$win.Dispatcher.Add_UnhandledException({ param($s, $ev)
+    Write-FehlerLog "Oberfläche (unbehandelt): $($ev.Exception.Message)"
+    $ev.Handled = $true
+    try { Show-Meldung "Es ist ein Fehler aufgetreten:`n$($ev.Exception.Message)`n`nDetails stehen in Skripte\Fehler.log." 'Error' } catch { }
 })
 
 try {
-    Update-Status
-    [void]$form.ShowDialog()
+    Set-Schritt 2
+    [void]$win.ShowDialog()
 } catch {
     Write-FehlerLog ("FEHLER: " + $_.Exception.Message + ' | ' + ($_.InvocationInfo.PositionMessage -replace "`r?`n", ' '))
-    Show-Meldung "Unerwarteter Fehler:`n$($_.Exception.Message)`n`nDetails stehen in:`n$fehlerLog" 'Error'
+    [void][System.Windows.Forms.MessageBox]::Show("Unerwarteter Fehler:`n$($_.Exception.Message)`n`nDetails stehen in:`n$fehlerLog", 'Samples-Werkzeuge', 'OK', 'Error')
 } finally {
-    $form.Dispose()
+    $zeitgeber.Stop()
 }

@@ -309,7 +309,9 @@ function Get-OrdnerImportArt([string]$pfad) {
 # PackArt (Pack/Sammlung) und Packs (Namen bei einer Sammlung).
 # "Schon vollstaendig im Ziel": alle Audiodateien haben eine gleich grosse Datei im Ziel (ab 3 Dateien;
 # der Import selbst prueft ohnehin per Pruefsumme).
-# 3.0.1: Instrument-Bibliotheken (Herstellername oder Bibliotheks-Dateien wie .nicnt, .vstsound) sind grau.
+# 3.0.1: Instrument-Bibliotheken (Herstellername oder Bibliotheks-Dateien wie .nicnt, .vstsound) sind grau.
+# 4.0: nur wenn sie Audiodateien enthalten; ohne Audio erscheinen sie gar nicht (QLN-13).
+# Der Hinweistext heisst $bibHinweis (nicht $BIB: PowerShell unterscheidet nicht nach Gross/Klein, $bib zaehlt weiter unten).
 # ---------------------------------------------------------------------------
 function Get-ImportKandidaten {
     $e = Get-Einstellungen
@@ -319,7 +321,7 @@ function Get-ImportKandidaten {
     $zielGroessen = [SamplesWerkzeuge.ZipWerkzeug301]::GroessenIndex([string]$e.Ziel)
     $aus = @([string]$e.DownloadArchiv, [string]$e.Ziel, $wurzel, (Split-Path -Parent $wurzel)) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\', '/') }
     $quellen = @($e.Quellen | ForEach-Object { ([string]$_.Pfad).TrimEnd('\', '/') })
-    $BIB = 'Instrument-Bibliothek – nicht importierbar (gehört zum Plugin)'
+    $bibHinweis = 'Instrument-Bibliothek – nicht importierbar (gehört zum Plugin)'
     $neu = { param($name, $pfad, $art, $bytes, $audio, $datum, $an, $hinweis, $voll, $packArt, $packs)
         [pscustomobject]@{ Name = $name; Pfad = $pfad; Art = $art; Bytes = [long]$bytes; Audio = [int]$audio; Datum = $datum; Anhakbar = [bool]$an; Hinweis = $hinweis; Vollstaendig = [bool]$voll
                            PackArt = $(if ($packArt) { $packArt } else { 'Pack' }); Packs = @($packs) } }
@@ -330,9 +332,9 @@ function Get-ImportKandidaten {
         if ($x.PSIsContainer) {
             if ($x.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
             # Name eines Plugin-Herstellers: nicht erst durchzaehlen
-            if ($x.Name -match $RxInstrNamen) { $erg.Add((& $neu $x.Name $voll 'Ordner' 0 0 $x.LastWriteTime $false $BIB $false)); continue }
+            if ($x.Name -match $RxInstrNamen) { if (Test-HatAudio $voll) { $erg.Add((& $neu $x.Name $voll 'Ordner' 0 0 $x.LastWriteTime $false $bibHinweis $false)) }; continue }
             $o = [SamplesWerkzeuge.ZipWerkzeug301]::Ordner($voll, $true)
-            if ($o.Instrument) { $erg.Add((& $neu $x.Name $voll 'Ordner' 0 0 $x.LastWriteTime $false $BIB $false)); continue }
+            if ($o.Instrument) { if ($o.Audio -gt 0 -or (Test-HatAudio $voll)) { $erg.Add((& $neu $x.Name $voll 'Ordner' 0 0 $x.LastWriteTime $false $bibHinweis $false)) }; continue }
             if ($o.Audio -eq 0) { continue }
             $im = & $alleIm $o.Groessen
             $v = ($o.Audio -ge 3 -and $im -eq $o.Audio)
@@ -350,7 +352,7 @@ function Get-ImportKandidaten {
             $bib = @($dateien | Where-Object { [SamplesWerkzeuge.ZipWerkzeug301]::BibliothekExt.Contains([SamplesWerkzeuge.ZipWerkzeug301]::Ext($_.Name)) }).Count
             if (-not $audio.Count -and -not $innen -and -not $bib) { continue }   # kein Sample-Pack (z. B. Installer, Dokumente)
             $bytes = [long](($dateien | Measure-Object Groesse -Sum).Sum)
-            if ($bib -or $x.Name -match $RxInstrNamen) { $erg.Add((& $neu $x.Name $voll 'ZIP' $bytes $audio.Count $x.LastWriteTime $false $BIB $false)); continue }
+            if ($bib -or $x.Name -match $RxInstrNamen) { if ($audio.Count) { $erg.Add((& $neu $x.Name $voll 'ZIP' $bytes $audio.Count $x.LastWriteTime $false $bibHinweis $false)) }; continue }
             $h = @(); $an = $true
             if (@($dateien | Where-Object { $_.Verschluesselt }).Count) { $an = $false; $h += 'verschlüsselt – nicht unterstützt' }
             elseif (@($dateien | Where-Object { $_.Methode -ne 0 -and $_.Methode -ne 8 }).Count) { $an = $false; $h += 'Komprimierungsart nicht unterstützt' }

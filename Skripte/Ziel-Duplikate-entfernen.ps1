@@ -37,10 +37,10 @@ Write-Host "  Bibliothek (Ziel): $Ziel"
 Write-Host ""
 
 $inv = Get-NeuesteInventur 'Sample'
-if (-not $inv) { throw "Noch keine Inventur vorhanden. Bitte zuerst 'Inventur starten'." }
+if (-not $inv) { throw "Die Sample-Bibliothek wurde noch nicht eingelesen. Bitte zuerst 'Bibliothek oeffnen' und neu einlesen." }
 Write-Host "Grundlage: $($inv.Name)"
 $alter = (Get-Date) - $inv.LastWriteTime
-if ($alter.TotalHours -ge 24) { Write-Host ("Hinweis: Die Inventur ist {0:N0} Tage alt. Fuer ein genaues Ergebnis vorher eine neue Inventur starten." -f $alter.TotalDays) -ForegroundColor Yellow }
+if ($alter.TotalHours -ge 24) { Write-Host ("Hinweis: Der Stand der Sample-Bibliothek ist {0:N0} Tage alt. Fuer ein genaues Ergebnis vorher neu einlesen (Bibliothek oeffnen)." -f $alter.TotalDays) -ForegroundColor Yellow }
 
 if (-not $Duplikate -and -not $Formate) { $Duplikate = $true }
 $alleZeilen = @(Import-Csv -LiteralPath $inv.FullName -Delimiter ';' -Encoding UTF8)
@@ -164,4 +164,4 @@ $ergebnis | Export-Csv -LiteralPath $csvPfad -NoTypeInformation -Delimiter ';' -
 Write-Host ""
 Write-Host "Fertig. In den Papierkorb verschoben: $ok Dateien | leere Ordner entfernt: $leer | Fehler: $fehler" -ForegroundColor Green
 Write-Host "Protokoll: $csvPfad"
-Write-Host "Bitte danach 'Inventur starten', damit Liste und Bericht den neuen Stand zeigen."
+Write-Host "Bitte danach die Sample-Bibliothek neu einlesen, damit Liste und Bericht den neuen Stand zeigen."

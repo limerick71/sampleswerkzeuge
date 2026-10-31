@@ -57,7 +57,7 @@ $script:BerichtVorlage = @'
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sample-Inventur</title>
+<title>Sample-Bibliothek</title>
 <style>
 :root{
   --bg:#f6f7f9; --karte:#ffffff; --text:#1d2433; --leise:#5f6b7a; --linie:#e2e6ec; --kopf:#eef1f5;
@@ -126,7 +126,7 @@ input.mk{width:16px;height:16px;margin:6px 6px 0 0;vertical-align:top}
 </head>
 <body>
 <header>
-  <h1>Sample-Inventur</h1>
+  <h1>Sample-Bibliothek</h1>
   <div class="unter" id="unter"></div>
 </header>
 <div class="karten" id="karten"></div>
@@ -202,7 +202,7 @@ input.mk{width:16px;height:16px;margin:6px 6px 0 0;vertical-align:top}
     if (ohneDup) {} else if (s.dr === 'entfernbar') m.push(['gelb','Duplikat','gleicher Inhalt liegt noch an anderer Stelle (Gruppe ' + s.g + ') – entfernbar']);
     else if (s.g) m.push(['grau','Duplikat behalten','Gruppe ' + s.g + ': ' + s.dr]);
     if (h.indexOf('unsortiert') >= 0) m.push(['gelb','unsortiert','keinem Instrument zugeordnet']);
-    if (s.n === 'neu') m.push(['gruen','neu','seit der letzten Inventur neu']);
+    if (s.n === 'neu') m.push(['gruen','neu','seit dem letzten Einlesen neu']);
     else if (s.n && s.n.indexOf('verschoben') === 0) m.push(['blau','verschoben',s.n]);
     return m;
   }
@@ -221,7 +221,7 @@ input.mk{width:16px;height:16px;margin:6px 6px 0 0;vertical-align:top}
     if (p.dup) m.push(['gelb', p.dup + ' Duplikat' + (p.dup > 1 ? 'e' : ''), 'entfernbare Duplikate in diesem Pack']);
     if (z.uns) m.push(['gelb', z.uns + ' unsortiert', 'Samples in diesem Pack, die keinem Instrument zugeordnet sind']);
     if (p.lz === 'nein') m.push(['grau','ohne Lizenztext','keine Lizenz- oder Infodatei gefunden']);
-    if (p.neu === 'neu') m.push(['gruen','neu','seit der letzten Inventur neu']);
+    if (p.neu === 'neu') m.push(['gruen','neu','seit dem letzten Einlesen neu']);
     if (p.ah === 'manuell') m.push(['blau','Art manuell','Pack-Art aus Pack-Arten.csv']);
     return m;
   }
@@ -362,7 +362,7 @@ input.mk{width:16px;height:16px;margin:6px 6px 0 0;vertical-align:top}
     });
     h += '</table>';
     if (W.length && !packFilter && !$('suche').value && !$('fProblem').checked) {
-      h += '<h2>Seit der letzten Inventur entfernt (' + W.length + ')</h2><table><tr><th>Sample</th><th>Pack</th><th>früherer Pfad</th></tr>';
+      h += '<h2>Seit dem letzten Einlesen entfernt (' + W.length + ')</h2><table><tr><th>Sample</th><th>Pack</th><th>früherer Pfad</th></tr>';
       W.slice(0, 500).forEach(function(w){ h += '<tr><td><b>' + esc(w.d) + '</b></td><td>' + esc(w.p) + '</td><td class="klein">' + esc(w.v) + '</td></tr>'; });
       h += '</table>';
     }

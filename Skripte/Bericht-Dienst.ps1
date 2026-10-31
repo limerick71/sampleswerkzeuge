@@ -166,7 +166,7 @@ function Remove-Markierte([string[]]$pfade) {
         $z = $nachPfad[([string]$rel).ToLowerInvariant()]
         $voll = Get-ZielPfad $rel
         if (-not $voll) { $status = 'abgelehnt: liegt nicht im Ziel' }
-        elseif (-not $z -or -not $z.'Duplikat-Gruppe') { $status = 'abgelehnt: kein Duplikat laut Inventur' }
+        elseif (-not $z -or -not $z.'Duplikat-Gruppe') { $status = 'abgelehnt: kein Duplikat laut Sample-Bibliothek' }
         elseif ($z.Typ -eq 'Kit') { $status = 'abgelehnt: liegt in einem Kit' }
         elseif (-not (Test-Datei $voll)) { $status = 'nicht mehr vorhanden'; $ok = $true; $weg[$rel.ToLowerInvariant()] = $true }
         else {
@@ -312,7 +312,7 @@ try {
                     if (-not $voll) { Send-Text $strom 404 'Not Found' 'Pfad liegt nicht im Ziel.'; break }
                     if (Test-Datei $voll) { $arg = "/select,`"$voll`"" }
                     elseif (Test-Path -LiteralPath (Split-Path -Parent $voll)) { $arg = "`"$(Split-Path -Parent $voll)`"" }
-                    else { Send-Text $strom 404 'Not Found' 'Datei und Ordner gibt es nicht mehr. Bitte neue Inventur starten.'; break }
+                    else { Send-Text $strom 404 'Not Found' 'Datei und Ordner gibt es nicht mehr. Bitte die Sample-Bibliothek neu einlesen.'; break }
                     Send-Text $strom 200 'OK' 'ok'
                     Open-ExplorerVorne $arg (Split-Path -Parent $voll)
                 }

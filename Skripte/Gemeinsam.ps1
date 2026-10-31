@@ -10,7 +10,7 @@
 #   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
 #   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
 
-$ProgrammVersion = '3.0.1'
+$ProgrammVersion = '4.0'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -565,7 +565,40 @@ function Get-PapierkorbWarnung([string]$pfad, [long]$bytes) {
 }
 
 # Ja/Nein-Abfrage in der Konsole, Standard ist Nein
+# 4.0: Laeuft das Skript im Hauptfenster (SW_GUI=1), kommt die Frage dort als Knopfleiste.
 function Read-JaNein([string]$frage) {
+    if ($env:SW_GUI -eq '1') {
+        [Console]::Out.WriteLine('##FRAGE##' + $frage); [Console]::Out.Flush()
+        $a = [Console]::In.ReadLine()
+        return ([string]$a -match '^\s*[jJyY]')
+    }
     $a = Read-Host "$frage (J/N, Standard N)"
     return ($a -match '^\s*[jJyY]')
+}
+
+# ---------------------------------------------------------------------------
+# 4.0 (GUI-04): Ausgabe fuer das Hauptfenster. Die Skripte laufen dort ohne eigenes Konsolenfenster;
+# Write-Host und Write-Progress werden als Zeilen mit Kennung ausgegeben, die das Fenster auswertet:
+#   ##T##<Farbe>##<Text>     Textzeile (Farbe leer = normal)
+#   ##P##<Prozent>##<Aktivitaet>##<Status>   Fortschritt; Prozent '-' = fertig
+#   ##FRAGE##<Text>          Ja/Nein-Frage (Antwort kommt als Zeile J oder N)
+# ---------------------------------------------------------------------------
+if ($env:SW_GUI -eq '1') {
+    try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { }
+    $script:GuiZeile = ''
+    function Write-Host {
+        param([Parameter(Position = 0, ValueFromPipeline = $true)]$Object, $ForegroundColor, $BackgroundColor, [switch]$NoNewline, $Separator = ' ')
+        process {
+            $t = if ($null -eq $Object) { '' } elseif ($Object -is [array]) { ($Object | ForEach-Object { [string]$_ }) -join $Separator } else { [string]$Object }
+            $script:GuiZeile += $t
+            if ($NoNewline) { return }
+            foreach ($z in ($script:GuiZeile -split "`r?`n")) { [Console]::Out.WriteLine('##T##' + [string]$ForegroundColor + '##' + $z) }
+            $script:GuiZeile = ''
+        }
+    }
+    function Write-Progress {
+        param([Parameter(Position = 0)]$Activity, [Parameter(Position = 1)]$Status, $PercentComplete = -1, [switch]$Completed, $Id, $ParentId, $CurrentOperation, $SecondsRemaining)
+        if ($Completed) { [Console]::Out.WriteLine('##P##-##' + $Activity + '##') }
+        else { [Console]::Out.WriteLine('##P##' + [int]$PercentComplete + '##' + $Activity + '##' + $Status) }
+    }
 }

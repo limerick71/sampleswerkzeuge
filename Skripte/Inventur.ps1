@@ -40,7 +40,7 @@ if ($NurBericht) {
     return
 }
 
-Write-Host "Inventur (Samples-Werkzeuge $ProgrammVersion)" -ForegroundColor Cyan
+Write-Host "Sample-Bibliothek einlesen (Samples-Werkzeuge $ProgrammVersion)" -ForegroundColor Cyan
 Write-Host "  Bibliothek (Ziel): $Ziel"
 Write-Host ""
 $zs = Get-OrdnerStatus $Ziel
@@ -261,7 +261,7 @@ $samples = New-Object System.Collections.Generic.List[object]
 $i = 0
 foreach ($d in $dateien) {
     $i++
-    if ($i % 100 -eq 0) { Write-Progress -Activity 'Inventur' -Status "$i / $($dateien.Count)" -PercentComplete ($i * 100 / $dateien.Count) }
+    if ($i % 100 -eq 0) { Write-Progress -Activity 'Einlesen' -Status "$i / $($dateien.Count)" -PercentComplete ($i * 100 / $dateien.Count) }
     $rel = $d.FullName.Substring($Ziel.Length).TrimStart('\', '/')
     $teile = @($rel -split '[\\/]')
     $istAudio = $d.Name -match $RxAudio
@@ -297,7 +297,7 @@ foreach ($d in $dateien) {
         Geaendert = $geaendert; Hinweis = ($hinweis -join ', ')
     })
 }
-Write-Progress -Activity 'Inventur' -Completed
+Write-Progress -Activity 'Einlesen' -Completed
 Write-Host "  $($samples.Count) Samples erfasst."
 
 # ----------------------------------------------------------------------------
@@ -453,13 +453,13 @@ if ($vorher) {
     $n = @($vergleich | Where-Object { $_.Vergleich -eq 'neu' }).Count
     $e = @($vergleich | Where-Object { $_.Vergleich -eq 'entfernt' }).Count
     $v = @($vergleich | Where-Object { $_.Vergleich -eq 'verschoben' }).Count
-    Write-Host ("Seit letzter Inventur: {0} neu, {1} entfernt, {2} verschoben" -f $n, $e, $v)
-} else { Write-Host "Erste Inventur - ab der naechsten gibt es einen Vergleich." }
+    Write-Host ("Seit dem letzten Einlesen: {0} neu, {1} entfernt, {2} verschoben" -f $n, $e, $v)
+} else { Write-Host "Erstes Einlesen - ab dem naechsten gibt es einen Vergleich." }
 if ($nichtLesbar -gt 0) { Write-Host "Hinweis: $nichtLesbar Ordner waren nicht lesbar." -ForegroundColor Yellow }
 Write-Host ""
 Write-Host "Liste (Excel):  $csvSamples"
 Write-Host "Bericht:        $html" -ForegroundColor Green
-if ([Environment]::UserInteractive -and -not $env:SW_PAPIERKORB) {
+if ([Environment]::UserInteractive -and -not $env:SW_PAPIERKORB -and $env:SW_GUI -ne '1') {   # 4.0: im Hauptfenster oeffnet die Oberflaeche den Bericht
     if (Read-JaNein 'Bericht jetzt im Browser oeffnen?') {
         $psExe = Join-Path $PSHOME 'powershell.exe'; if (-not (Test-Path -LiteralPath $psExe)) { $psExe = 'powershell.exe' }
         try { Start-Process -FilePath $psExe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $PSScriptRoot 'Bericht-Dienst.ps1')`"" -WindowStyle Hidden -ErrorAction Stop }

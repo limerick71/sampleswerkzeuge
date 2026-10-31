@@ -1,10 +1,10 @@
 ﻿ERSTE SCHRITTE – Samples-Werkzeuge
 ============================================================
 
-Die Samples-Werkzeuge kopieren Sample-Packs aus einem Quellordner sortiert nach
+Die Samples-Werkzeuge kopieren Sample-Packs aus Quellordnern sortiert nach
 Instrument (Kick, Snare, Bass, Vocals …, jeweils One-Shots und Loops) in eine
-Sample-Bibliothek, erstellen eine Inventur mit HTML-Bericht und räumen auf
-Wunsch Quelle und Bibliothek auf. Eine Installation ist nicht nötig.
+Sample-Bibliothek, räumen auf Wunsch Quellen und Bibliothek auf und zeigen die
+Bibliothek zum Durchhören im Browser. Eine Installation ist nicht nötig.
 Das Sortieren verändert die Quelle nie – gelöscht wird nur in eigenen, bewusst
 gestarteten Schritten, immer in den Papierkorb.
 
@@ -18,8 +18,8 @@ liegen die Startdateien. Nicht direkt aus der ZIP-Datei starten.
 
 2. STARTEN: GUI_Samples-Werkzeuge.cmd
 ------------------------------------------------------------
-Doppelklick auf die Datei. Es öffnet sich die Oberfläche (kurzes Aufblitzen eines
-schwarzen Fensters ist normal).
+Doppelklick auf die Datei. Es öffnet sich das Hauptfenster (kurzes Aufblitzen
+eines schwarzen Fensters ist normal).
 
 Beim ersten Start erscheint ein Begrüßungsfenster:
   - Haken „Verknüpfung auf dem Desktop anlegen“ gesetzt lassen – danach lässt sich
@@ -28,90 +28,106 @@ Beim ersten Start erscheint ein Begrüßungsfenster:
 Erscheint eine blaue Windows-Warnung („Der Computer wurde durch Windows geschützt“):
 „Weitere Informationen“ > „Trotzdem ausführen“.
 
+Das Hauptfenster führt durch den Ablauf in drei Schritten (blau umrahmt):
+  1 Quellen  ➜  2 Sortieren  ➜  3 Aufräumen
+Jeder Schritt zeigt seinen Stand: grüner Haken = erledigt, oranger Punkt = dort
+ist etwas zu tun. Ein Klick auf einen Schritt zeigt darunter seine Knöpfe; beim
+Öffnen ist der Schritt gewählt, bei dem als Nächstes etwas zu tun ist.
+Darunter liegt die Sample-Bibliothek zum Durchhören (siehe 6).
 
-3. ORDNER EINSTELLEN
+Alles läuft im Hauptfenster: Fortschritt, Ausgabe und Rückfragen erscheinen im
+Ablauf-Bereich. Vor jeder Änderung steht dort eine gelbe Leiste mit der Frage
+und den Knöpfen „Ja, ausführen“ und „Nein“; „Vorschau öffnen“ zeigt vorher die
+vollständige Liste (CSV, z. B. für Excel).
+
+
+3. SCHRITT 1: QUELLEN
 ------------------------------------------------------------
-Unten auf „⚙ Einstellungen“ klicken:
-  - Quellen:  Ordner mit unsortierten Sample-Packs. Mit „Hinzufügen …“ von Hand
-              oder mit „Fundorte suchen …“: das Programm sucht auf dem Rechner
-              nach Sample-Packs und zeigt sie im Browser; dort anhaken und
-              „In Quellenliste übernehmen“. Haken = aktiv.
-              Art je Quelle: „Sammlung“ (jeder Unterordner ein Pack),
-              „Ein Pack“ (alles unter dem Ordnernamen, auch unsortiert),
-              „Nur lose Dateien“ (ohne Unterordner, z. B. lose WAVs in Downloads).
-              Zum Ändern in der Liste auf die Art klicken; ⓘ zeigt am
-              markierten Ordner, was jede Art bewirkt. Downloads, Dokumente
-              usw. immer als „Nur lose Dateien“, Packs darin einzeln.
+Die Liste zeigt alle Quellen mit Art und Zustand.
+  - „Fundorte suchen …“: das Programm sucht auf dem Rechner nach Sample-Packs und
+    zeigt sie im Browser; dort anhaken und „In Quellenliste übernehmen“.
+  - „Quellen bearbeiten …“ (oder unten „⚙ Einstellungen“): Quellen von Hand
+    hinzufügen, an- und abhaken (Haken = aktiv), Art ändern.
+    Art je Quelle: „Sammlung“ (jeder Unterordner ein Pack),
+    „Ein Pack“ (alles unter dem Ordnernamen, auch unsortiert),
+    „Nur lose Dateien“ (ohne Unterordner, z. B. lose WAVs in Downloads).
+    Zum Ändern in der Liste auf die Art klicken; ⓘ zeigt am markierten Ordner,
+    was jede Art bewirkt. Downloads, Dokumente usw. immer als „Nur lose
+    Dateien“, Packs darin einzeln.
+In den Einstellungen außerdem:
   - Ziel:     sortierte Sample-Bibliothek (Standard: Dokumente\Ziel_Samples)
-  - Berichte: hier entstehen Inventuren und Berichte (Standard: Programmordner)
+  - Berichte: hier entstehen Liste und Bericht der Bibliothek (Standard: Programmordner)
   - Downloads / Download-Archiv: für „Download importieren …“ (siehe 4b)
-Die Auswahl wird gespeichert. Der Status im Hauptfenster zeigt danach die
-aktiven Quellen und das Ziel mit Pfad und ob sie gefunden werden.
-Im selben Fenster: „Zusätzlich zur WAV behalten: RX2 / MP3 / AIFF“ (Standard:
-alle an). Ohne Haken wird z. B. eine RX2 nur dann nicht kopiert, wenn im selben
-Pack eine WAV mit gleichem Namen liegt (auch in einem Unterordner wie
-„…-Wav“ neben „…-Rex2“). „Nur WAV“ nimmt alle Haken weg.
+  - „Zusätzlich zur WAV behalten: RX2 / MP3 / AIFF“ (Standard: alle an). Ohne
+    Haken wird z. B. eine RX2 nur dann nicht kopiert, wenn im selben Pack eine
+    WAV mit gleichem Namen liegt. „Nur WAV“ nimmt alle Haken weg.
 
 
-4. SORTIEREN
+4. SCHRITT 2: SORTIEREN
 ------------------------------------------------------------
-Im Bereich „1 Sortieren“ auf „Samples sortieren …“ klicken:
-  - Ein Fenster zeigt eine Zusammenfassung, was wohin kopiert würde. Die
-    vollständige Liste liegt als CSV (für Excel) im Ordner „Protokolle“.
-  - Erst nach Eingabe von „J“ wird kopiert. Mit Enter oder „N“ wird abgebrochen.
+„Vorschau und sortieren …“ klicken:
+  - Im Hauptfenster erscheint eine Zusammenfassung, was wohin kopiert würde.
+    Die vollständige Liste öffnet „Vorschau öffnen“ (CSV).
+  - Erst mit „Ja, ausführen“ wird kopiert, „Nein“ bricht ab.
   - Es wird nur kopiert, nichts überschrieben. Ein zweiter Lauf kopiert nur, was
     neu dazugekommen ist – auch wenn derselbe Inhalt im Ziel unter anderem Namen
     oder in einem anderen Ordner liegt.
   - macOS-Reste (._-Dateien, .DS_Store) werden nicht kopiert.
   - Die Quelle bleibt unverändert; nicht Kopiertes bleibt dort liegen.
+  - Protokolle liegen im Ordner „Protokolle“ und im Ziel unter „99_Protokolle“.
 
 4b. DOWNLOAD IMPORTIEREN (ABKÜRZUNG FÜR NEUE DOWNLOADS)
 ------------------------------------------------------------
-Gerade ein Sample-Pack heruntergeladen? Im Bereich „1 Sortieren“ auf
-„Download importieren …“ klicken:
+Gerade ein Sample-Pack heruntergeladen? Oben im Hauptfenster auf
+„Download importieren …“ klicken (der Kasten ist hervorgehoben, wenn ZIP-Dateien
+im Download-Ordner liegen):
   - Die Liste zeigt neue ZIP-Dateien und Ordner mit Audiodateien im
     Download-Ordner. Schon vollständig Importiertes, RAR/7z und nicht lesbare
-    ZIPs sind grau und nicht anhakbar, ebenso Instrument-Bibliotheken.
+    ZIPs sind grau und nicht anhakbar, ebenso Instrument-Bibliotheken mit
+    Audiodateien. Plugin-Ordner ohne Audiodateien erscheinen gar nicht.
   - Enthält ein Download mehrere Packs (z. B. „Vol 1“, „Vol 2“), steht in der
     Spalte Pack-Art „Sammlung“ – ein Klick darauf ändert die Art.
   - Darunter wählen, was danach mit dem Original passiert: ins Download-Archiv
     verschieben (Standard), im Download-Ordner lassen oder in den Papierkorb.
-  - Ein Fenster entpackt, zeigt die Vorschau wie beim Sortieren und kopiert
-    erst nach „J“. Das Original wird nur verschoben oder gelöscht, wenn alle
-    Dateien per Prüfsumme bestätigt im Ziel liegen.
+  - Im Hauptfenster wird entpackt, die Vorschau gezeigt und erst nach
+    „Ja, ausführen“ kopiert. Das Original wird nur verschoben oder gelöscht,
+    wenn alle Dateien per Prüfsumme bestätigt im Ziel liegen.
 
 
-5. INVENTUR UND BERICHT
+5. SCHRITT 3: AUFRÄUMEN (OPTIONAL)
 ------------------------------------------------------------
-Im Bereich „2 Inventur und Bericht“ auf „Inventur starten“ klicken:
-  - Die Bibliothek wird erfasst: jedes Sample mit Pack, Instrument, Dauer, BPM,
-    Tonart usw., dazu Duplikate und Änderungen seit der letzten Inventur.
-    Es wird nichts verändert.
-  - „Bericht öffnen“ zeigt den Bericht im Browser: Samples, Packs und Duplikate
-    mit Suche, Gliederung (Pack, Instrument, BPM, Tonart …), Filtern und ▶ zum
-    Anhören. In der Ansicht „Duplikate“ lassen sich Samples ankreuzen (auch
-    „Alle markieren“) und direkt in den Papierkorb verschieben. „Ordner öffnen“
-    zeigt das Sample im Explorer, z. B. zum Ziehen in die DAW.
-  - „Liste öffnen (Excel)“ öffnet die Inventur als CSV.
-  - „Duplikate/Formate im Ziel …“ verschiebt doppelte Samples der Bibliothek
-    und auf Wunsch RX2/MP3/AIFF neben einer gleichnamigen WAV nach Vorschau
-    und Rückfrage in den Papierkorb. Danach neue Inventur starten.
-
-
-6. QUELLE AUFRÄUMEN (OPTIONAL)
-------------------------------------------------------------
-Im Bereich „3 Quelle aufräumen“ auf „Quelle aufräumen …“ klicken und wählen
-(bei mehreren Quellen auch, welche aufgeräumt werden):
+„Quellen aufräumen …“ – wählen, was entfernt wird (bei mehreren Quellen auch,
+welche aufgeräumt werden):
   - Duplikate: beim Sortieren als doppelt erkannt, Prüfung per Hash.
   - macOS-Reste: ._-Dateien, .DS_Store, __MACOSX.
   - Formate: RX2, MP3 und/oder AIFF neben gleichnamiger WAV im selben Pack
     (nur wenn die WAV sicher im Ziel liegt). Die Formate wählt man hier eigens.
   - Originale (Standard: aus): alles, was nachweislich im Ziel angekommen ist
     (Prüfsumme). Damit lässt sich die Quelle nach dem Sortieren leeren.
-Danach zeigt ein Fenster die Vorschau; entfernt wird erst nach „J“. Die Dateien
-gehen in den Windows-Papierkorb („Papierkorb öffnen“). Passt die Menge nicht in
-den Papierkorb (oder gibt es keinen, z. B. auf USB-Sticks), erscheint vorher
-eine rote Warnung.
+„Duplikate im Ziel …“ – doppelte Samples der Bibliothek und auf Wunsch RX2/MP3/
+AIFF neben einer gleichnamigen WAV. Grundlage ist der letzte Stand der
+Sample-Bibliothek; danach die Bibliothek neu einlesen.
+Entfernt wird erst nach „Ja, ausführen“. Die Dateien gehen in den Windows-
+Papierkorb („Papierkorb öffnen“). Passt die Menge nicht in den Papierkorb (oder
+gibt es keinen, z. B. auf USB-Sticks), erscheint vorher eine rote Warnung.
+
+
+6. SAMPLE-BIBLIOTHEK
+------------------------------------------------------------
+Unter „Danach: Durchhören und stöbern“ steht die Sample-Bibliothek mit Zahl der
+Samples, Packs und Größe. Ist sie seit dem letzten Einlesen durch Sortieren,
+Import oder Aufräumen veraltet, steht dort „neu einlesen empfohlen“.
+„Bibliothek öffnen“ fragt, ob das Ziel neu eingelesen werden soll:
+  - „Neu einlesen und öffnen“: jedes Sample wird erfasst (Pack, Instrument,
+    Dauer, BPM, Tonart …, dazu Duplikate und Änderungen seit dem letzten
+    Einlesen). Es wird nichts verändert. Danach öffnet sich der Bericht.
+  - „Letzten Stand öffnen“: öffnet sofort den letzten Bericht.
+Der Bericht im Browser zeigt Samples, Packs und Duplikate mit Suche, Gliederung
+(Pack, Instrument, BPM, Tonart …), Filtern und ▶ zum Anhören. In der Ansicht
+„Duplikate“ lassen sich Samples ankreuzen und direkt in den Papierkorb
+verschieben. „Ordner öffnen“ zeigt das Sample im Explorer, z. B. zum Ziehen in
+die DAW. „Als Excel-Liste“ öffnet die Liste als CSV, „Änderungen anzeigen“ den
+Vergleich mit dem vorherigen Stand.
 
 
 WICHTIG

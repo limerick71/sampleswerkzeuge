@@ -11,11 +11,11 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 | Pfad | Inhalt |
 |---|---|
 | `GUI_Samples-Werkzeuge.cmd` | Startet die Oberfläche |
-| `Samples sortieren.cmd`, `Inventur starten.cmd`, `Quelle aufraeumen.cmd` | Starten die Funktionen ohne Oberfläche |
+| `Samples sortieren.cmd`, `Bibliothek einlesen.cmd`, `Quelle aufraeumen.cmd` | Starten die Funktionen ohne Oberfläche (Konsole) |
 | `Erste Schritte.txt`, `Dokumentation Samples-Werkzeuge.rtf` | Anleitungen |
 | `Test/` | `Testvorbereitung.cmd/.ps1` – nur für Tests: Ziel leeren, erstes Pack „SINEE…“ und „Vocal Loops 120“ in der Quelle in den Papierkorb |
-| `Skripte/` | `Gemeinsam.ps1` (Pfade, Einstellungen), `Samples-Werkzeuge.ps1` (Oberfläche), `Samples-sortieren.ps1`, `Inventur.ps1`, `Bericht.ps1` (HTML-Bericht), `Bericht-Dienst.ps1` (lokaler Dienst für Abspielen, Löschen und Ordner öffnen aus dem Bericht sowie für den Fundort-Bericht), `Fundorte-suchen.ps1` (Suchlauf nach Sample-Packs), `Fundorte-Bericht.ps1` (Seite des Fundort-Berichts), `Ziel-Duplikate-entfernen.ps1`, `Quelle-aufraeumen.ps1`, `Download-importieren.ps1` (Import aus dem Download-Ordner), `Import.ps1` (ZIP lesen und sicher entpacken, Kandidaten im Download-Ordner); zur Laufzeit `Einstellungen.json` und `Pack-Arten.csv` |
-| `Inventuren/`, `Inventur-Vergleiche/` | entstehen zur Laufzeit im Berichtsordner: Inventur (CSV, JSON), HTML-Bericht, Vergleiche |
+| `Skripte/` | `Gemeinsam.ps1` (Pfade, Einstellungen), `Samples-Werkzeuge.ps1` (Hauptfenster, WPF, mit Ausgabe der Skripte im Fenster), `Dialoge.ps1` (übrige Fenster, WinForms), `Samples-sortieren.ps1`, `Inventur.ps1` (Sample-Bibliothek einlesen), `Bericht.ps1` (HTML-Bericht), `Bericht-Dienst.ps1` (lokaler Dienst für Abspielen, Löschen und Ordner öffnen aus dem Bericht sowie für den Fundort-Bericht), `Fundorte-suchen.ps1` (Suchlauf nach Sample-Packs), `Fundorte-Bericht.ps1` (Seite des Fundort-Berichts), `Ziel-Duplikate-entfernen.ps1`, `Quelle-aufraeumen.ps1`, `Download-importieren.ps1` (Import aus dem Download-Ordner), `Import.ps1` (ZIP lesen und sicher entpacken, Kandidaten im Download-Ordner); zur Laufzeit `Einstellungen.json` und `Pack-Arten.csv` |
+| `Inventuren/`, `Inventur-Vergleiche/` | entstehen zur Laufzeit im Berichtsordner beim Einlesen der Sample-Bibliothek: Liste (CSV, JSON), HTML-Bericht, Vergleiche |
 | `Protokolle/` | entsteht zur Laufzeit: Vorschauen und Protokolle (CSV) |
 | `tools/` | nur im Repository: erzeugt die RTF-Dokumentation (`python3 tools/dokumentation.py`) |
 
@@ -23,6 +23,7 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 
 | Version | Datum | Inhalt |
 |---|---|---|
+| 4.0 | 31.10.2026 | Neues Hauptfenster (WPF): geführter Ablauf Quellen ➜ Sortieren ➜ Aufräumen mit Stand je Schritt, Download importieren als Abkürzung, „Sample-Bibliothek“ statt Inventur (fragt beim Öffnen nach dem Einlesen); Fortschritt, Ausgabe und Rückfragen im Fenster statt eigener Konsolen; Import zeigt Plugin-Ordner ohne Audio nicht mehr |
 | 3.0.1 | 31.10.2026 | Befunde aus dem Test der 3.0: Import erkennt Instrument-Bibliotheken und Bundles (Pack-Art änderbar), übergeht Downloads ohne Audio; erste Ordnerebene unter dem Pack bleibt erhalten; Protokolle im Ziel unter 99_Protokolle |
 | 3.0 | 30.10.2026 | Download importieren: frisch heruntergeladene Packs (ZIP oder Ordner) in einem Schritt entpacken, einsortieren und das Original ins Download-Archiv verschieben, liegen lassen oder in den Papierkorb legen – mit Vorschau, Prüfsummen und Import-Protokoll; Instrument-Kürzel zuverlässiger; Archive im Fundort-Bericht als eigene Zeile |
 | 2.3.5 | 30.10.2026 | Befunde aus dem Test der 2.3.4: One-Shots mit Laufnummer; einheitlich „Sortieren“; Fundort-Bericht mit Quelle und „(deaktiviert)“, Haken für alle; ZIP mit ungewöhnlichen Namen; Fundorte-Fenster merkt die Auswahl; „Quelle aufräumen“ fragt zuerst die Quellen; „Packs liegen tiefer“ deutlich sichtbar; Cubase/Ableton-Projekte wieder als DAW-Projekt |
