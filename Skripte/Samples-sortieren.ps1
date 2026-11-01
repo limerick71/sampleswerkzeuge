@@ -196,6 +196,15 @@ function Find-Instrument([string]$Text, [string]$Pack = '') {
     return $null
 }
 
+# 4.0.2: Dateiname nennt ein Instrument, aber kein Vocal-Wort (dann geht er einem Pack-/Ordnernamen "Vocal" vor)
+function Test-AnderesInstrument([string]$Datei, [string]$Pack) {
+    $d = $Datei.ToLowerInvariant()
+    if ($d -match $RxVocalWort) { return $false }
+    $i = Find-Instrument $Datei $Pack
+    return ($i -and $i -ne 'Vocals')
+}
+$RxVocalWort = 'vocal|(?<![a-z])vox(?![a-z])|acapella|a ?cappella|adlib|ad-lib|choir|chant|(?<![a-z])vocs?(?![a-z])'
+
 function Get-Typ([string]$Datei, [string[]]$Ordner, [string]$Pfad, [long]$Groesse, [string]$Instrument, [bool]$StandardLoop) {
     $d = $Datei.ToLowerInvariant()
     if ($d -match $RxOneShot) { return 'One-Shots' }
@@ -365,7 +374,9 @@ foreach ($f in $alle) {
     }
     # --- Melodische / thematische Packs -----------------------------------
     # 2.3.2: Vocals auch ueber Ordnernamen im Pack erkennen (z. B. "Pack\Vocal Loops\...")
-    elseif ($teile[0] -eq 'Vocals' -or $pack -match 'Vocal' -or @($packOrdner | Where-Object { $_ -match '\bVocals?\b|\bVox\b|Acapella|A cappella' }).Count) {
+    # 4.0.2: Nennt der Dateiname ein anderes Instrument (z. B. "brass_saxophone_loop", "bass_synth_loop") und
+    # kein Vocal-Wort, geht er dem Pack- bzw. Ordnernamen "Vocal" vor (Splice-Packs wie "Vocal Sessions ...").
+    elseif ($teile[0] -eq 'Vocals' -or (($pack -match 'Vocal' -or @($packOrdner | Where-Object { $_ -match '\bVocals?\b|\bVox\b|Acapella|A cappella' }).Count) -and -not (Test-AnderesInstrument $basis $pack))) {
         # 2.3.4: wie die anderen Kategorien ohne den inneren Ordnerweg (gleichnamige Dateien bekommen unten ihren Unterordner)
         $kat = 'Vocals'; $zr = Join-Rel @($K.Vocals, $pack, $unter, $name)
     } elseif ($teile[0] -eq 'Brass') {

@@ -91,7 +91,7 @@ function Show-Begruessung {
     $d.StartPosition = 'CenterParent'
     $d.FormBorderStyle = 'FixedDialog'
     $d.MaximizeBox = $false; $d.MinimizeBox = $false
-    $d.ClientSize = New-Object System.Drawing.Size(520, 418)
+    $d.ClientSize = New-Object System.Drawing.Size(520, 434)
     $d.Font = $schrift
     $d.BackColor = [System.Drawing.Color]::White
 
@@ -119,18 +119,24 @@ function Show-Begruessung {
     $dl.Location = New-Object System.Drawing.Point(20, 310); $dl.AutoSize = $true
     $dl.Add_LinkClicked({ try { Start-Process $DownloadSeite } catch { } })
     $d.Controls.Add($dl)
+    # 4.0.2: Webseite
+    $ws = New-Object System.Windows.Forms.LinkLabel
+    $ws.Text = 'make-some-music.de'
+    $ws.Location = New-Object System.Drawing.Point(20, 330); $ws.AutoSize = $true
+    $ws.Add_LinkClicked({ try { Start-Process $WebSeite } catch { } })
+    $d.Controls.Add($ws)
 
     $cb = New-Object System.Windows.Forms.CheckBox
     $cb.Text = 'Verknüpfung auf dem Desktop anlegen'
     $lnkZiel = ''
     if (Test-Path -LiteralPath $verknuepfung) { try { $lnkZiel = (New-Object -ComObject WScript.Shell).CreateShortcut($verknuepfung).Arguments } catch { } }
     $cb.Checked = $true   # Standard: anlegen bzw. auf diese Version erneuern (W-01, 27.10.)
-    $cb.Location = New-Object System.Drawing.Point(20, 340); $cb.AutoSize = $true
+    $cb.Location = New-Object System.Drawing.Point(20, 356); $cb.AutoSize = $true
     $d.Controls.Add($cb)
 
     $ok = New-Object System.Windows.Forms.Button
     $ok.Text = 'Los geht''s'; $ok.FlatStyle = 'System'
-    $ok.Location = New-Object System.Drawing.Point(390, 372); $ok.Size = New-Object System.Drawing.Size(110, 32)
+    $ok.Location = New-Object System.Drawing.Point(390, 388); $ok.Size = New-Object System.Drawing.Size(110, 32)
     $ok.DialogResult = 'OK'
     $d.Controls.Add($ok)
     $d.AcceptButton = $ok

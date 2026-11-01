@@ -23,6 +23,7 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 
 | Version | Datum | Inhalt |
 |---|---|---|
+| 4.0.2 | 01.11.2026 | Befunde aus dem Test der 4.0.1: Verlauf im Vorgangsmonitor scrollbar und mit dem Fenster wachsend, nur noch „Ausblenden“/„Einblenden“, „Abgebrochen“ nach „Nein“, Überschriften blau; Instrument im Dateinamen vor Pack-Name „Vocal“; make-some-music.de im Urheberhinweis; Import-Kasten größer geschrieben |
 | 4.0.1 | 01.11.2026 | Befunde aus dem Test der 4.0: Vorgangsmonitor (Schließen/Einblenden, gehört zu seinem Schritt, Ausgabe als Textdatei); keine falsche Fehlermeldung durch Fortschrittsdaten; Stand von Ablauf und Bibliothek aus dem Ziel (99_Protokolle); Import-Kasten zählt nur ZIPs mit Samples; „Nur lose Dateien“ nur neue Audiodateien; Ordner öffnen mit dem richtigen Ordner; „Abbrechen“ rechts |
 | 4.0 | 31.10.2026 | Neues Hauptfenster (WPF): geführter Ablauf Quellen ➜ Sortieren ➜ Aufräumen mit Stand je Schritt, Download importieren als Abkürzung, „Sample-Bibliothek“ statt Inventur (fragt beim Öffnen nach dem Einlesen); Fortschritt, Ausgabe und Rückfragen im Fenster statt eigener Konsolen; Import zeigt Plugin-Ordner ohne Audio nicht mehr |
 | 3.0.1 | 31.10.2026 | Befunde aus dem Test der 3.0: Import erkennt Instrument-Bibliotheken und Bundles (Pack-Art änderbar), übergeht Downloads ohne Audio; erste Ordnerebene unter dem Pack bleibt erhalten; Protokolle im Ziel unter 99_Protokolle |
@@ -44,5 +45,5 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 
 Geplant: Neuordnung der Oberfläche (GUI-07), wenn alle Funktionen drin sind.
 
-© 2026 Herbert Stöcker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite
+© 2026 Herbert Stöcker · [make-some-music.de](https://make-some-music.de). Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite
 weitergeben; Verkauf und Veröffentlichung geänderter Fassungen nur mit Zustimmung.

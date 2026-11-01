@@ -189,7 +189,7 @@ $xaml = @'
         <Button x:Name="LnkProgramm" DockPanel.Dock="Left" Style="{StaticResource Link}" Content="Programmordner"/>
         <Button x:Name="LnkVerknuepfung" DockPanel.Dock="Left" Style="{StaticResource Link}" Content="Desktop-Verknüpfung anlegen" ToolTip="Legt die Verknüpfung „Samples-Werkzeuge“ auf dem Desktop an bzw. lässt sie auf diese Version zeigen."/>
         <Button x:Name="BtnSchliessen" DockPanel.Dock="Right" Style="{StaticResource Knopf}" Content="Schließen" Margin="0" IsCancel="True"/>
-        <TextBlock x:Name="TxtUrheber" DockPanel.Dock="Right" Foreground="{StaticResource Leise}" FontSize="12" VerticalAlignment="Center" Margin="0,0,14,0"/>
+        <TextBlock x:Name="TxtUrheber" DockPanel.Dock="Right" Foreground="{StaticResource Leise}" FontSize="12" VerticalAlignment="Center" Margin="0,0,14,0"><Run x:Name="TxtUrheberName"/><Run Text="  ·  "/><Hyperlink x:Name="LnkWebseite" NavigateUri="https://make-some-music.de" Foreground="#2C5AA0">make-some-music.de</Hyperlink></TextBlock>
       </DockPanel>
     </Border>
 
@@ -209,8 +209,8 @@ $xaml = @'
                     ToolTip="Frisch heruntergeladene Sample-Packs (ZIP oder Ordner im Download-Ordner) in einem Schritt entpacken, einsortieren und das Original ins Download-Archiv verschieben, liegen lassen oder in den Papierkorb legen. Mit Vorschau und Rückfrage."/>
             <TextBlock Text="⬇" FontSize="22" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="#2C5AA0"/>
             <StackPanel VerticalAlignment="Center">
-              <TextBlock x:Name="TxtImport1" FontWeight="SemiBold" TextWrapping="Wrap"/>
-              <TextBlock Text="Abkürzung durch alle drei Schritte: entpacken, einsortieren, Original ins Download-Archiv." Foreground="{StaticResource Leise}" FontSize="12.5" TextWrapping="Wrap"/>
+              <TextBlock x:Name="TxtImport1" FontWeight="SemiBold" FontSize="17" TextWrapping="Wrap"/>
+              <TextBlock Text="Abkürzung durch alle drei Schritte: entpacken, einsortieren, Original ins Download-Archiv." Foreground="{StaticResource Leise}" FontSize="13.5" TextWrapping="Wrap" Margin="0,2,0,0"/>
             </StackPanel>
           </DockPanel>
         </Grid>
@@ -301,6 +301,7 @@ $xaml = @'
             <Border x:Name="MonitorZeile" Visibility="Collapsed" Margin="16,12,16,0" BorderBrush="{StaticResource Linie}" BorderThickness="1" CornerRadius="8" Background="#F3F5F8" Padding="12,7">
               <DockPanel>
                 <Button x:Name="LnkEinblenden" DockPanel.Dock="Right" Style="{StaticResource Link}" Content="Einblenden" Margin="10,0,0,0"/>
+                <Button x:Name="LnkZeileDatei" DockPanel.Dock="Right" Style="{StaticResource Link}" Content="Protokoll öffnen" Margin="10,0,0,0" Visibility="Collapsed"/>
                 <TextBlock x:Name="MonitorZeileText" Foreground="{StaticResource Leise}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
               </DockPanel>
             </Border>
@@ -308,8 +309,7 @@ $xaml = @'
               <StackPanel>
                 <Border Background="#F3F5F8" CornerRadius="8,8,0,0" Padding="12,7">
                   <DockPanel>
-                    <Button x:Name="LnkLaufZu" DockPanel.Dock="Right" Style="{StaticResource Link}" Content="Schließen" Margin="10,0,0,0" ToolTip="Schließt den Vorgangsmonitor; an seiner Stelle bleibt eine Zeile zum Einblenden."/>
-                    <Button x:Name="LnkLogUmschalten" DockPanel.Dock="Right" Style="{StaticResource Link}" Content="Ausgabe ausblenden" Margin="10,0,0,0"/>
+                    <Button x:Name="LnkLaufZu" DockPanel.Dock="Right" Style="{StaticResource Link}" Content="Ausblenden" Margin="10,0,0,0" ToolTip="Klappt den Vorgangsmonitor zu einer Zeile zusammen; dort holt „Einblenden“ ihn zurück."/>
                     <TextBlock VerticalAlignment="Center" Margin="0,0,12,0"><Run Text="Vorgangsmonitor  ·  " Foreground="#5E6A7A"/><Run x:Name="LaufTitel" FontWeight="SemiBold"/></TextBlock>
                     <ProgressBar x:Name="LaufBalken" Width="220" Height="8" VerticalAlignment="Center" Foreground="#2C5AA0" Background="#D6DCE4" BorderThickness="0" Margin="0,0,10,0"/>
                     <TextBlock x:Name="LaufStatus" Foreground="{StaticResource Leise}" FontSize="12.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -417,20 +417,21 @@ try {
     exit 1
 }
 $ui = @{}
-foreach ($n in @('BtnEinstellungen', 'BtnDoku', 'LnkProtokolle', 'LnkProgramm', 'LnkVerknuepfung', 'BtnSchliessen', 'TxtUrheber', 'TxtUnter',
+foreach ($n in @('BtnEinstellungen', 'BtnDoku', 'LnkProtokolle', 'LnkProgramm', 'LnkVerknuepfung', 'BtnSchliessen', 'TxtUrheber', 'TxtUrheberName', 'LnkWebseite', 'TxtUnter',
                  'ImportRahmen', 'BtnImport', 'TxtImport1',
                  'Schritt1', 'Schritt2', 'Schritt3', 'Num1', 'Num2', 'Num3', 'NumT1', 'NumT2', 'NumT3', 'Name1', 'Name2', 'Name3',
                  'Stand1', 'Stand2', 'Stand3', 'Pille1', 'Pille2', 'Pille3', 'PilleT1', 'PilleT2', 'PilleT3', 'Spitze',
                  'Feld1', 'Feld2', 'Feld3', 'QuellListe', 'BtnFundorte', 'BtnQuellen', 'Fakten2', 'BtnSortieren', 'BtnZielOeffnen',
                  'LnkSortProt', 'LnkImportProt', 'Fakten3', 'BtnQuelleAuf', 'BtnZielDup', 'LnkPapierkorb',
-                 'Lauf', 'MonitorZeile', 'LnkEinblenden', 'MonitorZeileText', 'LnkLaufZu', 'LnkLogUmschalten', 'LaufTitel', 'LaufBalken', 'LaufStatus', 'FrageLeiste', 'LnkFrageDatei', 'BtnJa', 'BtnNein',
+                 'Lauf', 'MonitorZeile', 'LnkEinblenden', 'MonitorZeileText', 'LnkLaufZu', 'LnkZeileDatei', 'LaufTitel', 'LaufBalken', 'LaufStatus', 'FrageLeiste', 'LnkFrageDatei', 'BtnJa', 'BtnNein',
                  'FrageText', 'EndeLeiste', 'LnkEndeDatei', 'EndeText', 'LaufLog',
                  'KpiSamples', 'KpiPacks', 'KpiGroesse', 'TxtBibStand', 'BtnBibliothek', 'LnkExcel', 'BibAenderungen', 'LnkAenderungen', 'LnkPackArten')) {
     $ui[$n] = $win.FindName($n)
 }
 $win.Title = "Samples-Werkzeuge $ProgrammVersion"
 $ui.TxtUnter.Text = "Version $ProgrammVersion  ·  Sample-Packs finden, einsortieren, aufräumen – und dann durchhören."
-$ui.TxtUrheber.Text = $UrheberKurz
+$ui.TxtUrheberName.Text = $UrheberKurz
+$ui.LnkWebseite.Add_RequestNavigate({ param($s, $ev) try { Start-Process $WebSeite } catch { }; $ev.Handled = $true })
 $ui.TxtUrheber.ToolTip = $Urheberhinweis
 $ui.LnkProgramm.ToolTip = $basis
 try {
@@ -483,17 +484,21 @@ $script:laufSchritt = 0          # 4.0.1: Schritt, zu dem der Vorgangsmonitor ge
 $script:laufZeilen = New-Object System.Collections.Generic.List[string]   # gesamte Ausgabe (fuer die Textdatei)
 $script:laufStart = $null
 $script:laufErgebnis = ''
+$script:laufNein = $false
+$script:logNeu = 0
 $script:monitorOffen = $false
 $zeitgeber = New-Object System.Windows.Threading.DispatcherTimer
 $zeitgeber.Interval = [TimeSpan]::FromMilliseconds(120)
 
 function Test-LaufAktiv { return ($null -ne $script:lauf) }
 
-function Add-LogZeile([string]$text, $pinsel) {
+function Add-LogZeile([string]$text, $pinsel, [bool]$fett = $false) {
     $script:laufZeilen.Add($text)
+    $script:logNeu++
     $tb = New-Object System.Windows.Controls.TextBlock
     $tb.Text = $text
     if ($pinsel) { $tb.Foreground = $pinsel }
+    if ($fett) { $tb.FontWeight = 'Bold' }
     [void]$ui.LaufLog.Items.Add($tb)
     while ($ui.LaufLog.Items.Count -gt 4000) { $ui.LaufLog.Items.RemoveAt(0) }
 }
@@ -508,6 +513,8 @@ function Update-Monitor {
     $ui.Lauf.Visibility = $(if ($hier -and $script:monitorOffen) { 'Visible' } else { 'Collapsed' })
     $ui.MonitorZeile.Visibility = $(if ($hier -and -not $script:monitorOffen) { 'Visible' } else { 'Collapsed' })
     $ui.MonitorZeileText.Text = "Vorgangsmonitor  ·  $($ui.LaufTitel.Text) $([char]0x2013) $($script:laufErgebnis)"
+    $ui.LnkZeileDatei.Visibility = $ui.LnkEndeDatei.Visibility
+    $ui.LnkZeileDatei.Content = $ui.LnkEndeDatei.Content
 }
 
 function Set-Bedienbar([bool]$an) {
@@ -539,7 +546,8 @@ function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 
     $ui.LaufBalken.Visibility = 'Visible'
     $ui.FrageLeiste.Visibility = 'Collapsed'
     $ui.EndeLeiste.Visibility = 'Collapsed'
-    $ui.LaufLog.Visibility = 'Visible'; $ui.LnkLogUmschalten.Content = 'Ausgabe ausblenden'
+    $ui.LaufLog.Visibility = 'Visible'
+    $script:logUnten = $true; $script:laufNein = $false
     $ui.Lauf.Visibility = 'Visible'; $ui.MonitorZeile.Visibility = 'Collapsed'
     $script:laufDatei = ''; $script:laufFehler = $false; $script:laufEnde = $null; $script:laufNachher = $nachher
     try {
@@ -558,6 +566,7 @@ function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 
 }
 
 function Read-LaufZeilen {
+    $script:logNeu = 0
     foreach ($z in $script:lauf.Hole()) {
         if ($z.StartsWith('##T##')) {
             $rest = $z.Substring(5); $i = $rest.IndexOf('##')
@@ -566,7 +575,10 @@ function Read-LaufZeilen {
             $pinsel = switch ($farbe) { 'Red' { $SWF.Rot } 'DarkRed' { $SWF.Rot } 'Green' { $SWF.Ok } 'DarkGreen' { $SWF.Ok } 'Yellow' { $SWF.Warn } 'DarkYellow' { $SWF.Warn }
                                         'Cyan' { $SWF.Cyan } 'DarkCyan' { $SWF.Cyan } 'DarkGray' { $SWF.Leise } 'Gray' { $SWF.Leise } default { $null } }
             if ($text -match '^\s*FEHLER') { $pinsel = $SWF.Rot; $script:laufFehler = $true }
-            Add-LogZeile $text $pinsel
+            # 4.0.2 (Befund 5): Ueberschriften wie "===== Ergebnis =====" blau und fett statt orange
+            $fett = $false
+            if ($text -match '^\s*={3,}.*={3,}\s*$') { $pinsel = $SWF.Akzent; $fett = $true }
+            Add-LogZeile $text $pinsel $fett
             # Zuletzt genannte Datei (Vorschau, Protokoll, Bericht) zum Oeffnen anbieten
             if ($text -match '([A-Za-z]:\\[^<>|"*?]+\.(csv|html))\s*$') { $script:laufDatei = $Matches[1] }
         } elseif ($z.StartsWith('##P##')) {
@@ -604,7 +616,8 @@ function Read-LaufZeilen {
             Add-LogZeile $z $null
         }
     }
-    if ($ui.LaufLog.Items.Count) { $ui.LaufLog.ScrollIntoView($ui.LaufLog.Items[$ui.LaufLog.Items.Count - 1]) }
+    # 4.0.2 (Befund 1): nur bei neuen Zeilen und nur, wenn man unten steht
+    if ($script:logNeu -gt 0 -and $script:logUnten -and $ui.LaufLog.Items.Count) { $ui.LaufLog.ScrollIntoView($ui.LaufLog.Items[$ui.LaufLog.Items.Count - 1]) }
 }
 
 function Stop-LaufAnzeige {
@@ -615,13 +628,15 @@ function Stop-LaufAnzeige {
     $ui.FrageLeiste.Visibility = 'Collapsed'
     $ui.LaufBalken.Visibility = 'Collapsed'
     $ui.LaufStatus.Text = ''
-    $ui.EndeText.Text = $(if ($ok) { "$([char]0x2714)  Fertig." } else { "$([char]0x26A0)  Beendet mit Fehler – Details in der Ausgabe." })
-    $ui.EndeText.Foreground = $(if ($ok) { $SWF.Ok } else { $SWF.Rot })
+    # 4.0.2 (Befund 8): nach "Nein" abgebrochen statt fertig
+    $nein = ($ok -and $script:laufNein)
+    $ui.EndeText.Text = $(if ($nein) { 'Abgebrochen – es wurde nichts geändert.' } elseif ($ok) { "$([char]0x2714)  Fertig." } else { "$([char]0x26A0)  Beendet mit Fehler – Details im Verlauf." })
+    $ui.EndeText.Foreground = $(if ($nein) { $SWF.Leise } elseif ($ok) { $SWF.Ok } else { $SWF.Rot })
     $hatDatei = ($script:laufDatei -and (Test-Path -LiteralPath $script:laufDatei))
     $ui.LnkEndeDatei.Visibility = $(if ($hatDatei) { 'Visible' } else { 'Collapsed' })
     $ui.LnkEndeDatei.Content = $(if ($script:laufDatei -match '\.html$') { 'Bericht öffnen' } elseif ($script:laufDatei -match 'Vorschau') { 'Vorschau öffnen' } else { 'Protokoll öffnen' })
     $ui.EndeLeiste.Visibility = 'Visible'
-    $script:laufErgebnis = $(if ($ok) { 'Fertig' } else { 'Beendet mit Fehler' }) + " ($((Get-Date).ToString('HH:mm')))"
+    $script:laufErgebnis = $(if ($nein) { 'Abgebrochen' } elseif ($ok) { 'Fertig' } else { 'Beendet mit Fehler' }) + " ($((Get-Date).ToString('HH:mm')))"
     # 4.0.1: Ausgabe als Textdatei im Protokollordner (Befund 4)
     try {
         [void][IO.Directory]::CreateDirectory($protokollOrdner)
@@ -632,7 +647,7 @@ function Stop-LaufAnzeige {
     Update-Monitor
     Set-Bedienbar $true
     Update-Status
-    if ($ok -and $script:laufNachher) { Invoke-Sicher $script:laufNachher }
+    if ($ok -and -not $nein -and $script:laufNachher) { Invoke-Sicher $script:laufNachher }
     $script:laufNachher = $null
 }
 
@@ -660,6 +675,7 @@ Set-Klick $ui.BtnNein {
     if (-not $script:lauf) { return }
     $ui.FrageLeiste.Visibility = 'Collapsed'; $ui.LaufBalken.IsIndeterminate = $true; $ui.LaufStatus.Text = 'läuft …'
     Add-LogZeile "> $($ui.FrageText.Text)  Nein" $SWF.Akzent
+    $script:laufNein = $true
     $script:lauf.Antwort('N')
 }
 Set-Klick $ui.LnkFrageDatei { Open-Pfad $script:laufDatei }
@@ -668,10 +684,17 @@ Set-Klick $ui.LnkEndeDatei {
 }
 Set-Klick $ui.LnkLaufZu { $script:monitorOffen = $false; Update-Monitor }
 Set-Klick $ui.LnkEinblenden { $script:monitorOffen = $true; Update-Monitor; $ui.Lauf.BringIntoView() }
-Set-Klick $ui.LnkLogUmschalten {
-    if ($ui.LaufLog.Visibility -eq 'Visible') { $ui.LaufLog.Visibility = 'Collapsed'; $ui.LnkLogUmschalten.Content = 'Ausgabe einblenden' }
-    else { $ui.LaufLog.Visibility = 'Visible'; $ui.LnkLogUmschalten.Content = 'Ausgabe ausblenden' }
+Set-Klick $ui.LnkZeileDatei {
+    if ($script:laufDatei -match '\.html$' -and $script:laufDatei -match 'Inventur') { Open-Bericht } else { Open-Pfad $script:laufDatei }
 }
+# 4.0.2 (Befund 1): Verlauf nur nachziehen, wenn man unten steht - sonst bleibt die Stelle, an die man gescrollt hat
+$script:logUnten = $true
+$ui.LaufLog.AddHandler([System.Windows.Controls.ScrollViewer]::ScrollChangedEvent, [System.Windows.Controls.ScrollChangedEventHandler]{
+    param($s, $ev)
+    if ($ev.ExtentHeightChange -eq 0) { $script:logUnten = (($ev.VerticalOffset + $ev.ViewportHeight) -ge ($ev.ExtentHeight - 1)) }
+})
+# 4.0.2 (Befund 3): Verlauf waechst mit dem Fenster
+$win.Add_SizeChanged({ try { $ui.LaufLog.Height = [Math]::Max(210, [Math]::Floor($win.ActualHeight * 0.42)) } catch { } })
 
 # ---------------------------------------------------------------------------
 # Schritte des Ablaufs

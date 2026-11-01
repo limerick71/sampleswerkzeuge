@@ -215,7 +215,7 @@ tr.weg td{opacity:.55}
   } else { $('ohneDienst').style.display = 'block'; }
   karten(); zeichnen();
 })();
-</script></body></html>
+</script><footer style="color:#5E6A7A;font-size:12px;padding:8px 28px 30px">© 2026 Herbert Stöcker · <a href="https://make-some-music.de" target="_blank" rel="noopener">make-some-music.de</a></footer></body></html>
 '@
     return $vorlage.Replace('__DATEN__', $json.Replace('</', '<\/'))
 }

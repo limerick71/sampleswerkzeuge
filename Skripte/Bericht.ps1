@@ -170,7 +170,8 @@ input.mk{width:16px;height:16px;margin:6px 6px 0 0;vertical-align:top}
   var neu = S.filter(function(s){ return s.n === 'neu'; }).length;
   var dupE = S.filter(function(s){ return s.dr === 'entfernbar'; });
   $('unter').textContent = 'Stand ' + (M.Datum || '') + (M.Rechner ? ' · ' + M.Rechner : '') + ' · ' + (M.Ziel || '');
-  $('fuss').textContent = (M.Version || '') + ' · Datei ' + (M.Csv || '') + (M.Verglichen ? ' · verglichen mit ' + M.Verglichen : '');
+  $('fuss').textContent = (M.Version || '') + ' · Datei ' + (M.Csv || '') + (M.Verglichen ? ' · verglichen mit ' + M.Verglichen : '') + ' · © 2026 Herbert Stöcker · ';
+  (function(){ var a = document.createElement('a'); a.href = 'https://make-some-music.de'; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'make-some-music.de'; $('fuss').appendChild(a); })();
 
   // Kennzahlen
   function karte(w,t){ return '<div class="karte"><b>' + esc(w) + '</b><span>' + esc(t) + '</span></div>'; }

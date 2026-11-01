@@ -35,13 +35,14 @@ ist etwas zu tun. Ein Klick auf einen Schritt zeigt darunter seine Knöpfe; beim
 Öffnen ist der Schritt gewählt, bei dem als Nächstes etwas zu tun ist.
 Darunter liegt die Sample-Bibliothek zum Durchhören (siehe 6).
 
-Alles läuft im Hauptfenster: Fortschritt, Meldungen (die „Ausgabe“) und
+Alles läuft im Hauptfenster: Fortschritt, Meldungen (der „Verlauf“) und
 Rückfragen erscheinen im Vorgangsmonitor im Ablauf-Bereich. Vor jeder Änderung
 steht dort eine gelbe Leiste mit der Frage und den Knöpfen „Ja, ausführen“ und
 „Nein“; „Vorschau öffnen“ zeigt vorher die vollständige Liste (CSV, z. B. für
-Excel). „Schließen“ klappt den Vorgangsmonitor zu einer Zeile zusammen,
-„Einblenden“ holt ihn an derselben Stelle zurück. Die Meldungen jedes Vorgangs
-liegen außerdem als Textdatei im Ordner „Protokolle“.
+Excel). Nach „Nein“ steht dort „Abgebrochen – es wurde nichts geändert.“
+„Ausblenden“ klappt den Vorgangsmonitor zu einer Zeile zusammen, „Einblenden“
+holt ihn an derselben Stelle zurück. Der Verlauf jedes Vorgangs liegt außerdem
+als Textdatei im Ordner „Protokolle“.
 
 
 3. SCHRITT 1: QUELLEN
@@ -145,6 +146,7 @@ Neueste Version und offizielle Download-Seite (zum Weitergeben bitte nur
 diesen Link verwenden):
   https://github.com/limerick71/sampleswerkzeuge/releases/latest
 
-© 2026 Herbert Stöcker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle
+© 2026 Herbert Stöcker · make-some-music.de (https://make-some-music.de).
+Kostenlos nutzbar. Bitte nur als Link auf die offizielle
 Download-Seite weitergeben; Verkauf und Veröffentlichung geänderter Fassungen
 nur mit Zustimmung.
