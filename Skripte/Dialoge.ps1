@@ -35,7 +35,12 @@ function Open-Bericht {
 
 function Open-Pfad([string]$pfad) {
     if (-not $pfad -or -not (Test-Path -LiteralPath $pfad)) { Show-Meldung "Nicht vorhanden:`n$pfad" 'Warning'; return }
-    try { Invoke-Item -LiteralPath $pfad } catch { Show-Meldung "Öffnen fehlgeschlagen:`n$($_.Exception.Message)" 'Error' }
+    try {
+        # 4.0.1: Ordner ausdruecklich mit dem Explorer oeffnen - sonst holt Windows ein vorhandenes Explorer-Fenster
+        # nach vorne, zeigt aber nicht den richtigen Tab
+        if ((Test-Path -LiteralPath $pfad -PathType Container) -and [IO.Path]::DirectorySeparatorChar -eq [char]92) { $a = if ($pfad -match '^[A-Za-z]:\\?$') { $pfad.Substring(0, 2) + '\' } else { '"' + $pfad.TrimEnd('\') + '"' }; Start-Process -FilePath 'explorer.exe' -ArgumentList $a }
+        else { Invoke-Item -LiteralPath $pfad }
+    } catch { Show-Meldung "Öffnen fehlgeschlagen:`n$($_.Exception.Message)" 'Error' }
 }
 
 function New-DesktopVerknuepfung([switch]$Still) {

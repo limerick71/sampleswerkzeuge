@@ -35,10 +35,13 @@ ist etwas zu tun. Ein Klick auf einen Schritt zeigt darunter seine Knöpfe; beim
 Öffnen ist der Schritt gewählt, bei dem als Nächstes etwas zu tun ist.
 Darunter liegt die Sample-Bibliothek zum Durchhören (siehe 6).
 
-Alles läuft im Hauptfenster: Fortschritt, Ausgabe und Rückfragen erscheinen im
-Ablauf-Bereich. Vor jeder Änderung steht dort eine gelbe Leiste mit der Frage
-und den Knöpfen „Ja, ausführen“ und „Nein“; „Vorschau öffnen“ zeigt vorher die
-vollständige Liste (CSV, z. B. für Excel).
+Alles läuft im Hauptfenster: Fortschritt, Meldungen (die „Ausgabe“) und
+Rückfragen erscheinen im Vorgangsmonitor im Ablauf-Bereich. Vor jeder Änderung
+steht dort eine gelbe Leiste mit der Frage und den Knöpfen „Ja, ausführen“ und
+„Nein“; „Vorschau öffnen“ zeigt vorher die vollständige Liste (CSV, z. B. für
+Excel). „Schließen“ klappt den Vorgangsmonitor zu einer Zeile zusammen,
+„Einblenden“ holt ihn an derselben Stelle zurück. Die Meldungen jedes Vorgangs
+liegen außerdem als Textdatei im Ordner „Protokolle“.
 
 
 3. SCHRITT 1: QUELLEN
@@ -80,7 +83,7 @@ In den Einstellungen außerdem:
 ------------------------------------------------------------
 Gerade ein Sample-Pack heruntergeladen? Oben im Hauptfenster auf
 „Download importieren …“ klicken (der Kasten ist hervorgehoben, wenn ZIP-Dateien
-im Download-Ordner liegen):
+mit Samples im Download-Ordner liegen):
   - Die Liste zeigt neue ZIP-Dateien und Ordner mit Audiodateien im
     Download-Ordner. Schon vollständig Importiertes, RAR/7z und nicht lesbare
     ZIPs sind grau und nicht anhakbar, ebenso Instrument-Bibliotheken mit

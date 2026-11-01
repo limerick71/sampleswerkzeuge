@@ -10,7 +10,7 @@
 #   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
 #   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
 
-$ProgrammVersion = '4.0'
+$ProgrammVersion = '4.0.1'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -454,7 +454,7 @@ function Get-NeuestesProtokoll([string]$filter, [string[]]$ordner = @($protokoll
 }
 
 function Get-Protokollzeit($datei) {
-    if ($datei.Name -match '_(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})(\d{2})?\.csv$') {
+    if ($datei.Name -match '_(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})(\d{2})?\.(csv|json)$') {
         try { return [datetime]::ParseExact("$($Matches[1]) $($Matches[2]):$($Matches[3])", 'yyyy-MM-dd HH:mm', $null) } catch { }
     }
     return $datei.LastWriteTime
@@ -465,16 +465,34 @@ function Get-Protokollzeit($datei) {
 # ---------------------------------------------------------------------------
 function Get-InventurOrdner  { Join-Path (Get-Einstellungen).Berichtsordner 'Inventuren' }
 function Get-VergleichOrdner { Join-Path (Get-Einstellungen).Berichtsordner 'Inventur-Vergleiche' }
+# 4.0.1: Stand der Sample-Bibliothek im Ziel (99_Protokolle\Bibliothek-Stand_<Datum>.json, schreibt Inventur.ps1).
+# Gehoert zum tatsaechlichen Ziel: nach einem Versionswechsel noch da, nach dem Loeschen des Ziels weg.
+function Get-BibliothekStand {
+    $z = [string](Get-Einstellungen).Ziel
+    if (-not $z) { return $null }
+    $f = Get-NeuestesProtokoll 'Bibliothek-Stand_*.json' @(Get-ZielProtokollOrdner $z)
+    if (-not $f) { return $null }
+    try { $d = Get-Content -LiteralPath $f.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return $null }
+    return [pscustomobject]@{ Datei = $f; Zeit = (Get-Protokollzeit $f); Daten = $d; Csv = [string]$d.Csv }
+}
 function Get-NeuesteInventur([string]$art = 'Sample') {
+    $kand = @()
     $o = Get-InventurOrdner
-    if (-not (Test-Path -LiteralPath $o)) { return $null }
-    Get-ChildItem -LiteralPath $o -Filter "$art-Inventur_*.csv" -File -ErrorAction SilentlyContinue |
-        Sort-Object Name -Descending | Select-Object -First 1
+    if (Test-Path -LiteralPath $o) { $kand += @(Get-ChildItem -LiteralPath $o -Filter "$art-Inventur_*.csv" -File -ErrorAction SilentlyContinue) }
+    # 4.0.1: auch die Liste zum Stand im Ziel (z. B. im Ordner einer frueheren Version)
+    $st = Get-BibliothekStand
+    if ($st -and $st.Csv) {
+        $p = if ($art -eq 'Sample') { $st.Csv } else { Join-Path (Split-Path -Parent $st.Csv) ((Split-Path -Leaf $st.Csv) -replace '^Sample-Inventur_', "$art-Inventur_") }
+        if (Test-Path -LiteralPath $p) { $kand += @(Get-Item -LiteralPath $p) }
+    }
+    $kand | Sort-Object Name -Descending | Select-Object -First 1
 }
 function Get-NeuesterVergleich {
-    $o = Get-VergleichOrdner
-    if (-not (Test-Path -LiteralPath $o)) { return $null }
-    Get-ChildItem -LiteralPath $o -Filter 'Inventur-Vergleich_*.csv' -File -ErrorAction SilentlyContinue |
+    $ordner = @(Get-VergleichOrdner)
+    # 4.0.1: auch neben der Liste zum Stand im Ziel (z. B. im Ordner einer frueheren Version)
+    $st = Get-BibliothekStand
+    if ($st -and $st.Csv) { $ordner += Join-Path (Split-Path -Parent (Split-Path -Parent $st.Csv)) 'Inventur-Vergleiche' }
+    @(foreach ($o in ($ordner | Select-Object -Unique)) { if (Test-Path -LiteralPath $o) { Get-ChildItem -LiteralPath $o -Filter 'Inventur-Vergleich_*.csv' -File -ErrorAction SilentlyContinue } }) |
         Sort-Object Name -Descending | Select-Object -First 1
 }
 

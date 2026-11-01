@@ -440,6 +440,13 @@ $lauf = [ordered]@{
     VerglichenMit = $(if ($vorher) { $vorher.Name } else { '' }); NichtLesbareOrdner = $nichtLesbar
 }
 ConvertTo-Json -InputObject $lauf | Set-Content -LiteralPath (Join-Path $invOrdner "$basisName.json") -Encoding UTF8
+# 4.0.1: Stand der Sample-Bibliothek auch im Ziel (99_Protokolle) - das Hauptfenster liest ihn dort, auch nach
+# einem Versionswechsel; wird das Ziel geloescht, ist auch der Stand weg
+try {
+    $zp = Get-ZielProtokollOrdner $Ziel; [void][IO.Directory]::CreateDirectory($zp)
+    $stand = [ordered]@{}; foreach ($k in $lauf.Keys) { $stand[$k] = $lauf[$k] }; $stand['Csv'] = $csvSamples
+    ConvertTo-Json -InputObject $stand | Set-Content -LiteralPath (Join-Path $zp "Bibliothek-Stand_$Zeitstempel.json") -Encoding UTF8
+} catch { }
 
 Write-Host "Erzeuge den HTML-Bericht ..." -ForegroundColor Cyan
 $html = New-InventurBericht $csvSamples

@@ -161,6 +161,7 @@ foreach ($o in $ordnerListe) {
 Write-Progress -Activity 'Leere Ordner pruefen' -Completed
 $csvPfad = Join-Path $protokollOrdner "Ziel-Duplikate-entfernt_$Zeitstempel.csv"
 $ergebnis | Export-Csv -LiteralPath $csvPfad -NoTypeInformation -Delimiter ';' -Encoding UTF8
+try { $zp = Get-ZielProtokollOrdner $Ziel; [void][IO.Directory]::CreateDirectory($zp); Copy-Item -LiteralPath $csvPfad -Destination $zp } catch { }   # 4.0.1: auch im Ziel (Stand im Hauptfenster)
 Write-Host ""
 Write-Host "Fertig. In den Papierkorb verschoben: $ok Dateien | leere Ordner entfernt: $leer | Fehler: $fehler" -ForegroundColor Green
 Write-Host "Protokoll: $csvPfad"

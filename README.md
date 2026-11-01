@@ -23,6 +23,7 @@ Download: [neueste Version](https://github.com/limerick71/sampleswerkzeuge/relea
 
 | Version | Datum | Inhalt |
 |---|---|---|
+| 4.0.1 | 01.11.2026 | Befunde aus dem Test der 4.0: Vorgangsmonitor (Schließen/Einblenden, gehört zu seinem Schritt, Ausgabe als Textdatei); keine falsche Fehlermeldung durch Fortschrittsdaten; Stand von Ablauf und Bibliothek aus dem Ziel (99_Protokolle); Import-Kasten zählt nur ZIPs mit Samples; „Nur lose Dateien“ nur neue Audiodateien; Ordner öffnen mit dem richtigen Ordner; „Abbrechen“ rechts |
 | 4.0 | 31.10.2026 | Neues Hauptfenster (WPF): geführter Ablauf Quellen ➜ Sortieren ➜ Aufräumen mit Stand je Schritt, Download importieren als Abkürzung, „Sample-Bibliothek“ statt Inventur (fragt beim Öffnen nach dem Einlesen); Fortschritt, Ausgabe und Rückfragen im Fenster statt eigener Konsolen; Import zeigt Plugin-Ordner ohne Audio nicht mehr |
 | 3.0.1 | 31.10.2026 | Befunde aus dem Test der 3.0: Import erkennt Instrument-Bibliotheken und Bundles (Pack-Art änderbar), übergeht Downloads ohne Audio; erste Ordnerebene unter dem Pack bleibt erhalten; Protokolle im Ziel unter 99_Protokolle |
 | 3.0 | 30.10.2026 | Download importieren: frisch heruntergeladene Packs (ZIP oder Ordner) in einem Schritt entpacken, einsortieren und das Original ins Download-Archiv verschieben, liegen lassen oder in den Papierkorb legen – mit Vorschau, Prüfsummen und Import-Protokoll; Instrument-Kürzel zuverlässiger; Archive im Fundort-Bericht als eigene Zeile |

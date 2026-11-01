@@ -44,6 +44,7 @@ try {
 . (Join-Path $PSScriptRoot 'Gemeinsam.ps1')
 . (Join-Path $PSScriptRoot 'Fundorte-Bericht.ps1')
 . (Join-Path $PSScriptRoot 'Dialoge.ps1')
+. (Join-Path $PSScriptRoot 'Import.ps1')      # 4.0.1: ZIP-Inhaltsverzeichnis fuer den Import-Kasten
 $basis = $wurzel
 
 # Internet-Markierung (heruntergeladene ZIP-Datei) von allen Dateien entfernen
@@ -203,7 +204,7 @@ $xaml = @'
         <!-- Abkuerzung: Download importieren -->
         <Grid Margin="0,4,0,0">
           <Rectangle x:Name="ImportRahmen" RadiusX="8" RadiusY="8" Stroke="#2C5AA0" StrokeThickness="1.2" StrokeDashArray="4 3" Fill="#E6EDF8"/>
-          <DockPanel Margin="16,11">
+          <DockPanel Margin="18,20" MinHeight="40">
             <Button x:Name="BtnImport" DockPanel.Dock="Right" Style="{StaticResource KnopfHaupt}" Content="Download importieren …" Margin="0" VerticalAlignment="Center"
                     ToolTip="Frisch heruntergeladene Sample-Packs (ZIP oder Ordner im Download-Ordner) in einem Schritt entpacken, einsortieren und das Original ins Download-Archiv verschieben, liegen lassen oder in den Papierkorb legen. Mit Vorschau und Rückfrage."/>
             <TextBlock Text="⬇" FontSize="22" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="#2C5AA0"/>
@@ -271,7 +272,6 @@ $xaml = @'
                     <Button x:Name="BtnFundorte" Style="{StaticResource KnopfHaupt}" Content="Fundorte suchen …" ToolTip="Sucht auf Laufwerken und in Ordnern nach Sample-Packs und zeigt die Fundorte im Browser; dort lassen sie sich als Quellen übernehmen. Es wird nichts verändert."/>
                     <Button x:Name="BtnQuellen" Style="{StaticResource Knopf}" Content="Quellen bearbeiten …" ToolTip="Quellen hinzufügen, entfernen, an- und abhaken, Art ändern (in den Einstellungen)."/>
                   </WrapPanel>
-                  <TextBlock x:Name="TxtZiel1" Margin="0,12,0,0" Padding="0,10,0,0" Foreground="{StaticResource Leise}" FontSize="12.5" TextWrapping="Wrap"/>
                 </StackPanel>
                 <StackPanel x:Name="Feld2" Visibility="Collapsed">
                   <TextBlock Style="{StaticResource Titel2}" Text="2 · Einsortieren nach Instrument"/>
@@ -297,14 +297,20 @@ $xaml = @'
               </Grid>
             </Border>
 
-            <!-- Laufender Vorgang: Fortschritt, Rueckfrage, Ausgabe (GUI-04) -->
+            <!-- Vorgangsmonitor (GUI-04): Fortschritt, Rueckfrage, Ausgabe. Geschlossen bleibt eine Zeile zum Einblenden. -->
+            <Border x:Name="MonitorZeile" Visibility="Collapsed" Margin="16,12,16,0" BorderBrush="{StaticResource Linie}" BorderThickness="1" CornerRadius="8" Background="#F3F5F8" Padding="12,7">
+              <DockPanel>
+                <Button x:Name="LnkEinblenden" DockPanel.Dock="Right" Style="{StaticResource Link}" Content="Einblenden" Margin="10,0,0,0"/>
+                <TextBlock x:Name="MonitorZeileText" Foreground="{StaticResource Leise}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+              </DockPanel>
+            </Border>
             <Border x:Name="Lauf" Visibility="Collapsed" Margin="16,12,16,0" BorderBrush="{StaticResource Linie}" BorderThickness="1" CornerRadius="8" Background="White">
               <StackPanel>
                 <Border Background="#F3F5F8" CornerRadius="8,8,0,0" Padding="12,7">
                   <DockPanel>
-                    <Button x:Name="LnkLaufZu" DockPanel.Dock="Right" Style="{StaticResource Link}" Content="Ausblenden" Margin="10,0,0,0"/>
+                    <Button x:Name="LnkLaufZu" DockPanel.Dock="Right" Style="{StaticResource Link}" Content="Schließen" Margin="10,0,0,0" ToolTip="Schließt den Vorgangsmonitor; an seiner Stelle bleibt eine Zeile zum Einblenden."/>
                     <Button x:Name="LnkLogUmschalten" DockPanel.Dock="Right" Style="{StaticResource Link}" Content="Ausgabe ausblenden" Margin="10,0,0,0"/>
-                    <TextBlock x:Name="LaufTitel" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,12,0"><Run Text="Vorgangsmonitor  ·  " Foreground="#5E6A7A"/><Run x:Name="LaufTitel" FontWeight="SemiBold"/></TextBlock>
                     <ProgressBar x:Name="LaufBalken" Width="220" Height="8" VerticalAlignment="Center" Foreground="#2C5AA0" Background="#D6DCE4" BorderThickness="0" Margin="0,0,10,0"/>
                     <TextBlock x:Name="LaufStatus" Foreground="{StaticResource Leise}" FontSize="12.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                   </DockPanel>
@@ -395,8 +401,8 @@ $xamlBib = @'
     </Border>
     <TextBlock Text="Das Einlesen ändert nichts an den Dateien. Bei vielen Samples dauert es einige Minuten; der Fortschritt erscheint im Hauptfenster." Foreground="#5E6A7A" FontSize="12.5" TextWrapping="Wrap" Margin="0,0,0,16"/>
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-      <Button x:Name="DAlt" Padding="14,7" Margin="0,0,10,0" MinWidth="120"/>
-      <Button x:Name="DNeu" Padding="14,7" MinWidth="120"/>
+      <Button x:Name="DNeu" Padding="14,7" Margin="0,0,10,0" MinWidth="120"/>
+      <Button x:Name="DAlt" Padding="14,7" MinWidth="120"/>
     </StackPanel>
   </StackPanel>
 </Window>
@@ -415,9 +421,9 @@ foreach ($n in @('BtnEinstellungen', 'BtnDoku', 'LnkProtokolle', 'LnkProgramm', 
                  'ImportRahmen', 'BtnImport', 'TxtImport1',
                  'Schritt1', 'Schritt2', 'Schritt3', 'Num1', 'Num2', 'Num3', 'NumT1', 'NumT2', 'NumT3', 'Name1', 'Name2', 'Name3',
                  'Stand1', 'Stand2', 'Stand3', 'Pille1', 'Pille2', 'Pille3', 'PilleT1', 'PilleT2', 'PilleT3', 'Spitze',
-                 'Feld1', 'Feld2', 'Feld3', 'QuellListe', 'BtnFundorte', 'BtnQuellen', 'TxtZiel1', 'Fakten2', 'BtnSortieren', 'BtnZielOeffnen',
+                 'Feld1', 'Feld2', 'Feld3', 'QuellListe', 'BtnFundorte', 'BtnQuellen', 'Fakten2', 'BtnSortieren', 'BtnZielOeffnen',
                  'LnkSortProt', 'LnkImportProt', 'Fakten3', 'BtnQuelleAuf', 'BtnZielDup', 'LnkPapierkorb',
-                 'Lauf', 'LnkLaufZu', 'LnkLogUmschalten', 'LaufTitel', 'LaufBalken', 'LaufStatus', 'FrageLeiste', 'LnkFrageDatei', 'BtnJa', 'BtnNein',
+                 'Lauf', 'MonitorZeile', 'LnkEinblenden', 'MonitorZeileText', 'LnkLaufZu', 'LnkLogUmschalten', 'LaufTitel', 'LaufBalken', 'LaufStatus', 'FrageLeiste', 'LnkFrageDatei', 'BtnJa', 'BtnNein',
                  'FrageText', 'EndeLeiste', 'LnkEndeDatei', 'EndeText', 'LaufLog',
                  'KpiSamples', 'KpiPacks', 'KpiGroesse', 'TxtBibStand', 'BtnBibliothek', 'LnkExcel', 'BibAenderungen', 'LnkAenderungen', 'LnkPackArten')) {
     $ui[$n] = $win.FindName($n)
@@ -473,17 +479,35 @@ $script:laufNachher = $null
 $script:laufDatei = ''
 $script:laufFehler = $false
 $script:laufEnde = $null
+$script:laufSchritt = 0          # 4.0.1: Schritt, zu dem der Vorgangsmonitor gehoert (0 = keiner)
+$script:laufZeilen = New-Object System.Collections.Generic.List[string]   # gesamte Ausgabe (fuer die Textdatei)
+$script:laufStart = $null
+$script:laufErgebnis = ''
+$script:monitorOffen = $false
 $zeitgeber = New-Object System.Windows.Threading.DispatcherTimer
 $zeitgeber.Interval = [TimeSpan]::FromMilliseconds(120)
 
 function Test-LaufAktiv { return ($null -ne $script:lauf) }
 
 function Add-LogZeile([string]$text, $pinsel) {
+    $script:laufZeilen.Add($text)
     $tb = New-Object System.Windows.Controls.TextBlock
     $tb.Text = $text
     if ($pinsel) { $tb.Foreground = $pinsel }
     [void]$ui.LaufLog.Items.Add($tb)
     while ($ui.LaufLog.Items.Count -gt 4000) { $ui.LaufLog.Items.RemoveAt(0) }
+}
+
+# Vorgangsmonitor zeigen: offen, als Zeile zum Einblenden oder gar nicht (4.0.1, Befunde 4 und 9)
+function Update-Monitor {
+    $da = ($script:laufSchritt -gt 0)
+    if (-not $da) { $ui.Lauf.Visibility = 'Collapsed'; $ui.MonitorZeile.Visibility = 'Collapsed'; return }
+    # Ein laufender Vorgang bleibt immer sichtbar (eine offene Frage darf nicht verschwinden)
+    if (Test-LaufAktiv) { $ui.Lauf.Visibility = 'Visible'; $ui.MonitorZeile.Visibility = 'Collapsed'; return }
+    $hier = ($script:laufSchritt -eq $script:aktiverSchritt)
+    $ui.Lauf.Visibility = $(if ($hier -and $script:monitorOffen) { 'Visible' } else { 'Collapsed' })
+    $ui.MonitorZeile.Visibility = $(if ($hier -and -not $script:monitorOffen) { 'Visible' } else { 'Collapsed' })
+    $ui.MonitorZeileText.Text = "Vorgangsmonitor  ·  $($ui.LaufTitel.Text) $([char]0x2013) $($script:laufErgebnis)"
 }
 
 function Set-Bedienbar([bool]$an) {
@@ -498,10 +522,17 @@ function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 
     $pfad = Join-Path $skriptOrdner $datei
     if (-not (Test-Path -LiteralPath $pfad)) { Show-Meldung "Datei nicht gefunden:`n$pfad" 'Error'; return $false }
     $p = $pfad.Replace("'", "''")
-    $befehl = "try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding(`$false) } catch { }; " +
+    # 4.0.1: ohne Fortschrittsdaten eingebauter Befehle (die kaemen als CLIXML ueber den Fehlerkanal, Befund 3)
+    $befehl = "`$ProgressPreference = 'SilentlyContinue'; try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding(`$false) } catch { }; " +
               "try { & '$p' $argumente } catch { [Console]::Out.WriteLine('##T##Red##FEHLER: ' + `$_.Exception.Message); exit 1 }"
     $kodiert = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($befehl))
     $ui.LaufLog.Items.Clear()
+    $script:laufZeilen.Clear()
+    $script:laufStart = Get-Date
+    # Schritt, zu dem der Vorgang gehoert: Import zaehlt zu Sortieren (Befund 9)
+    $script:laufSchritt = switch -Wildcard ($datei) { 'Fundorte*' { 1 } 'Samples-sortieren*' { 2 } 'Download-importieren*' { 2 } 'Quelle-aufraeumen*' { 3 } 'Ziel-Duplikate*' { 3 } default { $script:aktiverSchritt } }
+    if ($script:laufSchritt -ne $script:aktiverSchritt) { Set-Schritt $script:laufSchritt }
+    $script:monitorOffen = $true
     $ui.LaufTitel.Text = $titel
     $ui.LaufStatus.Text = 'läuft …'
     $ui.LaufBalken.IsIndeterminate = $true
@@ -509,14 +540,14 @@ function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 
     $ui.FrageLeiste.Visibility = 'Collapsed'
     $ui.EndeLeiste.Visibility = 'Collapsed'
     $ui.LaufLog.Visibility = 'Visible'; $ui.LnkLogUmschalten.Content = 'Ausgabe ausblenden'
-    $ui.Lauf.Visibility = 'Visible'
+    $ui.Lauf.Visibility = 'Visible'; $ui.MonitorZeile.Visibility = 'Collapsed'
     $script:laufDatei = ''; $script:laufFehler = $false; $script:laufEnde = $null; $script:laufNachher = $nachher
     try {
         $l = New-Object SamplesWerkzeuge.SkriptLauf400
         $l.Start($psExe, "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $kodiert", $basis)
         $script:lauf = $l
     } catch {
-        $ui.Lauf.Visibility = 'Collapsed'
+        $script:laufSchritt = 0; Update-Monitor
         Show-Meldung "Start fehlgeschlagen:`n$($_.Exception.Message)" 'Error'
         return $false
     }
@@ -557,6 +588,17 @@ function Read-LaufZeilen {
             $ui.FrageLeiste.BringIntoView()
         } elseif ($z.StartsWith('##E##')) {
             $t = $z.Substring(5)
+            # 4.0.1 (Befund 3): Windows PowerShell schickt ueber den Fehlerkanal CLIXML (u. a. Fortschritt). Nur echte
+            # Fehlertexte daraus zeigen; Fortschritt und Kopfzeile "#< CLIXML" uebergehen.
+            if ($t.TrimStart().StartsWith('#< CLIXML')) { continue }
+            if ($t.TrimStart().StartsWith('<Objs')) {
+                foreach ($m in [regex]::Matches($t, '<S S="Error">(.*?)</S>')) {
+                    $f = [regex]::Replace($m.Groups[1].Value, '_x([0-9A-Fa-f]{4})_', { param($x) [string][char][Convert]::ToInt32($x.Groups[1].Value, 16) })
+                    $f = [Net.WebUtility]::HtmlDecode($f).TrimEnd("`r", "`n")
+                    if ($f.Trim()) { foreach ($fz in ($f -split "`r?`n")) { Add-LogZeile $fz $SWF.Rot }; $script:laufFehler = $true }
+                }
+                continue
+            }
             if ($t.Trim()) { Add-LogZeile $t $SWF.Rot; $script:laufFehler = $true }
         } else {
             Add-LogZeile $z $null
@@ -579,6 +621,15 @@ function Stop-LaufAnzeige {
     $ui.LnkEndeDatei.Visibility = $(if ($hatDatei) { 'Visible' } else { 'Collapsed' })
     $ui.LnkEndeDatei.Content = $(if ($script:laufDatei -match '\.html$') { 'Bericht öffnen' } elseif ($script:laufDatei -match 'Vorschau') { 'Vorschau öffnen' } else { 'Protokoll öffnen' })
     $ui.EndeLeiste.Visibility = 'Visible'
+    $script:laufErgebnis = $(if ($ok) { 'Fertig' } else { 'Beendet mit Fehler' }) + " ($((Get-Date).ToString('HH:mm')))"
+    # 4.0.1: Ausgabe als Textdatei im Protokollordner (Befund 4)
+    try {
+        [void][IO.Directory]::CreateDirectory($protokollOrdner)
+        $name = ($ui.LaufTitel.Text -replace '[^\w\- ]', '' -replace '\s+', '-')
+        $kopf = @("Samples-Werkzeuge $ProgrammVersion - Vorgangsmonitor: $($ui.LaufTitel.Text)", "Start: $($script:laufStart.ToString('dd.MM.yyyy HH:mm:ss'))   Ende: $((Get-Date).ToString('dd.MM.yyyy HH:mm:ss'))   Ergebnis: $($script:laufErgebnis)", '')
+        [IO.File]::WriteAllLines((Join-Path $protokollOrdner "Vorgang_$($script:laufStart.ToString('yyyy-MM-dd_HHmmss'))_$name.txt"), [string[]]($kopf + $script:laufZeilen.ToArray()), (New-Object Text.UTF8Encoding($true)))
+    } catch { Write-FehlerLog "Vorgangsmonitor (Textdatei): $($_.Exception.Message)" }
+    Update-Monitor
     Set-Bedienbar $true
     Update-Status
     if ($ok -and $script:laufNachher) { Invoke-Sicher $script:laufNachher }
@@ -615,7 +666,8 @@ Set-Klick $ui.LnkFrageDatei { Open-Pfad $script:laufDatei }
 Set-Klick $ui.LnkEndeDatei {
     if ($script:laufDatei -match '\.html$' -and $script:laufDatei -match 'Inventur') { Open-Bericht } else { Open-Pfad $script:laufDatei }
 }
-Set-Klick $ui.LnkLaufZu { $ui.Lauf.Visibility = 'Collapsed' }
+Set-Klick $ui.LnkLaufZu { $script:monitorOffen = $false; Update-Monitor }
+Set-Klick $ui.LnkEinblenden { $script:monitorOffen = $true; Update-Monitor; $ui.Lauf.BringIntoView() }
 Set-Klick $ui.LnkLogUmschalten {
     if ($ui.LaufLog.Visibility -eq 'Visible') { $ui.LaufLog.Visibility = 'Collapsed'; $ui.LnkLogUmschalten.Content = 'Ausgabe einblenden' }
     else { $ui.LaufLog.Visibility = 'Visible'; $ui.LnkLogUmschalten.Content = 'Ausgabe ausblenden' }
@@ -626,13 +678,18 @@ Set-Klick $ui.LnkLogUmschalten {
 # ---------------------------------------------------------------------------
 $script:aktiverSchritt = 2
 $script:vglCache = @{ Schluessel = ''; Werte = $null }
+$script:zipCache = @{}
 $script:bibVeraltet = $false
 $script:schrittZustand = @{ 1 = 'neutral'; 2 = 'neutral'; 3 = 'neutral' }
 
 function Set-Schritt([int]$n) {
+    $alt = $script:aktiverSchritt
     $script:aktiverSchritt = $n
     foreach ($i in 1..3) { $ui["Feld$i"].Visibility = $(if ($i -eq $n) { 'Visible' } else { 'Collapsed' }) }
     [System.Windows.Controls.Grid]::SetColumn($ui.Spitze, ($n - 1) * 2)
+    # Abgeschlossener Vorgang: beim Verlassen des Schritts weg, beim Zurueckkehren als Zeile zum Einblenden
+    if ($n -ne $alt -and -not (Test-LaufAktiv)) { $script:monitorOffen = $false }
+    Update-Monitor
     Update-SchrittAussehen
 }
 
@@ -683,11 +740,29 @@ function Update-Status {
     $e = Get-Einstellungen
     $strich = [char]0x2013
 
-    # --- Abkuerzung Import: ZIP-Archive im Download-Ordner
+    # --- Abkuerzung Import: ZIP-Archive mit Audiodateien im Download-Ordner (4.0.1, Befund 7)
+    # Gelesen wird nur das Inhaltsverzeichnis; das Ergebnis je ZIP wird gemerkt, bis sich die Datei aendert.
     $nZip = 0
-    try { if ($e.Downloads -and (Test-Path -LiteralPath $e.Downloads)) { $nZip = @(Get-ChildItem -LiteralPath $e.Downloads -Filter '*.zip' -File -ErrorAction SilentlyContinue).Count } } catch { }
+    try {
+        if ($e.Downloads -and (Test-Path -LiteralPath $e.Downloads)) {
+            foreach ($z in @(Get-ChildItem -LiteralPath $e.Downloads -Filter '*.zip' -File -ErrorAction SilentlyContinue)) {
+                $sch = "$($z.Length)|$($z.LastWriteTimeUtc.Ticks)"
+                $c = $script:zipCache[$z.FullName]
+                if (-not $c -or $c.Schluessel -ne $sch) {
+                    $hat = $false
+                    try {
+                        foreach ($en in [SamplesWerkzeuge.ZipWerkzeug301]::Liste($z.FullName)) {
+                            if (-not $en.Ordner -and -not [SamplesWerkzeuge.ZipWerkzeug301]::MacRest($en.Name) -and [SamplesWerkzeuge.ZipWerkzeug301]::AudioExt.Contains([SamplesWerkzeuge.ZipWerkzeug301]::Ext($en.Name))) { $hat = $true; break }
+                        }
+                    } catch { }
+                    $c = @{ Schluessel = $sch; Audio = $hat }; $script:zipCache[$z.FullName] = $c
+                }
+                if ($c.Audio) { $nZip++ }
+            }
+        }
+    } catch { }
     if ($nZip -gt 0) {
-        $ui.TxtImport1.Text = "Neuer Download? $nZip ZIP-Archiv$(if ($nZip -ne 1) { 'e' }) im Download-Ordner"
+        $ui.TxtImport1.Text = "Neuer Download? $nZip ZIP-Archiv$(if ($nZip -ne 1) { 'e' }) mit Samples im Download-Ordner"
         $ui.ImportRahmen.Fill = $SWF.ImportAn; $ui.ImportRahmen.Stroke = $SWF.Akzent
     } else {
         $ui.TxtImport1.Text = 'Neuer Download? Frisch heruntergeladene Packs direkt einsortieren'
@@ -729,20 +804,28 @@ function Update-Status {
         [void]$ui.QuellListe.Children.Add($rand)
     }
     $zs = Get-OrdnerStatus $e.Ziel
-    $ui.TxtZiel1.Text = "Ziel: $($e.Ziel)  $strich  $($zs.Text)   ·   Download-Ordner und Archiv unter $([char]0x2699) Einstellungen"
 
     # --- 2 Sortieren
-    $p = Get-NeuestesProtokoll 'Protokoll_*.csv'
+    # 4.0.1 (Befund 2): Stand aus den Protokollen im Ziel (99_Protokolle) - sie gehoeren zum tatsaechlichen Ziel
+    $zielProt = @(Get-ZielProtokollOrdner $e.Ziel)
+    $p = Get-NeuestesProtokoll 'Protokoll_*.csv' $zielProt
     $tSort = if ($p) { Get-Protokollzeit $p } else { $null }
-    $ip = Get-NeuestesProtokoll 'Import-Protokoll_*.csv'
+    $ip = Get-NeuestesProtokoll 'Import-Protokoll_*.csv' $zielProt
     $tImp = if ($ip) { Get-Protokollzeit $ip } else { $null }
     $ui.Stand2.Text = $(if ($tSort) { "Letzter Lauf: $(Format-Zeit $tSort)" } else { 'Noch kein Sortierlauf' })
-    # Neues in den Quellen? Aenderungszeit der Quelle und ihrer Unterordner (eine Ebene) gegen den letzten Lauf
+    # Neues in den Quellen? Aenderungszeit der Quelle und ihrer Unterordner (eine Ebene) gegen den letzten Lauf.
+    # 4.0.1 (Befund 7): bei "Nur lose Dateien" nur neue Audiodateien direkt im Ordner (ZIPs, Installer usw. zaehlen nicht)
     $neuer = @()
     if ($tSort) {
         foreach ($q in $aktiv) {
             try {
                 if (-not (Test-Path -LiteralPath $q.Pfad)) { continue }
+                if ((Get-QuellArtName $q.Art) -eq 'Lose') {
+                    $grenze = $tSort.AddMinutes(1)
+                    $neu = @(Get-ChildItem -LiteralPath $q.Pfad -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match $RxAudio -and -not $_.Name.StartsWith('._') -and ($_.CreationTime -gt $grenze -or $_.LastWriteTime -gt $grenze) } | Select-Object -First 1)
+                    if ($neu.Count) { $neuer += $q.Pfad }
+                    continue
+                }
                 $d = Get-Item -LiteralPath $q.Pfad -ErrorAction Stop
                 $t = $d.LastWriteTime
                 foreach ($u in @(Get-ChildItem -LiteralPath $q.Pfad -Directory -ErrorAction SilentlyContinue)) { if ($u.LastWriteTime -gt $t) { $t = $u.LastWriteTime } }
@@ -767,9 +850,8 @@ function Update-Status {
     $ui.LnkImportProt.IsEnabled = [bool]$ip
 
     # --- 3 Aufraeumen
-    $dp = Get-NeuestesProtokoll 'Quelle-aufgeraeumt_*.csv'
-    if (-not $dp) { $dp = Get-NeuestesProtokoll 'Duplikate-entfernt_*.csv' }
-    $zp = Get-NeuestesProtokoll 'Ziel-Duplikate-entfernt_*.csv'
+    $dp = Get-NeuestesProtokoll 'Quelle-aufgeraeumt_*.csv' $zielProt
+    $zp = Get-NeuestesProtokoll 'Ziel-Duplikate-entfernt_*.csv' $zielProt
     $tAuf = if ($dp) { Get-Protokollzeit $dp } else { $null }
     $tZiel = if ($zp) { Get-Protokollzeit $zp } else { $null }
     $tLetzt = @($tAuf, $tZiel | Where-Object { $_ } | Sort-Object -Descending)[0]
@@ -782,14 +864,14 @@ function Update-Status {
     New-Fakt $ui.Fakten3 'Quellen zuletzt' $(if ($tAuf) { Format-Zeit $tAuf } else { 'noch nie' })
     New-Fakt $ui.Fakten3 'Ziel zuletzt' $(if ($tZiel) { Format-Zeit $tZiel } else { 'noch nie' })
 
-    # --- Sample-Bibliothek (letzter Stand der Inventur)
-    $j = $null
-    $inv = Get-NeuesteInventur 'Sample'
-    $tInv = if ($inv) { Get-Protokollzeit $inv } else { $null }
+    # --- Sample-Bibliothek: letzter eingelesener Stand, laut Ziel\99_Protokolle (4.0.1, Befund 2)
+    $stand = Get-BibliothekStand
+    $j = if ($stand) { $stand.Daten } else { $null }
+    $inv = if ($stand) { Get-NeuesteInventur 'Sample' } else { $null }
+    $tInv = if ($stand) { $stand.Zeit } else { $null }
     $script:bibVeraltet = $false
-    if ($inv) {
+    if ($stand) {
         try {
-            $j = Get-Content -LiteralPath ([IO.Path]::ChangeExtension($inv.FullName, '.json')) -Raw -Encoding UTF8 | ConvertFrom-Json
             $ui.KpiSamples.Text = '{0:N0}' -f [int]$j.Samples
             $ui.KpiPacks.Text = '{0:N0}' -f [int]$j.Packs
             $ui.KpiGroesse.Text = $(if ([double]$j.GroesseGB -ge 10) { '{0:N0} GB' -f [double]$j.GroesseGB } else { '{0:N1} GB' -f [double]$j.GroesseGB })
@@ -815,7 +897,7 @@ function Update-Status {
     $ui.BtnZielDup.IsEnabled = ([bool]$inv -and -not (Test-LaufAktiv))
     # Aenderungen beim letzten Einlesen (Vergleich mit dem Stand davor)
     $ui.BibAenderungen.Children.Clear()
-    $vgl = Get-NeuesterVergleich
+    $vgl = if ($stand) { Get-NeuesterVergleich } else { $null }
     $zeilen = @()
     if ($vgl) {
         # Zaehlung zwischenspeichern: der Vergleich kann viele tausend Zeilen haben
@@ -863,7 +945,8 @@ function Update-Status {
 # ---------------------------------------------------------------------------
 function Show-BibliothekOeffnen {
     $zs = Get-OrdnerStatus (Get-Einstellungen).Ziel
-    $inv = Get-NeuesteInventur 'Sample'
+    $stand = Get-BibliothekStand
+    $inv = if ($stand) { Get-NeuesteInventur 'Sample' } else { $null }
     if (-not $inv -and ($zs.Fehlt -or $zs.Text -ne 'vorhanden')) { Show-Meldung "Der Zielordner ist nicht vorhanden:`n$((Get-Einstellungen).Ziel)`n`nBitte zuerst sortieren oder über $([char]0x2699) Einstellungen den richtigen Ordner wählen." 'Warning'; return }
     $d = [Windows.Markup.XamlReader]::Parse($xamlBib)
     $d.Owner = $win
@@ -880,7 +963,7 @@ function Show-BibliothekOeffnen {
         $bAlt.Content = 'Abbrechen'; $bAlt.Tag = ''; $bAlt.IsCancel = $true
         $bNeu.Content = 'Einlesen und öffnen'; & $haupt $bNeu
     } else {
-        $tInv = Get-Protokollzeit $inv
+        $tInv = $stand.Zeit
         $dT.Text = 'Neu einlesen?'
         $dX.Text = "Der letzte Stand ist vom $(Format-Zeit $tInv)."
         if ($script:bibVeraltet) {
@@ -908,8 +991,8 @@ Set-Klick $ui.BtnFundorte { Show-FundorteSuchen }
 Set-Klick $ui.BtnQuellen { Show-Einstellungen }
 Set-Klick $ui.BtnSortieren { if (Test-OrdnerBereit) { [void](Start-Skript 'Samples-sortieren.ps1' '' 'Samples sortieren') } }
 Set-Klick $ui.BtnZielOeffnen { Open-Pfad (Get-Einstellungen).Ziel }
-Set-Klick $ui.LnkSortProt { $p = Get-NeuestesProtokoll 'Protokoll_*.csv'; if ($p) { Open-Pfad $p.FullName } else { Show-Meldung 'Noch kein Sortierlauf mit dieser Version.' 'Warning' } }
-Set-Klick $ui.LnkImportProt { $p = Get-NeuestesProtokoll 'Import-Protokoll_*.csv'; if ($p) { Open-Pfad $p.FullName } else { Show-Meldung 'Noch kein Import mit dieser Version.' 'Warning' } }
+Set-Klick $ui.LnkSortProt { $p = Get-NeuestesProtokoll 'Protokoll_*.csv' @((Get-ZielProtokollOrdner (Get-Einstellungen).Ziel), $protokollOrdner); if ($p) { Open-Pfad $p.FullName } else { Show-Meldung 'Noch kein Sortierlauf mit dieser Version.' 'Warning' } }
+Set-Klick $ui.LnkImportProt { $p = Get-NeuestesProtokoll 'Import-Protokoll_*.csv' @((Get-ZielProtokollOrdner (Get-Einstellungen).Ziel), $protokollOrdner); if ($p) { Open-Pfad $p.FullName } else { Show-Meldung 'Noch kein Import mit dieser Version.' 'Warning' } }
 Set-Klick $ui.BtnQuelleAuf { Show-QuelleAufraeumen }
 Set-Klick $ui.BtnZielDup { Show-ZielAufraeumen }
 Set-Klick $ui.LnkPapierkorb { try { Start-Process explorer.exe 'shell:RecycleBinFolder' } catch { } }
