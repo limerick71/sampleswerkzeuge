@@ -665,9 +665,10 @@ if (-not (Test-Path -LiteralPath $einstellungsPfad) -and -not (Test-Path -Litera
             $altWurzel = Split-Path -Parent (Split-Path -Parent $alt.FullName)
             $notiz += "aus: $altWurzel"
             Copy-Item -LiteralPath $alt.FullName -Destination $einstellungsPfad -ErrorAction Stop
+            Clear-Schreibschutz $einstellungsPfad   # 4.1.1 (Befund 3): ein Schreibschutz der alten Datei wird sonst mitkopiert
             Set-Einstellung 'ErsterStartErledigt' $false   # Begruessung (Desktop-Verknuepfung) auch in der neuen Version
             $pa = Join-Path (Join-Path $altWurzel 'Skripte') 'Pack-Arten.csv'
-            if (Test-Path -LiteralPath $pa) { Copy-Item -LiteralPath $pa -Destination $packArtenPfad -ErrorAction SilentlyContinue; $notiz += 'Pack-Arten.csv' }
+            if (Test-Path -LiteralPath $pa) { Copy-Item -LiteralPath $pa -Destination $packArtenPfad -ErrorAction SilentlyContinue; Clear-Schreibschutz $packArtenPfad; $notiz += 'Pack-Arten.csv' }
             $kopiere = { param($von, $nach, $filter)
                 $n = 0
                 if (Test-Path -LiteralPath $von) {
