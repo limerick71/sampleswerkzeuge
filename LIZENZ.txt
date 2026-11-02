@@ -1,0 +1,11 @@
+﻿Samples-Werkzeuge
+© 2026 Herbert Stöcker · make-some-music.de (https://make-some-music.de)
+
+Nutzungsbedingungen
+
+1. Die Samples-Werkzeuge dürfen kostenlos genutzt werden, privat und beruflich.
+2. Weitergabe bitte nur als Link auf die offizielle Download-Seite:
+   https://github.com/limerick71/sampleswerkzeuge/releases/latest
+3. Verkauf sowie Veröffentlichung geänderter Fassungen nur mit Zustimmung des Urhebers.
+4. Die Nutzung erfolgt auf eigene Verantwortung. Vor dem Bestätigen von Änderungen
+   (Kopieren, Entfernen in den Papierkorb) bitte die angezeigte Vorschau prüfen.

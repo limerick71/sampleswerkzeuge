@@ -86,7 +86,8 @@ aus einer Version bis 4.0.2 übernimmt sie beim ersten Start einmalig Einstellun
 | 1.0.0 | 26.10.2026 | Ordnerstruktur wie Plugin-Werkzeuge, einstellbare Ordner (Quelle, Ziel, Downloads, Download-Archiv, Berichte), neue Oberfläche mit Status, Begrüßung und Desktop-Verknüpfung, Vorschau mit Rückfrage, Protokolle in eigenem Ordner, Einstellungen werden von der Vorversion übernommen |
 | 0 | 21.10.2026 | Ausgangsstand: Sortieren, Duplikate entfernen, einfache Oberfläche, feste Pfade |
 
-Geplant: Neuordnung der Oberfläche (GUI-07), wenn alle Funktionen drin sind.
+## Nutzungsbedingungen
 
 © 2026 Herbert Stöcker · [make-some-music.de](https://make-some-music.de). Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite
-weitergeben; Verkauf und Veröffentlichung geänderter Fassungen nur mit Zustimmung.
+weitergeben; Verkauf und Veröffentlichung geänderter Fassungen nur mit Zustimmung. Die Nutzung erfolgt auf eigene Verantwortung.
+Vollständiger Text: [LIZENZ.txt](LIZENZ.txt).
