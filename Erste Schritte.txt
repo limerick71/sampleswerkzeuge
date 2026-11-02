@@ -45,9 +45,9 @@ Rückfragen erscheinen im Vorgangsmonitor im Ablauf-Bereich. Vor jeder Änderung
 steht dort eine gelbe Leiste mit der Frage und den Knöpfen „Ja, ausführen“ und
 „Nein“; „Vorschau öffnen“ zeigt vorher die vollständige Liste (CSV, z. B. für
 Excel). Nach „Nein“ steht dort „Abgebrochen – es wurde nichts geändert.“
-Hat ein Vorgang im Ziel etwas kopiert oder entfernt, bietet die Fertig-Zeile
-„Bibliothek jetzt neu einlesen“ an; mit dem Haken „künftig automatisch“ geschieht
-das danach immer gleich im Anschluss.
+Hat ein Vorgang im Ziel etwas kopiert oder entfernt, fragt eine gelbe Leiste
+„Sample-Bibliothek jetzt neu einlesen?“; mit dem Haken „Einlesen künftig
+automatisch“ geschieht das danach immer gleich im Anschluss, ohne Frage.
 „Ausblenden“ klappt den Vorgangsmonitor zu einer Zeile zusammen, „Einblenden“
 holt ihn an derselben Stelle zurück. Der Verlauf jedes Vorgangs liegt außerdem
 als Textdatei im Ordner „Protokolle“.

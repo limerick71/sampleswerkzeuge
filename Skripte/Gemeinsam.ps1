@@ -9,7 +9,7 @@
 #   <Ziel>\99_Protokolle\               Sortier-, Import- und Aufraeum-Protokolle, Bibliothek-Stand_<Datum>.json
 #   <Ziel>\99_Protokolle\Bibliothek\   Liste, Bericht und Vergleich der Sample-Bibliothek (die letzten 10 Staende)
 
-$ProgrammVersion = '4.1'
+$ProgrammVersion = '4.1.1'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -418,7 +418,24 @@ function Set-Einstellung([string]$name, $wert) {
         if ($k -in 'ErsterStartErledigt', 'Quelle', 'Ziel', 'Quellen', 'DownloadArchiv' -or [string]$e[$k] -ne [string]$std[$k]) { $obj[$k] = $e[$k] }
     }
     if ($obj.Contains('Quellen')) { $obj['Quellen'] = @($obj['Quellen'] | ForEach-Object { [ordered]@{ Pfad = [string]$_.Pfad; Aktiv = [bool]$_.Aktiv; Herkunft = [string]$_.Herkunft; Art = (Get-QuellArtName ([string]$_.Art)) } }) }
-    ConvertTo-Json -InputObject $obj -Depth 5 | Set-Content -LiteralPath $einstellungsPfad -Encoding UTF8
+    # 4.1.1 (Befund 3): ein Schreibschutz (von aussen gesetzt) wird aufgehoben; klappt das Speichern trotzdem nicht, klare Meldung
+    $text = ConvertTo-Json -InputObject $obj -Depth 5
+    try {
+        Clear-Schreibschutz $einstellungsPfad
+        [IO.File]::WriteAllText($einstellungsPfad, $text, (New-Object Text.UTF8Encoding($true)))
+    } catch {
+        throw "Die Einstellungen konnten nicht gespeichert werden ($($_.Exception.Message)). Bitte prüfen, ob der Ordner $datenOrdner beschreibbar ist."
+    }
+}
+
+# 4.1.1: Schreibschutz einer eigenen Datei aufheben (z. B. von einem Sicherungs- oder Kopierprogramm gesetzt)
+function Clear-Schreibschutz([string]$pfad) {
+    try {
+        if (Test-Path -LiteralPath $pfad -PathType Leaf) {
+            $fi = New-Object IO.FileInfo($pfad)
+            if ($fi.IsReadOnly) { $fi.IsReadOnly = $false; Write-FehlerLog "Schreibschutz aufgehoben: $pfad" }
+        }
+    } catch { }
 }
 
 # Prueft, ob Quelle und Ziel zueinander passen. Liefert eine Fehlermeldung oder ''.

@@ -323,6 +323,7 @@ try {
                     $voll = Get-ZielPfad ([string]($a.Body | ConvertFrom-Json).pfad)
                     if (-not $voll) { Send-Text $strom 404 'Not Found' 'Pfad liegt nicht im Ziel.'; break }
                     if (-not (Test-Datei $voll)) { Send-Text $strom 404 'Not Found' 'Die Datei gibt es nicht mehr. Bitte die Sample-Bibliothek neu einlesen.'; break }
+                    Clear-Schreibschutz (Join-Path $datenOrdner 'Ziehen.txt')
                     [IO.File]::WriteAllText((Join-Path $datenOrdner 'Ziehen.txt'), $voll, (New-Object Text.UTF8Encoding($false)))
                     $laeuft = $null
                     try { $laeuft = [System.Threading.Mutex]::OpenExisting('SamplesWerkzeuge-DAW-Ziehen') } catch { }

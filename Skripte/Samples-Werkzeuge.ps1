@@ -194,7 +194,7 @@ $xaml = @'
     </Border>
 
     <ScrollViewer x:Name="Haupt" VerticalScrollBarVisibility="Auto" Background="White">
-      <StackPanel x:Name="Inhalt" Margin="24,16,24,22">
+      <StackPanel x:Name="Inhalt" Margin="24,16,24,22" VerticalAlignment="Top">
         <!-- Kopf -->
         <DockPanel Margin="0,0,0,10" LastChildFill="True">
           <Image x:Name="Logo" DockPanel.Dock="Right" Height="54" Margin="16,-4,0,0" VerticalAlignment="Center" Cursor="Hand" Visibility="Collapsed" ToolTip="make-some-music.de"/>
@@ -331,13 +331,22 @@ $xaml = @'
                 <Border x:Name="EndeLeiste" Visibility="Collapsed" Padding="12,8" BorderBrush="{StaticResource Linie}" BorderThickness="0,1,0,0">
                   <DockPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                      <CheckBox x:Name="ChkBibAuto1" Content="künftig automatisch" VerticalAlignment="Center" Margin="0,0,10,0" Visibility="Collapsed"
-                                ToolTip="Nach Sortieren, Import und Duplikate-Entfernen die Bibliothek gleich im Anschluss neu einlesen."/>
-                      <Button x:Name="BtnBibNeu" Style="{StaticResource Knopf}" Content="Bibliothek jetzt neu einlesen" Visibility="Collapsed"
-                              ToolTip="Im Ziel hat sich etwas geändert. Neu einlesen, damit die Sample-Bibliothek den aktuellen Stand zeigt."/>
                       <Button x:Name="LnkEndeDatei" Style="{StaticResource Link}" Content="Protokoll öffnen" Visibility="Collapsed"/>
                     </StackPanel>
                     <TextBlock x:Name="EndeText" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                  </DockPanel>
+                </Border>
+                <!-- 4.1.1 (Befund 7): Frage nach dem Neu-Einlesen, wenn sich im Ziel etwas geaendert hat -->
+                <Border x:Name="BibFrage" Visibility="Collapsed" Background="#FDF1DC" Padding="12,10" BorderBrush="#E8C98F" BorderThickness="0,1">
+                  <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                      <CheckBox x:Name="ChkBibAuto1" Content="Einlesen künftig automatisch" VerticalAlignment="Center" Margin="0,0,14,0" Foreground="#7A4A00"
+                                ToolTip="Nach Sortieren, Import und Duplikate-Entfernen die Bibliothek gleich im Anschluss neu einlesen, ohne zu fragen."/>
+                      <Button x:Name="BtnBibJa" Style="{StaticResource KnopfHaupt}" Content="Ja, einlesen"/>
+                      <Button x:Name="BtnBibNein" Style="{StaticResource Knopf}" Content="Nein" Margin="0"/>
+                    </StackPanel>
+                    <TextBlock FontWeight="SemiBold" Foreground="#7A4A00" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"
+                               Text="Im Ziel hat sich etwas geändert. Sample-Bibliothek jetzt neu einlesen?"/>
                   </DockPanel>
                 </Border>
                 <ListBox x:Name="LaufLog" Height="210" BorderThickness="0" FontFamily="Consolas" FontSize="12" Padding="6,4"
@@ -374,7 +383,7 @@ $xaml = @'
                 <Button x:Name="BtnBibliothek" Style="{StaticResource KnopfHaupt}" Content="Bibliothek öffnen" ToolTip="Öffnet die Sample-Bibliothek im Browser: Samples, Packs und Duplikate mit Suche, Gliederung, Filtern und Abspielen. Fragt vorher, ob das Ziel neu eingelesen werden soll."/>
                 <Button x:Name="LnkExcel" Style="{StaticResource Link}" Content="Als Excel-Liste" ToolTip="Öffnet den letzten Stand als CSV-Datei (eine Zeile je Sample), z. B. in Excel."/>
               </WrapPanel>
-              <CheckBox x:Name="ChkBibAuto2" Content="Nach Sortieren, Import und Duplikate-Entfernen automatisch neu einlesen" FontSize="12.5" Margin="0,12,0,0"
+              <CheckBox x:Name="ChkBibAuto2" Content="Bibliothek künftig automatisch einlesen (nach Sortieren, Import, Duplikate-Entfernen)" FontSize="12.5" Margin="0,12,0,0"
                         ToolTip="Liest das Ziel nach jedem Vorgang, der dort etwas kopiert oder entfernt hat, gleich im Anschluss neu ein (im selben Vorgangsmonitor)."/>
             </StackPanel>
           </Border>
@@ -433,7 +442,7 @@ foreach ($n in @('BtnEinstellungen', 'BtnDoku', 'LnkProtokolle', 'LnkProgramm', 
                  'Feld1', 'Feld2', 'Feld3', 'QuellListe', 'BtnFundorte', 'BtnQuellen', 'Fakten2', 'BtnSortieren', 'BtnZielOeffnen',
                  'LnkSortProt', 'LnkImportProt', 'Fakten3', 'BtnQuelleAuf', 'BtnZielDup', 'LnkPapierkorb',
                  'Lauf', 'MonitorZeile', 'LnkEinblenden', 'MonitorZeileText', 'LnkLaufZu', 'LnkZeileDatei', 'LaufTitel', 'LaufBalken', 'LaufStatus', 'FrageLeiste', 'LnkFrageDatei', 'BtnJa', 'BtnNein',
-                 'FrageText', 'EndeLeiste', 'LnkEndeDatei', 'EndeText', 'LaufLog', 'ChkBibAuto1', 'BtnBibNeu', 'ChkBibAuto2',
+                 'FrageText', 'EndeLeiste', 'LnkEndeDatei', 'EndeText', 'LaufLog', 'ChkBibAuto1', 'BibFrage', 'BtnBibJa', 'BtnBibNein', 'ChkBibAuto2',
                  'KpiSamples', 'KpiPacks', 'KpiGroesse', 'TxtBibStand', 'BtnBibliothek', 'LnkExcel', 'BibAenderungen', 'LnkAenderungen', 'LnkPackArten')) {
     $ui[$n] = $win.FindName($n)
 }
@@ -483,7 +492,7 @@ function Invoke-Sicher([scriptblock]$aktion) {
         $ii = $_.InvocationInfo
         $ort = if ($ii) { "Zeile $($ii.ScriptLineNumber) in $([IO.Path]::GetFileName($ii.ScriptName)): $(([string]$ii.Line).Trim())" } else { '' }
         Write-FehlerLog "Oberfläche: $($_.Exception.Message) | $ort | $($_.ScriptStackTrace -replace '\r?\n', ' <- ')"
-        Show-Meldung "Es ist ein Fehler aufgetreten:`n$($_.Exception.Message)`n`n$ort`n`nDetails stehen in Skripte\Fehler.log." 'Error'
+        Show-Meldung "Es ist ein Fehler aufgetreten:`n$($_.Exception.Message)`n`n$ort`n`nDetails stehen in $fehlerLog." 'Error'
     }
 }
 function Set-Klick($element, [scriptblock]$aktion) {
@@ -569,7 +578,7 @@ function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 
     $ui.EndeLeiste.Visibility = 'Collapsed'
     $ui.LaufLog.Visibility = 'Visible'
     $script:logUnten = $true; $script:laufNein = $false; $script:laufBib = $false
-    $ui.BtnBibNeu.Visibility = 'Collapsed'; $ui.ChkBibAuto1.Visibility = 'Collapsed'
+    $ui.BibFrage.Visibility = 'Collapsed'
     $ui.Lauf.Visibility = 'Visible'; $ui.MonitorZeile.Visibility = 'Collapsed'
     $script:laufDatei = ''; $script:laufFehler = $false; $script:laufEnde = $null; $script:laufNachher = $nachher
     try {
@@ -682,7 +691,8 @@ function Stop-LaufAnzeige {
         if ((Get-Einstellungen).BibliothekAutomatisch) {
             $win.Dispatcher.BeginInvoke([Action]{ [void](Start-Skript 'Inventur.ps1' '' 'Sample-Bibliothek einlesen' $null -Anhaengen) }, [System.Windows.Threading.DispatcherPriority]::Background) | Out-Null
         } else {
-            $ui.BtnBibNeu.Visibility = 'Visible'; $ui.ChkBibAuto1.Visibility = 'Visible'
+            $ui.BibFrage.Visibility = 'Visible'; $ui.BtnBibJa.Focus() | Out-Null
+            Update-LogHoehe
         }
     }
 }
@@ -751,6 +761,7 @@ function Update-LogHoehe([switch]$Sofort) {
     $setzen = {
         try {
             if ($ui.Lauf.Visibility -ne 'Visible' -or $ui.LaufLog.Visibility -ne 'Visible') { return }
+            # 4.1.1 (Befund 1): natuerliche Hoehe des Inhalts (VerticalAlignment Top, sonst streckt der ScrollViewer ihn auf die Fensterhoehe)
             $rest = $ui.Inhalt.ActualHeight + $ui.Inhalt.Margin.Top + $ui.Inhalt.Margin.Bottom - $ui.LaufLog.ActualHeight
             $h = [Math]::Floor($ui.Haupt.ViewportHeight - $rest - 2)
             $neu = [Math]::Max(210, $h)
@@ -1091,12 +1102,17 @@ Set-Klick $ui.BtnZielDup { Show-ZielAufraeumen }
 Set-Klick $ui.LnkPapierkorb { try { Start-Process explorer.exe 'shell:RecycleBinFolder' } catch { } }
 Set-Klick $ui.BtnBibliothek { Show-BibliothekOeffnen }
 # 4.1 (INV-11): neu einlesen nach einer Aenderung im Ziel; Haken "automatisch" an zwei Stellen, gemeinsam gespeichert
-Set-Klick $ui.BtnBibNeu { $ui.BtnBibNeu.Visibility = 'Collapsed'; $ui.ChkBibAuto1.Visibility = 'Collapsed'; [void](Start-Skript 'Inventur.ps1' '' 'Sample-Bibliothek einlesen' $null -Anhaengen) }
+Set-Klick $ui.BtnBibJa { $ui.BibFrage.Visibility = 'Collapsed'; [void](Start-Skript 'Inventur.ps1' '' 'Sample-Bibliothek einlesen' $null -Anhaengen) }
+Set-Klick $ui.BtnBibNein { $ui.BibFrage.Visibility = 'Collapsed'; Update-LogHoehe }
 $script:bibAutoSetzen = $false
 function Set-BibAuto([bool]$an) {
     if ($script:bibAutoSetzen) { return }
     $script:bibAutoSetzen = $true
-    try { $ui.ChkBibAuto1.IsChecked = $an; $ui.ChkBibAuto2.IsChecked = $an; Set-Einstellung 'BibliothekAutomatisch' $an } finally { $script:bibAutoSetzen = $false }
+    try {
+        $ui.ChkBibAuto1.IsChecked = $an; $ui.ChkBibAuto2.IsChecked = $an
+        try { Set-Einstellung 'BibliothekAutomatisch' $an }
+        catch { $ui.ChkBibAuto1.IsChecked = -not $an; $ui.ChkBibAuto2.IsChecked = -not $an; throw }   # 4.1.1 (Befund 6): Anzeige = gespeicherte Einstellung
+    } finally { $script:bibAutoSetzen = $false }
 }
 foreach ($cb in @($ui.ChkBibAuto1, $ui.ChkBibAuto2)) {
     $cb.Add_Checked({ Invoke-Sicher { Set-BibAuto $true } })
@@ -1153,7 +1169,7 @@ $win.Add_ContentRendered({
 $win.Dispatcher.Add_UnhandledException({ param($s, $ev)
     Write-FehlerLog "Oberfläche (unbehandelt): $($ev.Exception.Message)"
     $ev.Handled = $true
-    try { Show-Meldung "Es ist ein Fehler aufgetreten:`n$($ev.Exception.Message)`n`nDetails stehen in Skripte\Fehler.log." 'Error' } catch { }
+    try { Show-Meldung "Es ist ein Fehler aufgetreten:`n$($ev.Exception.Message)`n`nDetails stehen in $fehlerLog." 'Error' } catch { }
 })
 
 try {
