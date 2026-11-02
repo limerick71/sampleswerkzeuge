@@ -9,7 +9,7 @@
 #   <Ziel>\99_Protokolle\               Sortier-, Import- und Aufraeum-Protokolle, Bibliothek-Stand_<Datum>.json
 #   <Ziel>\99_Protokolle\Bibliothek\   Liste, Bericht und Vergleich der Sample-Bibliothek (die letzten 10 Staende)
 
-$ProgrammVersion = '4.1.1'
+$ProgrammVersion = '4.1.2'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'

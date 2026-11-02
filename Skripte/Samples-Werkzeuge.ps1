@@ -197,7 +197,7 @@ $xaml = @'
       <StackPanel x:Name="Inhalt" Margin="24,16,24,22" VerticalAlignment="Top">
         <!-- Kopf -->
         <DockPanel Margin="0,0,0,10" LastChildFill="True">
-          <Image x:Name="Logo" DockPanel.Dock="Right" Height="54" Margin="16,-4,0,0" VerticalAlignment="Center" Cursor="Hand" Visibility="Collapsed" ToolTip="make-some-music.de"/>
+          <Image x:Name="Logo" DockPanel.Dock="Right" Height="88" Margin="16,-8,0,-6" RenderOptions.BitmapScalingMode="HighQuality" VerticalAlignment="Center" Cursor="Hand" Visibility="Collapsed" ToolTip="make-some-music.de"/>
           <WrapPanel VerticalAlignment="Center">
             <TextBlock Text="Samples-Werkzeuge" FontSize="24" FontWeight="SemiBold" Foreground="#1F3F74" Margin="0,0,14,0"/>
             <TextBlock x:Name="TxtUnter" Foreground="{StaticResource Leise}" VerticalAlignment="Bottom" Margin="0,0,0,4" TextWrapping="Wrap"/>

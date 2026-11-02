@@ -819,7 +819,7 @@ function Show-QuelleAufraeumen {
     $c3.Add_CheckedChanged({ foreach ($cb in $fHaken) { $cb.Enabled = $c3.Checked } })
     foreach ($cb in $fHaken) { $cb.Enabled = $c3.Checked }
     $c4 = New-Haken 'Originale, deren Kopie im Ziel per Prüfsumme bestätigt ist (leert die Quelle weitgehend)' 18 $false; $script:hy += 26
-    $l4 = New-Hinweis $d 'Nie Kopiertes bleibt liegen (Hilfsdateien, ausgeschlossene Formate, Hersteller-Bibliotheken wie ModX).' 40 $script:hy ($innen - 30)
+    $l4 = New-Hinweis $d 'Nie Kopiertes bleibt liegen (Hilfsdateien, ausgeschlossene Formate, Hersteller-Bibliotheken).' 40 $script:hy ($innen - 30)
     $script:hy += $l4.PreferredHeight + 12
     $y = $script:hy + 6
     $ok = New-Object System.Windows.Forms.Button

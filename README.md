@@ -63,6 +63,7 @@ aus einer Version bis 4.0.2 übernimmt sie beim ersten Start einmalig Einstellun
 
 | Version | Datum | Inhalt |
 |---|---|---|
+| 4.1.2 | 02.11.2026 | Befunde aus dem Test der 4.1.1: Logo größer; Hersteller-Bibliotheken in allen Texten allgemein beschrieben; Bildschirmfotos in der Dokumentation |
 | 4.1.1 | 02.11.2026 | Befunde aus dem Test der 4.1: Fenster füllt im Vollbild genau den Bildschirm, Vorgangsmonitor so groß wie möglich; neues Logo; Frageleiste „Bibliothek jetzt neu einlesen?“ mit „Einlesen künftig automatisch“; schreibgeschützte Einstellungen werden wieder beschreibbar gemacht |
 | 4.1 | 02.11.2026 | Programm und Daten getrennt (`%LOCALAPPDATA%\Samples-Werkzeuge`, Bibliotheks-Stände im Ziel, einmalige Übernahme); erster Start ohne voreingestellte Ordner (Ziel-Vorschlag, OneDrive-Warnung); Ziel nicht gefunden = rot; „Bibliothek jetzt neu einlesen“, auf Wunsch automatisch; „In DAW ziehen“; allgemeine Regeln für Construction Kits, Songs und Sammelordner statt Regeln für einzelne Packs; Hersteller-Bibliotheken ausgespart; Logo, Verlauf füllt das Fenster, farbige Zeilen fett |
 | 4.0.2 | 01.11.2026 | Befunde aus dem Test der 4.0.1: Verlauf im Vorgangsmonitor scrollbar und mit dem Fenster wachsend, nur noch „Ausblenden“/„Einblenden“, „Abgebrochen“ nach „Nein“, Überschriften blau; Instrument im Dateinamen vor Pack-Name „Vocal“; make-some-music.de im Urheberhinweis; Import-Kasten größer geschrieben |

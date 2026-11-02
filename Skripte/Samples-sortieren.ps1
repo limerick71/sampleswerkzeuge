@@ -18,7 +18,7 @@
   - Dateinamen bleiben unveraendert.
   - Identische Dateien (gleicher Name + Groesse + Inhalt) werden nur einmal abgelegt.
   - Construction Kits und Ableton-Drum-Kits bleiben als Ganzes erhalten.
-  - Hersteller-Bibliotheken direkt in der Quelle (z. B. "ModX", "Native Instruments") werden komplett ausgespart.
+  - Hersteller-Bibliotheken direkt in der Quelle (Ordner von Instrument- und Synthesizer-Herstellern, z. B. "Native Instruments") werden komplett ausgespart.
   - .asd (Ableton-Analyse) und .DS_Store / Thumbs.db werden nicht kopiert.
   - Bereits vorhandene Zieldateien werden nie ueberschrieben; sie erscheinen schon in der
     Vorschau als "bereits im Ziel".

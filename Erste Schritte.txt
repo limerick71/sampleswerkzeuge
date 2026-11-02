@@ -95,7 +95,8 @@ In den Einstellungen außerdem:
     Einzelspuren) bleiben vollständig; Songs und Playalongs kommen nach
     „12 Songs & Playalongs“. Was sich nicht bestimmen lässt, kommt nach
     „_Unsortiert“.
-  - Hersteller-Bibliotheken (z. B. ModX, Native Instruments) werden ausgespart.
+  - Ordner von Instrument- und Synthesizer-Herstellern (z. B. Native
+    Instruments, Yamaha) werden ausgespart.
   - Protokolle liegen im Ordner „Protokolle“ und im Ziel unter „99_Protokolle“.
 
 4b. DOWNLOAD IMPORTIEREN (ABKÜRZUNG FÜR NEUE DOWNLOADS)
