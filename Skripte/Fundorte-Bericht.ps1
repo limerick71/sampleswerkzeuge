@@ -7,9 +7,8 @@
 #>
 
 function Get-LetzterFundortBericht {
-    # Neuester Fundort-Bericht im Berichtsordner, sonst in den Programmordnern der Vorversionen
-    $e = Get-Einstellungen
-    $orte = @((Join-Path $e.Berichtsordner 'Fundorte'))
+    # Neuester Fundort-Bericht im Datenordner (4.1), sonst in den Programmordnern der Vorversionen
+    $orte = @($fundortOrdner)
     try {
         $orte += @(Get-ChildItem -LiteralPath (Split-Path -Parent $wurzel) -Directory -ErrorAction SilentlyContinue | ForEach-Object { Join-Path $_.FullName 'Fundorte' })
     } catch { }

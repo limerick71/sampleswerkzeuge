@@ -6,13 +6,13 @@
   findet Duplikate im Ziel und vergleicht mit der letzten Inventur.
   Die Quelle wird nicht benoetigt (Ursprungspfade kommen aus den Sortier-Protokollen).
 
-  Ergebnis im Berichtsordner:
-    Inventuren\Sample-Inventur_<Datum>.csv   eine Zeile je Sample
-    Inventuren\Pack-Inventur_<Datum>.csv     eine Zeile je Pack
-    Inventuren\Sample-Inventur_<Datum>.json  Einstellungen und Kennzahlen des Laufs
-    Inventuren\Sample-Inventur_<Datum>.html  Bericht (siehe Bericht.ps1)
-    Inventuren\Inventur-aktuell.html         immer der neueste Bericht
-    Inventur-Vergleiche\Inventur-Vergleich_<Datum>.csv
+  Ergebnis im Ziel unter 99_Protokolle\Bibliothek (4.1, die letzten 10 Staende):
+    Sample-Inventur_<Datum>.csv   eine Zeile je Sample
+    Pack-Inventur_<Datum>.csv     eine Zeile je Pack
+    Sample-Inventur_<Datum>.json  Einstellungen und Kennzahlen des Laufs
+    Sample-Inventur_<Datum>.html  Bericht (siehe Bericht.ps1)
+    Inventur-aktuell.html         immer der neueste Bericht
+    Inventur-Vergleich_<Datum>.csv
 
 .BENUTZUNG
     -NurBericht   nur den HTML-Bericht zur neuesten Inventur neu erzeugen
@@ -372,13 +372,11 @@ foreach ($g in ($samples | Group-Object Pack | Sort-Object Name)) {
     })
 }
 
-# Ausgesparte Bereiche der Quelle (z. B. ModX) als eigener Eintrag
-$modx = @(Get-AktiveQuellen | ForEach-Object { Join-Path $_ 'ModX' } | Where-Object { Test-Path -LiteralPath $_ }) | Select-Object -First 1
-if (-not $modx) { $modx = Join-Path $einst.Quelle 'ModX' }
-if (Test-Path -LiteralPath $modx) {
+# Ausgesparte Bereiche der Quelle (Hersteller-Bibliotheken wie ModX, 4.1 allgemein) als eigener Eintrag
+foreach ($modx in @(Get-AktiveQuellen | ForEach-Object { Get-ChildItem -LiteralPath $_ -Directory -ErrorAction SilentlyContinue } | Where-Object { $_.Name -match $RxHerstellerOrdner } | ForEach-Object { $_.FullName })) {
     $mb = 0; try { $mb = [math]::Round(((Get-ChildItem -LiteralPath $modx -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum) / 1MB, 1) } catch { }
     $packs.Add([pscustomobject][ordered]@{
-        Pack = 'ModX (Yamaha-Bibliotheken)'; 'Pack-Art' = 'ausgespart'; 'Pack-Art Herkunft' = 'automatisch'; Samples = 0; GroesseMB = $mb
+        Pack = "$(Split-Path -Leaf $modx) (Hersteller-Bibliothek)"; 'Pack-Art' = 'ausgespart'; 'Pack-Art Herkunft' = 'automatisch'; Samples = 0; GroesseMB = $mb
         Instrumente = ''; 'Anteil Loops' = 0; Formate = ''; 'BPM-Bereich' = ''; Tonarten = ''; Lizenz = ''
         'Original in Quelle' = 'ja (nicht kopiert)'; Duplikate = 0; 'Seit letzter Inventur' = ''
     })
@@ -450,6 +448,18 @@ try {
 
 Write-Host "Erzeuge den HTML-Bericht ..." -ForegroundColor Cyan
 $html = New-InventurBericht $csvSamples
+
+# 4.1 (NFA-08): nur die letzten 10 Staende behalten (Liste, Bericht, Kennzahlen, Pack-Liste, Vergleich)
+try {
+    $alteStaende = @(Get-ChildItem -LiteralPath $invOrdner -Filter 'Sample-Inventur_*.csv' -File -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -Skip 10)
+    foreach ($a in $alteStaende) {
+        $st = $a.BaseName -replace '^Sample-Inventur_', ''
+        foreach ($muster in "Sample-Inventur_$st.*", "Pack-Inventur_$st.*", "Inventur-Vergleich_$st.*") {
+            foreach ($o in @($invOrdner, $vglOrdner | Select-Object -Unique)) { Get-ChildItem -LiteralPath $o -Filter $muster -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue }
+        }
+    }
+    foreach ($b in @(Get-ChildItem -LiteralPath (Get-ZielProtokollOrdner $Ziel) -Filter 'Bibliothek-Stand_*.json' -File -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -Skip 10)) { Remove-Item -LiteralPath $b.FullName -Force -ErrorAction SilentlyContinue }
+} catch { }
 
 Write-Host ""
 Write-Host "==================== Ergebnis ====================" -ForegroundColor Yellow

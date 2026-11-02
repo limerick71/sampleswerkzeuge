@@ -316,6 +316,23 @@ try {
                     Send-Text $strom 200 'OK' 'ok'
                     Open-ExplorerVorne $arg (Split-Path -Parent $voll)
                 }
+                '/ziehen' {
+                    # REP-17 (4.1): Sample im Fenster "In DAW ziehen" anbieten (nur Dateien im Ziel)
+                    if ($Fundorte) { Send-Text $strom 404 'Not Found' 'Im Fundort-Bericht nicht verfügbar.'; break }
+                    if ($a.Methode -ne 'POST') { Send-Text $strom 405 'Method Not Allowed' 'Nur POST.'; break }
+                    $voll = Get-ZielPfad ([string]($a.Body | ConvertFrom-Json).pfad)
+                    if (-not $voll) { Send-Text $strom 404 'Not Found' 'Pfad liegt nicht im Ziel.'; break }
+                    if (-not (Test-Datei $voll)) { Send-Text $strom 404 'Not Found' 'Die Datei gibt es nicht mehr. Bitte die Sample-Bibliothek neu einlesen.'; break }
+                    [IO.File]::WriteAllText((Join-Path $datenOrdner 'Ziehen.txt'), $voll, (New-Object Text.UTF8Encoding($false)))
+                    $laeuft = $null
+                    try { $laeuft = [System.Threading.Mutex]::OpenExisting('SamplesWerkzeuge-DAW-Ziehen') } catch { }
+                    if ($laeuft) { $laeuft.Dispose() }
+                    elseif (-not $env:SW_KEIN_BROWSER) {
+                        $psExe = Join-Path $PSHOME 'powershell.exe'; if (-not (Test-Path -LiteralPath $psExe)) { $psExe = 'powershell.exe' }
+                        Start-Process -FilePath $psExe -ArgumentList "-STA -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $PSScriptRoot 'DAW-Ziehen.ps1')`"" -WindowStyle Hidden
+                    }
+                    Send-Text $strom 200 'OK' 'ok'
+                }
                 '/oeffnen-ort' {
                     if ($a.Methode -ne 'POST' -or -not $Fundorte) { Send-Text $strom 405 'Method Not Allowed' 'Nicht erlaubt.'; break }
                     $pf = [string]($a.Body | ConvertFrom-Json).pfad

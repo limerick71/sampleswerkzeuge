@@ -1,6 +1,6 @@
 # Erzeugt "Dokumentation Samples-Werkzeuge.rtf" (Aufruf: python3 tools/dokumentation.py)
 import os
-V = "4.0.2"
+V = "4.1"
 D = [
 ("h1", f"Samples-Werkzeuge {V} – Dokumentation"),
 ("p", "Die Samples-Werkzeuge kopieren Sample-Packs aus einem Quellordner sortiert nach Instrument in eine Sample-Bibliothek, räumen auf Wunsch Quellen und Bibliothek auf und zeigen die Bibliothek zum Durchhören als HTML-Bericht. Grundsatz: Das Sortieren verändert die Quelle nie; gelöscht wird nur in drei bewusst gewählten Schritten (Quelle aufräumen, Duplikate im Ziel entfernen bzw. aus dem Bericht, Download importieren mit der Wahl „Papierkorb“ für das Original), immer in den Papierkorb. Sie laufen mit dem Windows PowerShell, das bei Windows 10 und 11 dabei ist. Eine Installation ist nicht nötig."),

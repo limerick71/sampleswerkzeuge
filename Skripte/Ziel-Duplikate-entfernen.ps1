@@ -164,5 +164,6 @@ $ergebnis | Export-Csv -LiteralPath $csvPfad -NoTypeInformation -Delimiter ';' -
 try { $zp = Get-ZielProtokollOrdner $Ziel; [void][IO.Directory]::CreateDirectory($zp); Copy-Item -LiteralPath $csvPfad -Destination $zp } catch { }   # 4.0.1: auch im Ziel (Stand im Hauptfenster)
 Write-Host ""
 Write-Host "Fertig. In den Papierkorb verschoben: $ok Dateien | leere Ordner entfernt: $leer | Fehler: $fehler" -ForegroundColor Green
+if ($ok -gt 0) { Send-BibliothekGeaendert }
 Write-Host "Protokoll: $csvPfad"
 Write-Host "Bitte danach die Sample-Bibliothek neu einlesen, damit Liste und Bericht den neuen Stand zeigen."

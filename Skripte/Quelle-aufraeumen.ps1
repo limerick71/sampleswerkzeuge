@@ -157,7 +157,7 @@ if ($MacReste -or $Formate -or $Originale) {
                 if ($e.PSIsContainer) {
                     if ($artVon[$QWurzel] -eq 'Lose') { continue }
                     if ($e.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
-                    if ($o -eq $QWurzel -and ($e.Name -eq 'ModX' -or $e.Name -eq '_Sortier-Skript' -or $e.Name -like 'Samples-Werkzeuge*')) { continue }
+                    if ($o -eq $QWurzel -and ($e.Name -match $RxHerstellerOrdner -or $e.Name -eq '_Sortier-Skript' -or $e.Name -like 'Samples-Werkzeuge*')) { continue }
                     $stapel.Push($e.FullName)
                 } else { $quellDateien.Add($e); if ($quellDateien.Count % 2000 -eq 0) { Write-Host "  ... $($quellDateien.Count) Dateien gelesen" -ForegroundColor DarkGray } }
             }

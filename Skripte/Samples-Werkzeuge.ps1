@@ -193,13 +193,16 @@ $xaml = @'
       </DockPanel>
     </Border>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Background="White">
-      <StackPanel Margin="24,16,24,22">
+    <ScrollViewer x:Name="Haupt" VerticalScrollBarVisibility="Auto" Background="White">
+      <StackPanel x:Name="Inhalt" Margin="24,16,24,22">
         <!-- Kopf -->
-        <WrapPanel Margin="0,0,0,10">
-          <TextBlock Text="Samples-Werkzeuge" FontSize="24" FontWeight="SemiBold" Foreground="#1F3F74" Margin="0,0,14,0"/>
-          <TextBlock x:Name="TxtUnter" Foreground="{StaticResource Leise}" VerticalAlignment="Bottom" Margin="0,0,0,4"/>
-        </WrapPanel>
+        <DockPanel Margin="0,0,0,10" LastChildFill="True">
+          <Image x:Name="Logo" DockPanel.Dock="Right" Height="54" Margin="16,-4,0,0" VerticalAlignment="Center" Cursor="Hand" Visibility="Collapsed" ToolTip="make-some-music.de"/>
+          <WrapPanel VerticalAlignment="Center">
+            <TextBlock Text="Samples-Werkzeuge" FontSize="24" FontWeight="SemiBold" Foreground="#1F3F74" Margin="0,0,14,0"/>
+            <TextBlock x:Name="TxtUnter" Foreground="{StaticResource Leise}" VerticalAlignment="Bottom" Margin="0,0,0,4" TextWrapping="Wrap"/>
+          </WrapPanel>
+        </DockPanel>
 
         <!-- Abkuerzung: Download importieren -->
         <Grid Margin="0,4,0,0">
@@ -328,6 +331,10 @@ $xaml = @'
                 <Border x:Name="EndeLeiste" Visibility="Collapsed" Padding="12,8" BorderBrush="{StaticResource Linie}" BorderThickness="0,1,0,0">
                   <DockPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                      <CheckBox x:Name="ChkBibAuto1" Content="künftig automatisch" VerticalAlignment="Center" Margin="0,0,10,0" Visibility="Collapsed"
+                                ToolTip="Nach Sortieren, Import und Duplikate-Entfernen die Bibliothek gleich im Anschluss neu einlesen."/>
+                      <Button x:Name="BtnBibNeu" Style="{StaticResource Knopf}" Content="Bibliothek jetzt neu einlesen" Visibility="Collapsed"
+                              ToolTip="Im Ziel hat sich etwas geändert. Neu einlesen, damit die Sample-Bibliothek den aktuellen Stand zeigt."/>
                       <Button x:Name="LnkEndeDatei" Style="{StaticResource Link}" Content="Protokoll öffnen" Visibility="Collapsed"/>
                     </StackPanel>
                     <TextBlock x:Name="EndeText" FontWeight="SemiBold" VerticalAlignment="Center"/>
@@ -367,6 +374,8 @@ $xaml = @'
                 <Button x:Name="BtnBibliothek" Style="{StaticResource KnopfHaupt}" Content="Bibliothek öffnen" ToolTip="Öffnet die Sample-Bibliothek im Browser: Samples, Packs und Duplikate mit Suche, Gliederung, Filtern und Abspielen. Fragt vorher, ob das Ziel neu eingelesen werden soll."/>
                 <Button x:Name="LnkExcel" Style="{StaticResource Link}" Content="Als Excel-Liste" ToolTip="Öffnet den letzten Stand als CSV-Datei (eine Zeile je Sample), z. B. in Excel."/>
               </WrapPanel>
+              <CheckBox x:Name="ChkBibAuto2" Content="Nach Sortieren, Import und Duplikate-Entfernen automatisch neu einlesen" FontSize="12.5" Margin="0,12,0,0"
+                        ToolTip="Liest das Ziel nach jedem Vorgang, der dort etwas kopiert oder entfernt hat, gleich im Anschluss neu ein (im selben Vorgangsmonitor)."/>
             </StackPanel>
           </Border>
           <Border Grid.Column="2" BorderBrush="{StaticResource Linie}" BorderThickness="1" CornerRadius="8" Padding="18,16">
@@ -417,20 +426,30 @@ try {
     exit 1
 }
 $ui = @{}
-foreach ($n in @('BtnEinstellungen', 'BtnDoku', 'LnkProtokolle', 'LnkProgramm', 'LnkVerknuepfung', 'BtnSchliessen', 'TxtUrheber', 'TxtUrheberName', 'LnkWebseite', 'TxtUnter',
+foreach ($n in @('BtnEinstellungen', 'BtnDoku', 'LnkProtokolle', 'LnkProgramm', 'LnkVerknuepfung', 'BtnSchliessen', 'TxtUrheber', 'TxtUrheberName', 'LnkWebseite', 'TxtUnter', 'Logo', 'Haupt', 'Inhalt',
                  'ImportRahmen', 'BtnImport', 'TxtImport1',
                  'Schritt1', 'Schritt2', 'Schritt3', 'Num1', 'Num2', 'Num3', 'NumT1', 'NumT2', 'NumT3', 'Name1', 'Name2', 'Name3',
                  'Stand1', 'Stand2', 'Stand3', 'Pille1', 'Pille2', 'Pille3', 'PilleT1', 'PilleT2', 'PilleT3', 'Spitze',
                  'Feld1', 'Feld2', 'Feld3', 'QuellListe', 'BtnFundorte', 'BtnQuellen', 'Fakten2', 'BtnSortieren', 'BtnZielOeffnen',
                  'LnkSortProt', 'LnkImportProt', 'Fakten3', 'BtnQuelleAuf', 'BtnZielDup', 'LnkPapierkorb',
                  'Lauf', 'MonitorZeile', 'LnkEinblenden', 'MonitorZeileText', 'LnkLaufZu', 'LnkZeileDatei', 'LaufTitel', 'LaufBalken', 'LaufStatus', 'FrageLeiste', 'LnkFrageDatei', 'BtnJa', 'BtnNein',
-                 'FrageText', 'EndeLeiste', 'LnkEndeDatei', 'EndeText', 'LaufLog',
+                 'FrageText', 'EndeLeiste', 'LnkEndeDatei', 'EndeText', 'LaufLog', 'ChkBibAuto1', 'BtnBibNeu', 'ChkBibAuto2',
                  'KpiSamples', 'KpiPacks', 'KpiGroesse', 'TxtBibStand', 'BtnBibliothek', 'LnkExcel', 'BibAenderungen', 'LnkAenderungen', 'LnkPackArten')) {
     $ui[$n] = $win.FindName($n)
 }
 $win.Title = "Samples-Werkzeuge $ProgrammVersion"
 $ui.TxtUnter.Text = "Version $ProgrammVersion  ·  Sample-Packs finden, einsortieren, aufräumen – und dann durchhören."
 $ui.TxtUrheberName.Text = $UrheberKurz
+# 4.1 (QLN-16): Logo oben rechts, Klick oeffnet die Webseite; fehlt die Datei, bleibt es weg
+try {
+    $logoPfad = Join-Path $skriptOrdner 'make-some-music.png'
+    if (Test-Path -LiteralPath $logoPfad) {
+        $bild = New-Object System.Windows.Media.Imaging.BitmapImage
+        $bild.BeginInit(); $bild.UriSource = New-Object System.Uri($logoPfad); $bild.CacheOption = 'OnLoad'; $bild.EndInit()
+        $ui.Logo.Source = $bild; $ui.Logo.Visibility = 'Visible'
+        $ui.Logo.Add_MouseLeftButtonUp({ try { Start-Process $WebSeite } catch { } })
+    }
+} catch { }
 $ui.LnkWebseite.Add_RequestNavigate({ param($s, $ev) try { Start-Process $WebSeite } catch { }; $ev.Handled = $true })
 $ui.TxtUrheber.ToolTip = $Urheberhinweis
 $ui.LnkProgramm.ToolTip = $basis
@@ -485,6 +504,7 @@ $script:laufZeilen = New-Object System.Collections.Generic.List[string]   # gesa
 $script:laufStart = $null
 $script:laufErgebnis = ''
 $script:laufNein = $false
+$script:laufBib = $false         # 4.1 (INV-11): der Vorgang hat im Ziel etwas kopiert oder entfernt
 $script:logNeu = 0
 $script:monitorOffen = $false
 $zeitgeber = New-Object System.Windows.Threading.DispatcherTimer
@@ -524,7 +544,7 @@ function Set-Bedienbar([bool]$an) {
 
 # Startet ein Skript; Ausgabe, Fortschritt und Rueckfragen erscheinen im Ablauf-Bereich.
 # $nachher: Skriptblock, der nach erfolgreichem Ende laeuft (z. B. Bericht oeffnen).
-function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 'Samples-Werkzeuge', [scriptblock]$nachher = $null) {
+function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 'Samples-Werkzeuge', [scriptblock]$nachher = $null, [switch]$Anhaengen) {
     if (Test-LaufAktiv) { Show-Meldung 'Es läuft bereits ein Vorgang. Bitte warten, bis er fertig ist.' 'Warning'; return $false }
     $pfad = Join-Path $skriptOrdner $datei
     if (-not (Test-Path -LiteralPath $pfad)) { Show-Meldung "Datei nicht gefunden:`n$pfad" 'Error'; return $false }
@@ -533,8 +553,9 @@ function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 
     $befehl = "`$ProgressPreference = 'SilentlyContinue'; try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding(`$false) } catch { }; " +
               "try { & '$p' $argumente } catch { [Console]::Out.WriteLine('##T##Red##FEHLER: ' + `$_.Exception.Message); exit 1 }"
     $kodiert = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($befehl))
-    $ui.LaufLog.Items.Clear()
-    $script:laufZeilen.Clear()
+    # 4.1 (INV-11): Anhaengen = im selben Vorgangsmonitor weiter (Verlauf bleibt stehen, Trennzeile)
+    if ($Anhaengen -and $ui.LaufLog.Items.Count) { $script:laufZeilen.Clear(); Add-LogZeile '' $null; Add-LogZeile "===== $titel =====" $SWF.Akzent $true }
+    else { $ui.LaufLog.Items.Clear(); $script:laufZeilen.Clear() }
     $script:laufStart = Get-Date
     # Schritt, zu dem der Vorgang gehoert: Import zaehlt zu Sortieren (Befund 9)
     $script:laufSchritt = switch -Wildcard ($datei) { 'Fundorte*' { 1 } 'Samples-sortieren*' { 2 } 'Download-importieren*' { 2 } 'Quelle-aufraeumen*' { 3 } 'Ziel-Duplikate*' { 3 } default { $script:aktiverSchritt } }
@@ -547,7 +568,8 @@ function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 
     $ui.FrageLeiste.Visibility = 'Collapsed'
     $ui.EndeLeiste.Visibility = 'Collapsed'
     $ui.LaufLog.Visibility = 'Visible'
-    $script:logUnten = $true; $script:laufNein = $false
+    $script:logUnten = $true; $script:laufNein = $false; $script:laufBib = $false
+    $ui.BtnBibNeu.Visibility = 'Collapsed'; $ui.ChkBibAuto1.Visibility = 'Collapsed'
     $ui.Lauf.Visibility = 'Visible'; $ui.MonitorZeile.Visibility = 'Collapsed'
     $script:laufDatei = ''; $script:laufFehler = $false; $script:laufEnde = $null; $script:laufNachher = $nachher
     try {
@@ -560,6 +582,7 @@ function Start-Skript([string]$datei, [string]$argumente = '', [string]$titel = 
         return $false
     }
     Set-Bedienbar $false
+    Update-LogHoehe
     $ui.Lauf.BringIntoView()
     $zeitgeber.Start()
     return $true
@@ -576,7 +599,8 @@ function Read-LaufZeilen {
                                         'Cyan' { $SWF.Cyan } 'DarkCyan' { $SWF.Cyan } 'DarkGray' { $SWF.Leise } 'Gray' { $SWF.Leise } default { $null } }
             if ($text -match '^\s*FEHLER') { $pinsel = $SWF.Rot; $script:laufFehler = $true }
             # 4.0.2 (Befund 5): Ueberschriften wie "===== Ergebnis =====" blau und fett statt orange
-            $fett = $false
+            # 4.1 (QLN-16): farbige Zeilen fett, grau bleibt normal
+            $fett = ($null -ne $pinsel -and $pinsel -ne $SWF.Leise)
             if ($text -match '^\s*={3,}.*={3,}\s*$') { $pinsel = $SWF.Akzent; $fett = $true }
             Add-LogZeile $text $pinsel $fett
             # Zuletzt genannte Datei (Vorschau, Protokoll, Bericht) zum Oeffnen anbieten
@@ -589,6 +613,8 @@ function Read-LaufZeilen {
                 if ($pz -ge 0) { $ui.LaufBalken.IsIndeterminate = $false; $ui.LaufBalken.Value = [Math]::Min(100, $pz) }
                 $ui.LaufStatus.Text = $(if ($teile.Count -ge 3 -and $teile[2]) { "$($teile[1]) · $($teile[2])" } else { $teile[1] })
             }
+        } elseif ($z -eq '##BIB##') {
+            $script:laufBib = $true
         } elseif ($z.StartsWith('##FRAGE##')) {
             $ui.FrageText.Text = $z.Substring(9)
             $ui.LnkFrageDatei.Visibility = $(if ($script:laufDatei -and (Test-Path -LiteralPath $script:laufDatei)) { 'Visible' } else { 'Collapsed' })
@@ -607,11 +633,11 @@ function Read-LaufZeilen {
                 foreach ($m in [regex]::Matches($t, '<S S="Error">(.*?)</S>')) {
                     $f = [regex]::Replace($m.Groups[1].Value, '_x([0-9A-Fa-f]{4})_', { param($x) [string][char][Convert]::ToInt32($x.Groups[1].Value, 16) })
                     $f = [Net.WebUtility]::HtmlDecode($f).TrimEnd("`r", "`n")
-                    if ($f.Trim()) { foreach ($fz in ($f -split "`r?`n")) { Add-LogZeile $fz $SWF.Rot }; $script:laufFehler = $true }
+                    if ($f.Trim()) { foreach ($fz in ($f -split "`r?`n")) { Add-LogZeile $fz $SWF.Rot $true }; $script:laufFehler = $true }
                 }
                 continue
             }
-            if ($t.Trim()) { Add-LogZeile $t $SWF.Rot; $script:laufFehler = $true }
+            if ($t.Trim()) { Add-LogZeile $t $SWF.Rot $true; $script:laufFehler = $true }
         } else {
             Add-LogZeile $z $null
         }
@@ -645,10 +671,20 @@ function Stop-LaufAnzeige {
         [IO.File]::WriteAllLines((Join-Path $protokollOrdner "Vorgang_$($script:laufStart.ToString('yyyy-MM-dd_HHmmss'))_$name.txt"), [string[]]($kopf + $script:laufZeilen.ToArray()), (New-Object Text.UTF8Encoding($true)))
     } catch { Write-FehlerLog "Vorgangsmonitor (Textdatei): $($_.Exception.Message)" }
     Update-Monitor
+    Update-LogHoehe
     Set-Bedienbar $true
     Update-Status
     if ($ok -and -not $nein -and $script:laufNachher) { Invoke-Sicher $script:laufNachher }
     $script:laufNachher = $null
+    # 4.1 (INV-11): hat sich im Ziel etwas geaendert, Bibliothek neu einlesen - automatisch oder per Knopf
+    if ($script:laufBib -and -not $nein) {
+        $script:laufBib = $false
+        if ((Get-Einstellungen).BibliothekAutomatisch) {
+            $win.Dispatcher.BeginInvoke([Action]{ [void](Start-Skript 'Inventur.ps1' '' 'Sample-Bibliothek einlesen' $null -Anhaengen) }, [System.Windows.Threading.DispatcherPriority]::Background) | Out-Null
+        } else {
+            $ui.BtnBibNeu.Visibility = 'Visible'; $ui.ChkBibAuto1.Visibility = 'Visible'
+        }
+    }
 }
 
 $zeitgeber.Add_Tick({
@@ -668,13 +704,13 @@ $zeitgeber.Add_Tick({
 Set-Klick $ui.BtnJa {
     if (-not $script:lauf) { return }
     $ui.FrageLeiste.Visibility = 'Collapsed'; $ui.LaufBalken.IsIndeterminate = $true; $ui.LaufStatus.Text = 'läuft …'
-    Add-LogZeile "> $($ui.FrageText.Text)  Ja" $SWF.Akzent
+    Add-LogZeile "> $($ui.FrageText.Text)  Ja" $SWF.Akzent $true
     $script:lauf.Antwort('J')
 }
 Set-Klick $ui.BtnNein {
     if (-not $script:lauf) { return }
     $ui.FrageLeiste.Visibility = 'Collapsed'; $ui.LaufBalken.IsIndeterminate = $true; $ui.LaufStatus.Text = 'läuft …'
-    Add-LogZeile "> $($ui.FrageText.Text)  Nein" $SWF.Akzent
+    Add-LogZeile "> $($ui.FrageText.Text)  Nein" $SWF.Akzent $true
     $script:laufNein = $true
     $script:lauf.Antwort('N')
 }
@@ -682,8 +718,24 @@ Set-Klick $ui.LnkFrageDatei { Open-Pfad $script:laufDatei }
 Set-Klick $ui.LnkEndeDatei {
     if ($script:laufDatei -match '\.html$' -and $script:laufDatei -match 'Inventur') { Open-Bericht } else { Open-Pfad $script:laufDatei }
 }
-Set-Klick $ui.LnkLaufZu { $script:monitorOffen = $false; Update-Monitor }
-Set-Klick $ui.LnkEinblenden { $script:monitorOffen = $true; Update-Monitor; $ui.Lauf.BringIntoView() }
+# 4.1 (QLN-16): beim Ein- und Ausblenden bleibt die Kopfzeile des Vorgangsmonitors an ihrer Stelle auf dem Bildschirm
+function Set-MonitorOffen([bool]$offen) {
+    $vorher = $(if ($ui.Lauf.Visibility -eq 'Visible') { $ui.Lauf } else { $ui.MonitorZeile })
+    $y0 = $null; try { $y0 = $vorher.TranslatePoint((New-Object System.Windows.Point(0, 0)), $ui.Haupt).Y } catch { }
+    $script:monitorOffen = $offen
+    Update-Monitor
+    Update-LogHoehe -Sofort
+    $nachher = $(if ($ui.Lauf.Visibility -eq 'Visible') { $ui.Lauf } else { $ui.MonitorZeile })
+    if ($null -ne $y0) {
+        try {
+            $win.UpdateLayout()
+            $y1 = $nachher.TranslatePoint((New-Object System.Windows.Point(0, 0)), $ui.Haupt).Y
+            $ui.Haupt.ScrollToVerticalOffset($ui.Haupt.VerticalOffset + ($y1 - $y0))
+        } catch { }
+    }
+}
+Set-Klick $ui.LnkLaufZu { Set-MonitorOffen $false }
+Set-Klick $ui.LnkEinblenden { Set-MonitorOffen $true }
 Set-Klick $ui.LnkZeileDatei {
     if ($script:laufDatei -match '\.html$' -and $script:laufDatei -match 'Inventur') { Open-Bericht } else { Open-Pfad $script:laufDatei }
 }
@@ -693,8 +745,22 @@ $ui.LaufLog.AddHandler([System.Windows.Controls.ScrollViewer]::ScrollChangedEven
     param($s, $ev)
     if ($ev.ExtentHeightChange -eq 0) { $script:logUnten = (($ev.VerticalOffset + $ev.ViewportHeight) -ge ($ev.ExtentHeight - 1)) }
 })
-# 4.0.2 (Befund 3): Verlauf waechst mit dem Fenster
-$win.Add_SizeChanged({ try { $ui.LaufLog.Height = [Math]::Max(210, [Math]::Floor($win.ActualHeight * 0.42)) } catch { } })
+# 4.1 (QLN-16): Verlauf fuellt genau den freien Platz - im Vollbild passt alles auf eine Seite, im kleinen
+# Fenster bleibt er mindestens 210 hoch (dann wird gescrollt)
+function Update-LogHoehe([switch]$Sofort) {
+    $setzen = {
+        try {
+            if ($ui.Lauf.Visibility -ne 'Visible' -or $ui.LaufLog.Visibility -ne 'Visible') { return }
+            $rest = $ui.Inhalt.ActualHeight + $ui.Inhalt.Margin.Top + $ui.Inhalt.Margin.Bottom - $ui.LaufLog.ActualHeight
+            $h = [Math]::Floor($ui.Haupt.ViewportHeight - $rest - 2)
+            $neu = [Math]::Max(210, $h)
+            if ([Math]::Abs($ui.LaufLog.Height - $neu) -ge 1 -or [double]::IsNaN($ui.LaufLog.Height)) { $ui.LaufLog.Height = $neu }
+        } catch { }
+    }
+    if ($Sofort) { $win.UpdateLayout(); & $setzen }
+    else { [void]$win.Dispatcher.BeginInvoke([Action]$setzen, [System.Windows.Threading.DispatcherPriority]::Loaded) }
+}
+$win.Add_SizeChanged({ Update-LogHoehe })
 
 # ---------------------------------------------------------------------------
 # Schritte des Ablaufs
@@ -714,6 +780,7 @@ function Set-Schritt([int]$n) {
     if ($n -ne $alt -and -not (Test-LaufAktiv)) { $script:monitorOffen = $false }
     Update-Monitor
     Update-SchrittAussehen
+    Update-LogHoehe
 }
 
 function Update-SchrittAussehen {
@@ -856,7 +923,9 @@ function Update-Status {
             } catch { }
         }
     }
-    if ($script:schrittZustand[1] -ne 'ok') { $script:schrittZustand[2] = 'neutral'; $ui.PilleT2.Text = 'erst Quellen einrichten' }
+    # 4.1 (GUI-08): Ziel nicht erreichbar (z. B. externe Platte nicht angesteckt) - rot, Sortieren startet nicht
+    if ($zs.Fehlt) { $script:schrittZustand[2] = 'fehler'; $ui.PilleT2.Text = "$([char]0x25CF) Ziel $(if ($e.Ziel) { 'nicht gefunden' } else { 'nicht eingestellt' })" }
+    elseif ($script:schrittZustand[1] -ne 'ok') { $script:schrittZustand[2] = 'neutral'; $ui.PilleT2.Text = 'erst Quellen einrichten' }
     elseif (-not $tSort) { $script:schrittZustand[2] = 'warn'; $ui.PilleT2.Text = "$([char]0x25CF) noch nicht sortiert" }
     elseif ($neuer.Count) { $script:schrittZustand[2] = 'warn'; $ui.PilleT2.Text = "$([char]0x25CF) Neues in $($neuer.Count) Quelle$(if ($neuer.Count -ne 1) { 'n' })" }
     else { $script:schrittZustand[2] = 'ok'; $ui.PilleT2.Text = "$([char]0x2713) auf dem Stand" }
@@ -961,6 +1030,7 @@ function Update-Status {
 
     if (Test-LaufAktiv) { Set-Bedienbar $false }
     Update-SchrittAussehen
+    Update-LogHoehe
 }
 
 # ---------------------------------------------------------------------------
@@ -1020,6 +1090,21 @@ Set-Klick $ui.BtnQuelleAuf { Show-QuelleAufraeumen }
 Set-Klick $ui.BtnZielDup { Show-ZielAufraeumen }
 Set-Klick $ui.LnkPapierkorb { try { Start-Process explorer.exe 'shell:RecycleBinFolder' } catch { } }
 Set-Klick $ui.BtnBibliothek { Show-BibliothekOeffnen }
+# 4.1 (INV-11): neu einlesen nach einer Aenderung im Ziel; Haken "automatisch" an zwei Stellen, gemeinsam gespeichert
+Set-Klick $ui.BtnBibNeu { $ui.BtnBibNeu.Visibility = 'Collapsed'; $ui.ChkBibAuto1.Visibility = 'Collapsed'; [void](Start-Skript 'Inventur.ps1' '' 'Sample-Bibliothek einlesen' $null -Anhaengen) }
+$script:bibAutoSetzen = $false
+function Set-BibAuto([bool]$an) {
+    if ($script:bibAutoSetzen) { return }
+    $script:bibAutoSetzen = $true
+    try { $ui.ChkBibAuto1.IsChecked = $an; $ui.ChkBibAuto2.IsChecked = $an; Set-Einstellung 'BibliothekAutomatisch' $an } finally { $script:bibAutoSetzen = $false }
+}
+foreach ($cb in @($ui.ChkBibAuto1, $ui.ChkBibAuto2)) {
+    $cb.Add_Checked({ Invoke-Sicher { Set-BibAuto $true } })
+    $cb.Add_Unchecked({ Invoke-Sicher { Set-BibAuto $false } })
+}
+$script:bibAutoSetzen = $true
+$ui.ChkBibAuto1.IsChecked = [bool](Get-Einstellungen).BibliothekAutomatisch; $ui.ChkBibAuto2.IsChecked = $ui.ChkBibAuto1.IsChecked
+$script:bibAutoSetzen = $false
 Set-Klick $ui.LnkExcel { $c = Get-NeuesteInventur 'Sample'; if ($c) { Open-Pfad $c.FullName } else { Show-Meldung 'Die Bibliothek wurde noch nicht eingelesen.' 'Warning' } }
 Set-Klick $ui.LnkAenderungen { $c = Get-NeuesterVergleich; if ($c) { Open-Pfad $c.FullName } else { Show-Meldung 'Noch kein Vergleich vorhanden (entsteht ab dem zweiten Einlesen).' 'Warning' } }
 Set-Klick $ui.LnkPackArten {

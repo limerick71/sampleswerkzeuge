@@ -18,7 +18,7 @@
   - Dateinamen bleiben unveraendert.
   - Identische Dateien (gleicher Name + Groesse + Inhalt) werden nur einmal abgelegt.
   - Construction Kits und Ableton-Drum-Kits bleiben als Ganzes erhalten.
-  - Der Ordner "ModX" (Yamaha-Bibliotheken) wird komplett ausgespart.
+  - Hersteller-Bibliotheken direkt in der Quelle (z. B. "ModX", "Native Instruments") werden komplett ausgespart.
   - .asd (Ableton-Analyse) und .DS_Store / Thumbs.db werden nicht kopiert.
   - Bereits vorhandene Zieldateien werden nie ueberschrieben; sie erscheinen schon in der
     Vorschau als "bereits im Ziel".
@@ -252,6 +252,7 @@ function Join-Rel([string[]]$Teile) {
 $nichtLesbar = 0
 $alle = New-Object System.Collections.Generic.List[object]
 $wurzelVon = @{}
+$ausgespart = @{}
 foreach ($QWurzel in $QuellListe) {
     Write-Host "Lese Dateien aus '$QWurzel' ..." -ForegroundColor Cyan
     $stapel = New-Object System.Collections.Generic.Stack[string]
@@ -264,13 +265,13 @@ foreach ($QWurzel in $QuellListe) {
             if ($e.PSIsContainer) {
                 if ($artVon[$QWurzel] -eq 'Lose') { continue }   # nur Dateien direkt im Ordner
                 if ($e.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
-                if ($ordner -eq $QWurzel -and $e.Name -eq 'ModX') { continue }
+                if ($ordner -eq $QWurzel -and $e.Name -match $RxHerstellerOrdner) { $ausgespart[$e.FullName] = $true; continue }
                 $stapel.Push($e.FullName)
             } else { $alle.Add($e); $wurzelVon[$e.FullName] = $QWurzel }
         }
     }
-    if (Test-Path -LiteralPath (Join-Path $QWurzel 'ModX')) { Write-Host "Hinweis: Der Ordner 'ModX' (Yamaha-Bibliotheken) in $QWurzel wird ausgespart." -ForegroundColor DarkGray }
 }
+foreach ($a in @($ausgespart.Keys | Sort-Object)) { Write-Host "Hinweis: Hersteller-Bibliothek '$a' wird ausgespart." -ForegroundColor DarkGray }
 if ($nichtLesbar -gt 0) { Write-Host "Hinweis: $nichtLesbar Ordner waren nicht lesbar und wurden ausgelassen." -ForegroundColor Yellow }
 $plan = New-Object System.Collections.Generic.List[object]
 
@@ -705,6 +706,7 @@ try { Move-ZielProtokolle $Ziel; $zp = Get-ZielProtokollOrdner $Ziel; [void][IO.
 Write-Host ""
 Write-Host "Fertig." -ForegroundColor Green
 Write-Host ("  neu kopiert:                            {0,7}" -f $ok) -ForegroundColor Green
+if ($ok -gt 0) { Send-BibliothekGeaendert }
 Write-Host ("  schon im Ziel, uebersprungen:           {0,7}" -f ($nVorhanden + $vorhanden))
 Write-Host ("  doppelt in der Quelle, nur 1x kopiert:  {0,7}" -f $dupAnzahl)
 if ($fehler -gt 0) { Write-Host ("  Fehler:                                 {0,7}" -f $fehler) -ForegroundColor Red }

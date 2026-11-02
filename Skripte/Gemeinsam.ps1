@@ -2,15 +2,14 @@
 # Gemeinsam.ps1 - gemeinsame Pfade, Einstellungen und Hilfsfunktionen der Samples-Werkzeuge (Version 2)
 # Wird von allen Skripten der Samples-Werkzeuge per Dot-Sourcing geladen.
 #
-# Ordnerstruktur (wie bei den Plugin-Werkzeugen):
-#   <Wurzel>\               nur Startdateien (*.cmd) und Dokumentation
-#   <Wurzel>\Skripte\       Skripte, Einstellungen.json und Pack-Arten.csv (eigene Korrekturen)
-#   <Wurzel>\Protokolle\    Vorschau-, Kopier- und Duplikat-Protokolle (CSV)
-#   <Berichtsordner>\Inventuren\           Sample-Inventur_<Datum>.csv/.html/.json, Pack-Inventur_<Datum>.csv
-#   <Berichtsordner>\Inventur-Vergleiche\  Inventur-Vergleich_<Datum>.csv
-#   (<Berichtsordner> ist standardmaessig der Programmordner, einstellbar in der Oberflaeche)
+# Ordnerstruktur (ab 4.1 sind Programm und Daten getrennt, NFA-08):
+#   <Wurzel>\               nur Startdateien (*.cmd), Dokumentation und Skripte - darf bei einem Versionswechsel weg
+#   %LOCALAPPDATA%\Samples-Werkzeuge\   Einstellungen.json, Pack-Arten.csv, Fehler.log,
+#                                        Protokolle\ (Vorschauen, Protokolle, Vorgang_*.txt), Fundorte\
+#   <Ziel>\99_Protokolle\               Sortier-, Import- und Aufraeum-Protokolle, Bibliothek-Stand_<Datum>.json
+#   <Ziel>\99_Protokolle\Bibliothek\   Liste, Bericht und Vergleich der Sample-Bibliothek (die letzten 10 Staende)
 
-$ProgrammVersion = '4.0.2'
+$ProgrammVersion = '4.1'
 $Urheberhinweis  = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Ver$([char]0x00F6)ffentlichung ge$([char]0x00E4)nderter Fassungen nur mit Zustimmung."
 $UrheberKurz     = "$([char]0x00A9) 2026 Herbert St$([char]0x00F6)cker"
 $DownloadSeite   = 'https://github.com/limerick71/sampleswerkzeuge/releases/latest'
@@ -19,10 +18,14 @@ $WebSeite        = 'https://make-some-music.de'   # 4.0.2: Webseite neben dem Ur
 $skriptOrdner = $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($skriptOrdner)) { $skriptOrdner = (Get-Location).Path }
 $wurzel           = Split-Path -Parent $skriptOrdner
-$protokollOrdner  = Join-Path $wurzel 'Protokolle'
-$einstellungsPfad = Join-Path $skriptOrdner 'Einstellungen.json'
-$fehlerLog        = Join-Path $skriptOrdner 'Fehler.log'
-$packArtenPfad    = Join-Path $skriptOrdner 'Pack-Arten.csv'
+# 4.1 (NFA-08): Nutzerdaten ausserhalb des Programmordners (SW_DATEN nur fuer Tests)
+$datenOrdner = if ($env:SW_DATEN) { $env:SW_DATEN } elseif ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Samples-Werkzeuge' } else { Join-Path $HOME '.samples-werkzeuge' }
+try { [void][IO.Directory]::CreateDirectory($datenOrdner) } catch { }
+$protokollOrdner  = Join-Path $datenOrdner 'Protokolle'
+$einstellungsPfad = Join-Path $datenOrdner 'Einstellungen.json'
+$fehlerLog        = Join-Path $datenOrdner 'Fehler.log'
+$packArtenPfad    = Join-Path $datenOrdner 'Pack-Arten.csv'
+$fundortOrdner    = Join-Path $datenOrdner 'Fundorte'
 
 # Audiodateien und macOS-Reste (gemeinsam fuer Sortieren und Inventur)
 $RxAudio    = '\.(wav|aiff?|mp3|flac|ogg|rx2|rex|m4a)$'
@@ -99,7 +102,6 @@ $PfadEinstellungen = @(
     @{ Name = 'Ziel';           Text = 'Ziel';             Hinweis = 'Sortierte Sample-Bibliothek. Hierhin wird kopiert.' }
     @{ Name = 'Downloads';      Text = 'Downloads';        Hinweis = "Hier sucht 'Download importieren' nach neuen Sample-Packs (ZIP-Dateien und Ordner)." }
     @{ Name = 'DownloadArchiv'; Text = 'Download-Archiv';  Hinweis = "Hierhin verschiebt 'Download importieren' auf Wunsch die Original-Downloads." }
-    @{ Name = 'Berichtsordner'; Text = 'Berichte';         Hinweis = "Hier legt die Inventur (ab Version 2) die Unterordner Inventuren und Inventur-Vergleiche an." }
 )
 
 function Get-StandardDokumente {
@@ -108,18 +110,50 @@ function Get-StandardDokumente {
     return 'C:\'
 }
 
-# Standardordner ab 2.1: im Ordner Dokumente des angemeldeten Benutzers (erleichtert Tests auf
-# beliebigen Rechnern). Bis 2.0 waren es E:\Sounds und Samples, E:\Samples, E:\Samples-Archiv\Downloads.
-$AlteStandardOrdner = @{ Quelle = 'E:\Sounds und Samples'; Ziel = 'E:\Samples'; DownloadArchiv = 'E:\Samples-Archiv\Downloads' }
+# 4.1 (GUI-08): Vorschlag fuer das Ziel beim ersten Start: "Samples" auf dem lokalen Laufwerk mit dem meisten
+# freien Platz (keine Netzlaufwerke oder USB-Sticks). Gibt es den Ordner schon mit fremdem Inhalt, ein anderer Name.
+function Get-ZielVorschlag {
+    if ($script:zielVorschlag) { return $script:zielVorschlag }
+    $best = $null
+    try {
+        foreach ($d in [IO.DriveInfo]::GetDrives()) {
+            try { if ($d.DriveType -ne 'Fixed' -or -not $d.IsReady) { continue }; if (-not $best -or $d.AvailableFreeSpace -gt $best.AvailableFreeSpace) { $best = $d } } catch { }
+        }
+    } catch { }
+    $root = if ($best) { $best.RootDirectory.FullName } else { [IO.Path]::GetPathRoot((Get-StandardDokumente)) }
+    $vorschlag = Join-Path $root 'Sample-Bibliothek-Neu'
+    foreach ($n in 'Samples', 'Sample-Bibliothek', 'Samples-Bibliothek') {
+        $p = Join-Path $root $n
+        if (-not (Test-Path -LiteralPath $p)) { $vorschlag = $p; break }
+        if (Test-Path -LiteralPath (Join-Path $p '99_Protokolle')) { $vorschlag = $p; break }   # schon eine Bibliothek der Samples-Werkzeuge
+        if (-not @(Get-ChildItem -LiteralPath $p -Force -ErrorAction SilentlyContinue | Select-Object -First 1).Count) { $vorschlag = $p; break }   # leer
+    }
+    $script:zielVorschlag = $vorschlag
+    return $vorschlag
+}
+# 4.1 (GUI-08): liegt ein Ordner in OneDrive (dann wuerden viele Gigabyte Samples in die Cloud geladen)?
+function Test-OneDrivePfad([string]$pfad) {
+    if (-not $pfad) { return $false }
+    $p = $pfad.TrimEnd('\', '/') + '\'
+    foreach ($od in @($env:OneDrive, $env:OneDriveConsumer, $env:OneDriveCommercial) | Where-Object { $_ }) {
+        if ($p.StartsWith($od.TrimEnd('\', '/') + '\', [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    return ($p -match '\\OneDrive( - [^\\]+)?\\')
+}
+# Download-Archiv neben dem Ziel (4.1)
+function Get-ArchivVorschlag([string]$ziel) {
+    $eltern = Split-Path -Parent $ziel.TrimEnd('\', '/')
+    if (-not $eltern) { $eltern = [IO.Path]::GetPathRoot($ziel) }
+    return [IO.Path]::Combine($eltern, 'Samples-Download-Archiv')   # Join-Path scheitert, wenn das Laufwerk (noch) fehlt
+}
 
 function Get-StandardEinstellungen {
     $dok = Get-StandardDokumente
     return [ordered]@{
-        Quelle              = ([IO.Path]::Combine($dok, 'Quelle_Samples'))
-        Ziel                = ([IO.Path]::Combine($dok, 'Ziel_Samples'))
+        Quelle              = ''   # 4.1 (GUI-08): keine erfundene Quelle - Einstieg ueber "Fundorte suchen"
+        Ziel                = (Get-ZielVorschlag)
         Downloads           = (Get-StandardDownloads)
         DownloadArchiv      = ([IO.Path]::Combine($dok, 'Z_Download_Archiv'))
-        Berichtsordner      = $wurzel
         RX2Beibehalten      = $true
         MP3Beibehalten      = $true
         AIFFBeibehalten     = $true
@@ -129,6 +163,7 @@ function Get-StandardEinstellungen {
         FundortZusatz       = ''
         FundortZip          = $true
         ImportOriginal      = 'Archiv'   # Version 3: Archiv, Behalten oder Papierkorb
+        BibliothekAutomatisch = $false   # 4.1 (INV-11): nach Sortieren, Import und Duplikate-Entfernen automatisch neu einlesen
     }
 }
 
@@ -141,15 +176,10 @@ function Get-Einstellungen {
             foreach ($p in $cfg.PSObject.Properties) {
                 if ($e.Contains($p.Name) -and $null -ne $p.Value -and [string]$p.Value -ne '') { $e[$p.Name] = $p.Value }
             }
-            # Einstellungen aus einer Version bis 2.0: Ordner, die dort dem alten Standard (E:) entsprachen,
-            # sind nicht gespeichert - fuer sie gilt weiter der alte Standard
-            if (-not $cfg.PSObject.Properties['Standard21']) {
-                foreach ($k in $AlteStandardOrdner.Keys) { if (-not $cfg.PSObject.Properties[$k]) { $e[$k] = $AlteStandardOrdner[$k] } }
-            }
         } catch { Write-FehlerLog "Einstellungen nicht lesbar: $($_.Exception.Message)" }
     }
     foreach ($k in @($e.Keys)) {
-        if ($k -in 'ErsterStartErledigt', 'RX2Beibehalten', 'MP3Beibehalten', 'AIFFBeibehalten', 'FundortZip') { $e[$k] = ([string]$e[$k]) -notin 'False', '0', '' }
+        if ($k -in 'ErsterStartErledigt', 'RX2Beibehalten', 'MP3Beibehalten', 'AIFFBeibehalten', 'FundortZip', 'BibliothekAutomatisch') { $e[$k] = ([string]$e[$k]) -notin 'False', '0', '' }
         elseif ($k -in 'FundortAn', 'FundortZusatz') { $e[$k] = ([string]$e[$k]).Trim() }   # Pfadlisten: "C:\" behaelt den \
         else { $e[$k] = ([string]$e[$k]).Trim().TrimEnd('\', '/') }
     }
@@ -184,6 +214,9 @@ function Get-QuellArtName([string]$art) { if ($QuellArten.Contains($art)) { retu
 $RxPackInnen = '^(samples?|sounds|demo|wav|wave|waves|aiff?|rex2?|rx2|acid|midi|stems|presets?|patches|full ?mix|kits?)$|^(loops?|one[ -]?shots?|oneshots|drums?|drum ?loops|kicks?|snares?|hats?|hi[ -]?hats?|claps?|percs?|percussion|toms?|cymbals?|crash(es)?|rides?|shakers?|bass|basslines?|bass ?loops|synths?|synth ?loops|keys|pads?|leads?|plucks?|chords?|arps?|vocals?|vox|vocal ?loops|fx|sfx|risers?|impacts?|sweeps?|atmos(pheres?)?|textures?|construction ?kits?|drum ?kits?|top ?loops|music ?loops|melod(y|ic|ies)( ?loops)?|guitars?|piano|strings|brass|apple ?loops)\b|[-_ ](wav|rex2?|rx2|aiff?|midi|apple ?loops|ableton|presets?)$'
 $RxPackNeutral = '^(licen[cs]es?|readme|info|infos|artwork|cover|documentation|docs?|__macosx|license & files)\b'
 # 3.0.1: Namen von Instrument-Bibliotheken (Fundorte und Import) und Ordner mit den Sortier-Protokollen im Ziel
+# 4.1 (NFA-09): Hersteller-Bibliotheken direkt in einer Quelle (eigene Formate fuer Instrumente/Synthesizer) werden beim
+# Sortieren ausgespart und beim Aufraeumen nicht angeruehrt - frueher nur der Ordner "ModX"
+$RxHerstellerOrdner = '^(?i:modx|montage|yamaha( .*)?|native instruments|kontakt( libraries| bibliotheken)?|spitfire audio|halion( content)?)$'
 $RxInstrNamen = 'Native Instruments|Kontakt|Spitfire|Sonokinetic|Muse ?Hub|Arturia|\bUVI\b|Vienna|\bVSL\b|EastWest|East West|Toontrack|Superior Drummer|EZdrummer|Steinberg|HALion|Komplete|Heavyocity|8Dio|Orchestral Tools|Cinesamples|XLN Audio|Addictive|Spectrasonics|Omnisphere|Keyscape|Trilian|Factory Packs|Core Library|Output Arcade|Soundiron|Impact Soundworks|Best Service|Garritan|Embertone'
 $ZielProtokolle = '99_Protokolle'
 function Get-ZielProtokollOrdner([string]$ziel) { return (Join-Path $ziel.TrimEnd('\', '/') $ZielProtokolle) }
@@ -382,40 +415,10 @@ function Set-Einstellung([string]$name, $wert) {
     $obj = [ordered]@{ Standard21 = $true }
     foreach ($k in @($e.Keys)) {
         # Quelle, Ziel und Quellen immer speichern, alles andere nur, wenn es vom Standard abweicht
-        if ($k -in 'ErsterStartErledigt', 'Quelle', 'Ziel', 'Quellen' -or [string]$e[$k] -ne [string]$std[$k]) { $obj[$k] = $e[$k] }
+        if ($k -in 'ErsterStartErledigt', 'Quelle', 'Ziel', 'Quellen', 'DownloadArchiv' -or [string]$e[$k] -ne [string]$std[$k]) { $obj[$k] = $e[$k] }
     }
     if ($obj.Contains('Quellen')) { $obj['Quellen'] = @($obj['Quellen'] | ForEach-Object { [ordered]@{ Pfad = [string]$_.Pfad; Aktiv = [bool]$_.Aktiv; Herkunft = [string]$_.Herkunft; Art = (Get-QuellArtName ([string]$_.Art)) } }) }
     ConvertTo-Json -InputObject $obj -Depth 5 | Set-Content -LiteralPath $einstellungsPfad -Encoding UTF8
-}
-
-# Neue Version ohne eigene Pack-Arten-Korrekturen: die der neuesten Nachbar-Version uebernehmen
-if (-not (Test-Path -LiteralPath $packArtenPfad)) {
-    try {
-        $alt = @(Get-ChildItem -LiteralPath (Split-Path -Parent $wurzel) -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -ne $wurzel } |
-            ForEach-Object { Join-Path (Join-Path $_.FullName 'Skripte') 'Pack-Arten.csv' } |
-            Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { Get-Item -LiteralPath $_ } |
-            Sort-Object LastWriteTime -Descending) | Select-Object -First 1
-        if ($alt) { Copy-Item -LiteralPath $alt.FullName -Destination $packArtenPfad -ErrorAction Stop }
-    } catch { }
-}
-
-# Neue Version ohne eigene Einstellungen: die der neuesten Nachbar-Version uebernehmen
-# (z. B. ...\Samples-Werkzeuge_1\Skripte\Einstellungen.json fuer Samples-Werkzeuge_2)
-if (-not (Test-Path -LiteralPath $einstellungsPfad)) {
-    try {
-        $eltern = Split-Path -Parent $wurzel
-        $alt = @(Get-ChildItem -LiteralPath $eltern -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -ne $wurzel } |
-            ForEach-Object { Join-Path (Join-Path $_.FullName 'Skripte') 'Einstellungen.json' } |
-            Where-Object { Test-Path -LiteralPath $_ } |
-            ForEach-Object { Get-Item -LiteralPath $_ } |
-            Sort-Object LastWriteTime -Descending) | Select-Object -First 1
-        if ($alt) {
-            Copy-Item -LiteralPath $alt.FullName -Destination $einstellungsPfad -ErrorAction Stop
-            Set-Einstellung 'ErsterStartErledigt' $false   # Begruessung (mit Desktop-Verknuepfung) auch in der neuen Version
-        }
-    } catch { }
 }
 
 # Prueft, ob Quelle und Ziel zueinander passen. Liefert eine Fehlermeldung oder ''.
@@ -464,8 +467,9 @@ function Get-Protokollzeit($datei) {
 # ---------------------------------------------------------------------------
 # Inventur-Dateien
 # ---------------------------------------------------------------------------
-function Get-InventurOrdner  { Join-Path (Get-Einstellungen).Berichtsordner 'Inventuren' }
-function Get-VergleichOrdner { Join-Path (Get-Einstellungen).Berichtsordner 'Inventur-Vergleiche' }
+# 4.1 (NFA-08): Liste, Bericht und Vergleich der Sample-Bibliothek gehoeren zum Ziel
+function Get-InventurOrdner  { Join-Path (Get-ZielProtokollOrdner ([string](Get-Einstellungen).Ziel)) 'Bibliothek' }
+function Get-VergleichOrdner { Get-InventurOrdner }
 # 4.0.1: Stand der Sample-Bibliothek im Ziel (99_Protokolle\Bibliothek-Stand_<Datum>.json, schreibt Inventur.ps1).
 # Gehoert zum tatsaechlichen Ziel: nach einem Versionswechsel noch da, nach dem Loeschen des Ziels weg.
 function Get-BibliothekStand {
@@ -595,6 +599,11 @@ function Read-JaNein([string]$frage) {
     return ($a -match '^\s*[jJyY]')
 }
 
+# 4.1 (INV-11): dem Hauptfenster melden, dass sich die Sample-Bibliothek geaendert hat (Dateien kopiert oder entfernt)
+function Send-BibliothekGeaendert {
+    if ($env:SW_GUI -eq '1') { [Console]::Out.WriteLine('##BIB##'); [Console]::Out.Flush() }
+}
+
 # ---------------------------------------------------------------------------
 # 4.0 (GUI-04): Ausgabe fuer das Hauptfenster. Die Skripte laufen dort ohne eigenes Konsolenfenster;
 # Write-Host und Write-Progress werden als Zeilen mit Kennung ausgegeben, die das Fenster auswertet:
@@ -620,4 +629,59 @@ if ($env:SW_GUI -eq '1') {
         if ($Completed) { [Console]::Out.WriteLine('##P##-##' + $Activity + '##') }
         else { [Console]::Out.WriteLine('##P##' + [int]$PercentComplete + '##' + $Activity + '##' + $Status) }
     }
+}
+
+# ---------------------------------------------------------------------------
+# 4.1 (NFA-08): Einmalige Uebernahme aus einer frueheren Version. Bis 4.0.2 lagen Einstellungen, Pack-Arten,
+# Protokolle und Berichte im Programmordner. Beim ersten Start ohne eigene Daten werden sie aus dem neuesten
+# Programmordner (dieser oder ein Nachbarordner) uebernommen; danach darf jede alte Version geloescht werden.
+# ---------------------------------------------------------------------------
+$uebernahmeMarke = Join-Path $datenOrdner 'Uebernahme.txt'
+if (-not (Test-Path -LiteralPath $einstellungsPfad) -and -not (Test-Path -LiteralPath $uebernahmeMarke)) {
+    $notiz = @("Samples-Werkzeuge $ProgrammVersion - Uebernahme $(Get-Date -Format 'dd.MM.yyyy HH:mm')")
+    try {
+        $kand = @($wurzel) + @(Get-ChildItem -LiteralPath (Split-Path -Parent $wurzel) -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+        $alt = @($kand | Select-Object -Unique | ForEach-Object { Join-Path (Join-Path $_ 'Skripte') 'Einstellungen.json' } |
+            Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { Get-Item -LiteralPath $_ } | Sort-Object LastWriteTime -Descending) | Select-Object -First 1
+        if ($alt) {
+            $altWurzel = Split-Path -Parent (Split-Path -Parent $alt.FullName)
+            $notiz += "aus: $altWurzel"
+            Copy-Item -LiteralPath $alt.FullName -Destination $einstellungsPfad -ErrorAction Stop
+            Set-Einstellung 'ErsterStartErledigt' $false   # Begruessung (Desktop-Verknuepfung) auch in der neuen Version
+            $pa = Join-Path (Join-Path $altWurzel 'Skripte') 'Pack-Arten.csv'
+            if (Test-Path -LiteralPath $pa) { Copy-Item -LiteralPath $pa -Destination $packArtenPfad -ErrorAction SilentlyContinue; $notiz += 'Pack-Arten.csv' }
+            $kopiere = { param($von, $nach, $filter)
+                $n = 0
+                if (Test-Path -LiteralPath $von) {
+                    [void][IO.Directory]::CreateDirectory($nach)
+                    foreach ($f in @(Get-ChildItem -LiteralPath $von -File -Filter $filter -ErrorAction SilentlyContinue)) {
+                        $z = Join-Path $nach $f.Name
+                        if (-not (Test-Path -LiteralPath $z)) { try { Copy-Item -LiteralPath $f.FullName -Destination $z -ErrorAction Stop; $n++ } catch { } }
+                    }
+                }
+                return $n
+            }
+            $notiz += "Protokolle: $(& $kopiere (Join-Path $altWurzel 'Protokolle') $protokollOrdner '*')"
+            # Alte Einstellung "Berichtsordner" (Standard: der Programmordner)
+            $cfgAlt = $null; try { $cfgAlt = Get-Content -LiteralPath $alt.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
+            $bo = if ($cfgAlt -and $cfgAlt.Berichtsordner) { [string]$cfgAlt.Berichtsordner } else { $altWurzel }
+            $notiz += "Fundorte: $(& $kopiere (Join-Path $bo 'Fundorte') $fundortOrdner 'Fundorte_*')"
+            # Berichte der Bibliothek: die letzten 10 Staende ins Ziel
+            $zielNeu = if ($cfgAlt -and $cfgAlt.Ziel) { [string]$cfgAlt.Ziel } else { '' }
+            if ($zielNeu -and (Test-Path -LiteralPath $zielNeu)) {
+                $bib = Join-Path (Get-ZielProtokollOrdner $zielNeu) 'Bibliothek'
+                $inv = Join-Path $bo 'Inventuren'; $vgl = Join-Path $bo 'Inventur-Vergleiche'
+                $stempel = @(Get-ChildItem -LiteralPath $inv -Filter 'Sample-Inventur_*.csv' -File -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 10 |
+                    ForEach-Object { $_.BaseName -replace '^Sample-Inventur_', '' })
+                $n = 0
+                foreach ($st in $stempel) {
+                    $n += & $kopiere $inv $bib "Sample-Inventur_$st.*"
+                    $n += & $kopiere $inv $bib "Pack-Inventur_$st.*"
+                    $n += & $kopiere $vgl $bib "Inventur-Vergleich_$st.*"
+                }
+                $notiz += "Bibliothek: $n Dateien nach $bib"
+            }
+        } else { $notiz += 'keine fruehere Version gefunden' }
+    } catch { $notiz += "Fehler: $($_.Exception.Message)"; Write-FehlerLog "Uebernahme: $($_.Exception.Message)" }
+    try { Set-Content -LiteralPath $uebernahmeMarke -Value $notiz -Encoding UTF8 } catch { }
 }

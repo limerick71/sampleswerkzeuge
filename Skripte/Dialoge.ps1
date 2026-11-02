@@ -86,65 +86,95 @@ function Test-OrdnerBereit([switch]$NurQuelle) {
 # Dialog: Begruessung beim ersten Start
 # ---------------------------------------------------------------------------
 function Show-Begruessung {
+    # 4.1 (GUI-08): fragt beim ersten Start nach dem Ziel (mit Vorschlag und OneDrive-Hinweis)
+    $e0 = Get-Einstellungen
+    $neuerNutzer = -not (Test-Path -LiteralPath $einstellungsPfad)
     $d = New-Object System.Windows.Forms.Form
     $d.Text = 'Willkommen'
     $d.StartPosition = 'CenterParent'
     $d.FormBorderStyle = 'FixedDialog'
     $d.MaximizeBox = $false; $d.MinimizeBox = $false
-    $d.ClientSize = New-Object System.Drawing.Size(520, 434)
     $d.Font = $schrift
     $d.BackColor = [System.Drawing.Color]::White
+    $w = 560; $innen = $w - 40; $y = 14
 
     $t = New-Object System.Windows.Forms.Label
     $t.Text = "Samples-Werkzeuge $ProgrammVersion"
     $t.Font = $schriftTitel
-    $t.Location = New-Object System.Drawing.Point(18, 14); $t.AutoSize = $true
-    $d.Controls.Add($t)
+    $t.Location = New-Object System.Drawing.Point(18, $y); $t.AutoSize = $true
+    $d.Controls.Add($t); $y += 42
 
-    $txt = "Dieses Programm kopiert Sample-Packs aus einem Quellordner sortiert nach Instrument in eine " +
-           "Sample-Bibliothek und entfernt auf Wunsch doppelte Samples im Quellordner.`n`n" +
-           "Bitte zuerst unter 'Einstellungen' prüfen, ob Quelle und Ziel stimmen.`n`n" +
-           "Vor jeder Änderung zeigt das Programm eine Vorschau und fragt nach. Beim Sortieren wird nur kopiert, " +
-           "nichts gelöscht oder überschrieben. Doppelte Samples gehen in den Windows-Papierkorb. " +
-           "Die Nutzung erfolgt auf eigene Verantwortung.`n`n" +
-           $Urheberhinweis
-    $l = New-Object System.Windows.Forms.Label
-    $l.Text = $txt
-    $l.Location = New-Object System.Drawing.Point(20, 56)
-    $l.Size = New-Object System.Drawing.Size(480, 250)
-    $d.Controls.Add($l)
+    $l = New-Hinweis $d ("Die Samples-Werkzeuge kopieren deine Sample-Packs sortiert nach Instrument in eine Sample-Bibliothek, " +
+        "räumen auf Wunsch auf und zeigen die Bibliothek zum Durchhören. Vor jeder Änderung zeigt das Programm eine Vorschau " +
+        "und fragt nach. Beim Sortieren wird nur kopiert, nichts gelöscht oder überschrieben; entfernt wird nur in eigenen " +
+        "Schritten, immer in den Papierkorb. Die Nutzung erfolgt auf eigene Verantwortung.") 20 $y $innen
+    $l.ForeColor = [System.Drawing.Color]::Black
+    $y += $l.PreferredHeight + 16
 
+    $lz = New-Object System.Windows.Forms.Label
+    $lz.Text = 'Wo soll deine Sample-Bibliothek entstehen?'; $lz.Font = $schriftFett; $lz.AutoSize = $true
+    $lz.Location = New-Object System.Drawing.Point(20, $y); $d.Controls.Add($lz); $y += 26
+    $tb = New-Object System.Windows.Forms.TextBox
+    $tb.ReadOnly = $true; $tb.BackColor = [System.Drawing.Color]::White; $tb.Text = [string]$e0.Ziel
+    $tb.Location = New-Object System.Drawing.Point(20, $y); $tb.Size = New-Object System.Drawing.Size(($innen - 110), 26)
+    $d.Controls.Add($tb)
+    $bz = New-Object System.Windows.Forms.Button
+    $bz.Text = 'Ändern ...'; $bz.FlatStyle = 'System'
+    $bz.Location = New-Object System.Drawing.Point((20 + $innen - 100), ($y - 2)); $bz.Size = New-Object System.Drawing.Size(100, 28)
+    $d.Controls.Add($bz); $y += 32
+    $lh = New-Hinweis $d $(if ($neuerNutzer) { 'Vorschlag: das Laufwerk mit dem meisten freien Platz. Der Ordner wird beim ersten Sortieren angelegt; ändern lässt er sich später unter ⚙ Einstellungen.' } else { 'Das ist dein bisheriges Ziel. Ändern lässt es sich auch später unter ⚙ Einstellungen.' }) 20 $y $innen
+    $y += $lh.PreferredHeight + 4
+    $lw = New-Hinweis $d 'Achtung: Dieser Ordner liegt in OneDrive. Die Samples würden dann (viele Gigabyte) in die Cloud hochgeladen. Besser einen Ordner außerhalb von OneDrive wählen.' 20 $y $innen
+    $lw.ForeColor = [System.Drawing.Color]::FromArgb(168, 100, 0); $lw.Font = $schriftFett
+    $lw.Visible = (Test-OneDrivePfad $tb.Text)
+    $yWarn = $y; $y += $lw.PreferredHeight + 12
+    $bz.Add_Click({
+        $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+        $dlg.Description = 'Ordner für die Sample-Bibliothek (Ziel) wählen'; $dlg.ShowNewFolderButton = $true
+        if ($tb.Text -and (Test-Path -LiteralPath $tb.Text)) { $dlg.SelectedPath = $tb.Text } else { try { $dlg.SelectedPath = [IO.Path]::GetPathRoot($tb.Text) } catch { } }
+        if ($dlg.ShowDialog($d) -eq 'OK') { $tb.Text = $dlg.SelectedPath; $lw.Visible = (Test-OneDrivePfad $tb.Text) }
+    })
+
+    $ln = New-Hinweis $d 'Danach: Unter „1 Quellen“ findet „Fundorte suchen …“ deine Sample-Packs auf dem Rechner.' 20 $y $innen
+    $y += $ln.PreferredHeight + 14
+
+    $lu = New-Hinweis $d $Urheberhinweis 20 $y $innen
+    $y += $lu.PreferredHeight + 6
     $dl = New-Object System.Windows.Forms.LinkLabel
     $dl.Text = "Download-Seite: $DownloadSeite"
-    $dl.Location = New-Object System.Drawing.Point(20, 310); $dl.AutoSize = $true
+    $dl.Location = New-Object System.Drawing.Point(20, $y); $dl.AutoSize = $true
     $dl.Add_LinkClicked({ try { Start-Process $DownloadSeite } catch { } })
-    $d.Controls.Add($dl)
-    # 4.0.2: Webseite
+    $d.Controls.Add($dl); $y += 20
     $ws = New-Object System.Windows.Forms.LinkLabel
     $ws.Text = 'make-some-music.de'
-    $ws.Location = New-Object System.Drawing.Point(20, 330); $ws.AutoSize = $true
+    $ws.Location = New-Object System.Drawing.Point(20, $y); $ws.AutoSize = $true
     $ws.Add_LinkClicked({ try { Start-Process $WebSeite } catch { } })
-    $d.Controls.Add($ws)
+    $d.Controls.Add($ws); $y += 28
 
     $cb = New-Object System.Windows.Forms.CheckBox
     $cb.Text = 'Verknüpfung auf dem Desktop anlegen'
-    $lnkZiel = ''
-    if (Test-Path -LiteralPath $verknuepfung) { try { $lnkZiel = (New-Object -ComObject WScript.Shell).CreateShortcut($verknuepfung).Arguments } catch { } }
     $cb.Checked = $true   # Standard: anlegen bzw. auf diese Version erneuern (W-01, 27.10.)
-    $cb.Location = New-Object System.Drawing.Point(20, 356); $cb.AutoSize = $true
+    $cb.Location = New-Object System.Drawing.Point(20, ($y + 6)); $cb.AutoSize = $true
     $d.Controls.Add($cb)
 
     $ok = New-Object System.Windows.Forms.Button
     $ok.Text = 'Los geht''s'; $ok.FlatStyle = 'System'
-    $ok.Location = New-Object System.Drawing.Point(390, 388); $ok.Size = New-Object System.Drawing.Size(110, 32)
+    $ok.Location = New-Object System.Drawing.Point(($w - 20 - 110), $y); $ok.Size = New-Object System.Drawing.Size(110, 32)
     $ok.DialogResult = 'OK'
     $d.Controls.Add($ok)
     $d.AcceptButton = $ok
+    $d.ClientSize = New-Object System.Drawing.Size($w, ($y + 48))
 
     [void]$d.ShowDialog($form)
     if ($cb.Checked) { New-DesktopVerknuepfung -Still }
     $d.Dispose()
-    try { Set-Einstellung 'ErsterStartErledigt' $true } catch { }
+    try {
+        $ziel = ([string]$tb.Text).TrimEnd('\', '/')
+        if ($ziel -and $ziel -ne [string]$e0.Ziel) { Set-Einstellung 'Ziel' $ziel }
+        elseif ($ziel) { Set-Einstellung 'Ziel' $ziel }   # auch den Vorschlag fest speichern
+        if ($neuerNutzer) { Set-Einstellung 'DownloadArchiv' (Get-ArchivVorschlag $ziel) }   # neben dem Ziel, nicht in Dokumente
+        Set-Einstellung 'ErsterStartErledigt' $true
+    } catch { }
     Update-Status
 }
 
@@ -185,7 +215,7 @@ function Show-ArtInfo($zeile) {
     }
     & $schreibe ('Die Art legt fest, wie beim Sortieren die Packs im Ordner erkannt werden. Der Packname wird im Ziel zum Unterordner unter dem Instrument, z. B. 01 Drums\Kick\One-Shots\<Packname>\Datei.wav.' + "`n`n") $false ([System.Drawing.Color]::DimGray)
     if (-not $zeile) {
-        & $schreibe ("Sammlung – jeder Unterordner ist ein eigener Pack (z. B. Quelle_Samples).`nEin Pack – alles im Ordner gehört zu einem Pack, Packname = Ordnername (z. B. ein heruntergeladenes Pack).`nNur lose Dateien – nur die Dateien direkt im Ordner, Unterordner werden übergangen (z. B. Downloads).`n`n") $false $null
+        & $schreibe ("Sammlung – jeder Unterordner ist ein eigener Pack (z. B. ein Ordner mit vielen Packs).`nEin Pack – alles im Ordner gehört zu einem Pack, Packname = Ordnername (z. B. ein heruntergeladenes Pack).`nNur lose Dateien – nur die Dateien direkt im Ordner, Unterordner werden übergangen (z. B. Downloads).`n`n") $false $null
         & $schreibe 'Tipp: Eine Quelle in der Liste anklicken und dann ⓘ wählen – dann zeigt diese Box am Ordner selbst, was jede Art bewirkt.' $false ([System.Drawing.Color]::DimGray)
     } elseif (-not (Test-Path -LiteralPath $zeile.Text -PathType Container)) {
         & $schreibe "Der Ordner $($zeile.Text) wurde nicht gefunden." $true ([System.Drawing.Color]::Firebrick)
@@ -789,7 +819,7 @@ function Show-QuelleAufraeumen {
     $c3.Add_CheckedChanged({ foreach ($cb in $fHaken) { $cb.Enabled = $c3.Checked } })
     foreach ($cb in $fHaken) { $cb.Enabled = $c3.Checked }
     $c4 = New-Haken 'Originale, deren Kopie im Ziel per Prüfsumme bestätigt ist (leert die Quelle weitgehend)' 18 $false; $script:hy += 26
-    $l4 = New-Hinweis $d 'Nie Kopiertes bleibt liegen (Hilfsdateien, ausgeschlossene Formate, ModX).' 40 $script:hy ($innen - 30)
+    $l4 = New-Hinweis $d 'Nie Kopiertes bleibt liegen (Hilfsdateien, ausgeschlossene Formate, Hersteller-Bibliotheken wie ModX).' 40 $script:hy ($innen - 30)
     $script:hy += $l4.PreferredHeight + 12
     $y = $script:hy + 6
     $ok = New-Object System.Windows.Forms.Button

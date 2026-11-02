@@ -106,7 +106,8 @@ a.pk{cursor:pointer;text-decoration:underline}
 .gruen{color:var(--gruen);background:var(--gruen-bg)} .blau{color:var(--blau);background:var(--blau-bg)}
 .grau{color:var(--leise);background:var(--grau-bg)}
 button.play,button.kopie{font:inherit;border:1px solid var(--linie);background:var(--karte);color:var(--akzent);border-radius:50%;width:28px;height:28px;cursor:pointer;padding:0;line-height:26px}
-button.kopie{border-radius:6px;width:auto;height:auto;line-height:1.2;padding:1px 6px;font-size:11px;margin-top:2px}
+button.kopie,button.daw{border-radius:6px;width:auto;height:auto;line-height:1.2;padding:1px 6px;font-size:11px;margin-top:2px}
+button.daw{font:inherit;font-size:11px;border:1px solid var(--akzent);background:var(--akzent);color:var(--karte);cursor:pointer;margin-left:4px}
 button.play.laeuft{background:var(--akzent);color:var(--karte)}
 .leer{color:var(--leise);padding:20px}
 h2{font-size:16px;margin:24px 0 8px;color:var(--akzent)}
@@ -245,6 +246,8 @@ input.mk{width:16px;height:16px;margin:6px 6px 0 0;vertical-align:top}
     }
     var c = e.target.closest('button.kopie');
     if (c) { ordnerOeffnen(c.getAttribute('data-w')); return; }
+    var dz = e.target.closest('button.daw');
+    if (dz) { inDawZiehen(dz.getAttribute('data-w')); return; }
     var pk = e.target.closest('a.pk');
     if (pk) { packFilter = pk.getAttribute('data-p'); waehle('samples'); return; }
     if (e.target.closest('input.mk')) return;
@@ -266,6 +269,13 @@ input.mk{width:16px;height:16px;margin:6px 6px 0 0;vertical-align:top}
     } else {
       kopiere(vollerPfad(rel).replace(/\//g, '\\').replace(/\\[^\\]*$/, ''));
     }
+  }
+  // REP-17 (4.1): Sample im kleinen Fenster "In DAW ziehen" anbieten (bleibt oben, von dort per Maus in die DAW)
+  function inDawZiehen(rel){
+    if (!DIENST) return;
+    fetch('/ziehen?t=' + DIENST.token, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pfad: rel }) })
+      .then(function(r){ return r.text().then(function(t){ meldung(r.ok ? 'Fenster \u201EIn DAW ziehen\u201C: Sample von dort in die DAW ziehen' : t); }); })
+      .catch(function(){ meldung('Der Bericht-Dienst antwortet nicht. Bitte den Bericht über \u201EBericht öffnen\u201C neu öffnen.'); });
   }
   function kopiere(t){
     function alt(){ var x = document.createElement('textarea'); x.value = t; document.body.appendChild(x); x.select(); try { document.execCommand('copy'); meldung('Ordnerpfad kopiert'); } catch(e) { prompt('Pfad:', t); } x.remove(); }
@@ -309,7 +319,8 @@ input.mk{width:16px;height:16px;margin:6px 6px 0 0;vertical-align:top}
       '<td>' + esc(s.i) + (s.t ? '<br><span class="klein">' + esc(s.t) + '</span>' : '') + '</td>' +
       '<td class="z">' + zahl(s.bpm,1) + '</td><td>' + esc(s.key) + '</td><td class="z">' + (s.du != null ? zahl(s.du,2) + ' s' : '') + '</td>' +
       '<td>' + fmt + '</td><td class="z">' + mb(s.s || 0) + '</td>' +
-      '<td class="klein">' + esc(s.w) + '<br><button class="kopie" data-w="' + esc(s.w) + '" title="' + (DIENST ? 'Öffnet den Explorer im Ordner des Samples, die Datei ist markiert (zum Ziehen in die DAW)' : 'Kopiert den Ordnerpfad. Zum Öffnen im Explorer den Bericht über „Bericht öffnen“ starten.') + '">' + (DIENST ? 'Ordner öffnen' : 'Ordnerpfad kopieren') + '</button></td></tr>';
+      '<td class="klein">' + esc(s.w) + '<br><button class="kopie" data-w="' + esc(s.w) + '" title="' + (DIENST ? 'Öffnet den Explorer im Ordner des Samples, die Datei ist markiert (zum Ziehen in die DAW)' : 'Kopiert den Ordnerpfad. Zum Öffnen im Explorer den Bericht über „Bericht öffnen“ starten.') + '">' + (DIENST ? 'Ordner öffnen' : 'Ordnerpfad kopieren') + '</button>' +
+      (DIENST ? '<button class="daw" data-w="' + esc(s.w) + '" title="Öffnet ein kleines Fenster, das immer oben bleibt: von dort das Sample mit der Maus in die DAW ziehen">In DAW ziehen</button>' : '') + '</td></tr>';
   }
   var KOPF_P = '<tr><th>Pack</th><th>Pack-Art</th><th>Samples</th><th>Größe</th><th>Instrumente</th><th>Loops</th><th>BPM</th><th>Tonarten</th><th>Formate</th><th>Original in Quelle</th></tr>';
   function zeileP(p){

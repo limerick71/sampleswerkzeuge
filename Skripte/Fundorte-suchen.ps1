@@ -558,7 +558,7 @@ $liste = @(foreach ($n in $fundorte) {
 # ---------------------------------------------------------------------------
 # Ergebnis: JSON, CSV, HTML
 # ---------------------------------------------------------------------------
-$ablage = Join-Path $einst.Berichtsordner 'Fundorte'
+$ablage = $fundortOrdner   # 4.1: im Datenordner (NFA-08)
 if (-not (Test-Path -LiteralPath $ablage)) { New-Item -ItemType Directory -Path $ablage -Force | Out-Null }
 $basisName = Join-Path $ablage "Fundorte_$Zeitstempel"
 $meta = [ordered]@{
