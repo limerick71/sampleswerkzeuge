@@ -11,7 +11,7 @@
   sondern gezaehlt. Ordner-Verknuepfungen werden nicht verfolgt.
 
 .BENUTZUNG
-    -Orte "C:\Users\HS\Downloads|E:\"   Wo gesucht wird (Trennzeichen |)
+    -Orte "C:\Users\<Name>\Downloads|D:\"   Wo gesucht wird (Trennzeichen |)
     -KeinBrowser                        Bericht nicht oeffnen
     -OhneArchivinhalt                   nicht in Archive hineinschauen (schneller)
     -LetzterBericht                     keinen Suchlauf, den letzten Bericht oeffnen

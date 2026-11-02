@@ -22,9 +22,14 @@ Doppelklick auf die Datei. Es öffnet sich das Hauptfenster (kurzes Aufblitzen
 eines schwarzen Fensters ist normal).
 
 Beim ersten Start erscheint ein Begrüßungsfenster:
+  - Ziel prüfen: Hier entsteht die sortierte Sample-Bibliothek. Vorgeschlagen
+    wird X:\Samples auf dem Laufwerk mit dem meisten freien Platz; „Ändern …“
+    wählt einen anderen Ordner. Bitte keinen Ordner in OneDrive nehmen
+    (das Programm warnt dann) – sonst werden viele Gigabyte hochgeladen.
   - Haken „Verknüpfung auf dem Desktop anlegen“ gesetzt lassen – danach lässt sich
     das Programm auch über das Symbol „Samples-Werkzeuge“ auf dem Desktop starten.
   - Mit „Los geht's“ bestätigen.
+Danach ist die Quellenliste noch leer – weiter mit Schritt 1 (Fundorte suchen).
 Erscheint eine blaue Windows-Warnung („Der Computer wurde durch Windows geschützt“):
 „Weitere Informationen“ > „Trotzdem ausführen“.
 
@@ -40,9 +45,18 @@ Rückfragen erscheinen im Vorgangsmonitor im Ablauf-Bereich. Vor jeder Änderung
 steht dort eine gelbe Leiste mit der Frage und den Knöpfen „Ja, ausführen“ und
 „Nein“; „Vorschau öffnen“ zeigt vorher die vollständige Liste (CSV, z. B. für
 Excel). Nach „Nein“ steht dort „Abgebrochen – es wurde nichts geändert.“
+Hat ein Vorgang im Ziel etwas kopiert oder entfernt, bietet die Fertig-Zeile
+„Bibliothek jetzt neu einlesen“ an; mit dem Haken „künftig automatisch“ geschieht
+das danach immer gleich im Anschluss.
 „Ausblenden“ klappt den Vorgangsmonitor zu einer Zeile zusammen, „Einblenden“
 holt ihn an derselben Stelle zurück. Der Verlauf jedes Vorgangs liegt außerdem
 als Textdatei im Ordner „Protokolle“.
+
+Wo die Daten liegen: Einstellungen, Protokolle und eigene Korrekturen im
+Datenordner %LOCALAPPDATA%\Samples-Werkzeuge, die Stände der Bibliothek im Ziel
+unter 99_Protokolle. Der Programmordner enthält nur das Programm – eine neue
+Version einfach daneben entpacken; sie übernimmt beim ersten Start alles aus
+einer Version bis 4.0.2. Alte Programmordner dürfen danach gelöscht werden.
 
 
 3. SCHRITT 1: QUELLEN
@@ -59,8 +73,7 @@ Die Liste zeigt alle Quellen mit Art und Zustand.
     was jede Art bewirkt. Downloads, Dokumente usw. immer als „Nur lose
     Dateien“, Packs darin einzeln.
 In den Einstellungen außerdem:
-  - Ziel:     sortierte Sample-Bibliothek (Standard: Dokumente\Ziel_Samples)
-  - Berichte: hier entstehen Liste und Bericht der Bibliothek (Standard: Programmordner)
+  - Ziel:     sortierte Sample-Bibliothek (beim ersten Start gewählt)
   - Downloads / Download-Archiv: für „Download importieren …“ (siehe 4b)
   - „Zusätzlich zur WAV behalten: RX2 / MP3 / AIFF“ (Standard: alle an). Ohne
     Haken wird z. B. eine RX2 nur dann nicht kopiert, wenn im selben Pack eine
@@ -78,6 +91,11 @@ In den Einstellungen außerdem:
     oder in einem anderen Ordner liegt.
   - macOS-Reste (._-Dateien, .DS_Store) werden nicht kopiert.
   - Die Quelle bleibt unverändert; nicht Kopiertes bleibt dort liegen.
+  - Construction Kits (Ordnername „Construction Kit“ oder Master-Datei mit
+    Einzelspuren) bleiben vollständig; Songs und Playalongs kommen nach
+    „12 Songs & Playalongs“. Was sich nicht bestimmen lässt, kommt nach
+    „_Unsortiert“.
+  - Hersteller-Bibliotheken (z. B. ModX, Native Instruments) werden ausgespart.
   - Protokolle liegen im Ordner „Protokolle“ und im Ziel unter „99_Protokolle“.
 
 4b. DOWNLOAD IMPORTIEREN (ABKÜRZUNG FÜR NEUE DOWNLOADS)
@@ -129,8 +147,9 @@ Import oder Aufräumen veraltet, steht dort „neu einlesen empfohlen“.
 Der Bericht im Browser zeigt Samples, Packs und Duplikate mit Suche, Gliederung
 (Pack, Instrument, BPM, Tonart …), Filtern und ▶ zum Anhören. In der Ansicht
 „Duplikate“ lassen sich Samples ankreuzen und direkt in den Papierkorb
-verschieben. „Ordner öffnen“ zeigt das Sample im Explorer, z. B. zum Ziehen in
-die DAW. „Als Excel-Liste“ öffnet die Liste als CSV, „Änderungen anzeigen“ den
+verschieben. „Ordner öffnen“ zeigt das Sample im Explorer. „In DAW ziehen“
+öffnet ein kleines Fenster, das immer oben bleibt: von dort das Sample mit der
+Maus in die DAW ziehen; ein Klick bei einem anderen Sample ersetzt es. „Als Excel-Liste“ öffnet die Liste als CSV, „Änderungen anzeigen“ den
 Vergleich mit dem vorherigen Stand.
 
 

@@ -229,7 +229,7 @@ function Move-ZielProtokolle([string]$ziel) {
 }
 # Vorschlag fuer die Art aus den Namen der Unterordner und der Zahl der Dateien direkt im Ordner
 # 2.3.4: weitere Innenordner - "Bonus ...", "<Name> - Loops/Drums/Noise ..." und Ordner, die den Namen des
-# Packs selbst tragen (z. B. "VOLTAGE REVELATIONS - DRUMS" in "Voltage Revelations")
+# Packs selbst tragen (z. B. "Neon Nights - DRUMS" in "Neon Nights")
 $RxPackInnenWort = 'loops?|one ?shots?|oneshots|drums?|drum ?loops|drum ?kits?|kicks?|snares?|hats?|percs?|percussion|bass|basslines?|synths?|keys|pads?|leads?|plucks?|chords?|arps?|vocals?|vox|fx|sfx|noises?|textures?|atmos(pheres?)?|construction ?kits?|kits?|stems|midi|presets?|samples?|melod(y|ic|ies)|music|instruments?|tops?|grooves?|fills?|breaks?|wav|aiff?|rex2?|rx2'
 $RxPackInnenEnde = '\s[-_–]\s*(' + $RxPackInnenWort + ')( ?(loops?|samples?|kits?|one ?shots?|\d+))?$'
 function Get-NormName([string]$n) { return (($n.ToLowerInvariant() -replace '[_\-–.,()\[\]]+', ' ') -replace '\s+', ' ').Trim() }
@@ -533,8 +533,9 @@ function Send-Papierkorb([string]$pfad) {
     }
 }
 
-# Sammelordner in der Quelle: darin liegen die Packs eine Ebene tiefer
-$SammelOrdner = @('Drumloops', 'Lofi Sounds - Free Sample Pack', 'Vocals')
+# Sammelordner in einer Sammlung: ein Ordner, dessen Name eine Gattung bezeichnet statt eines Packs (z. B. "Vocals",
+# "Drumloops"); darin liegen die Packs eine Ebene tiefer. 4.1 (NFA-09): allgemeine Regel statt fester Namensliste.
+$RxGattungsOrdner = '^(?i:(drum ?)?loops|drum ?loops|vocals?|vox|one[ -]?shots?|samples|sounds|sample ?packs|packs|drums|percussions?|bass|basslines|synths?|keys|pads|guitars?|brass|strings|fx|sfx|atmos(pheres)?|ambiences?|textures|foley|construction ?kits|drum ?kits|midi)$'
 
 # Schluessel "Pack|Dateiname ohne Endung" fuer den Formatabgleich (RX2/MP3/AIFF neben WAV):
 # gleichnamige Dateien gelten als Gegenstueck, wenn sie im selben Pack liegen - auch wenn das Pack
@@ -542,7 +543,7 @@ $SammelOrdner = @('Drumloops', 'Lofi Sounds - Free Sample Pack', 'Vocals')
 function Get-FormatSchluessel([string]$datei, [string]$quelle) {
     $rel = $datei.Substring([Math]::Min($quelle.TrimEnd([char]92, '/').Length, $datei.Length)).TrimStart([char]92, '/')
     $t = @($rel -split '[\\/]')
-    $pack = if ($t[0] -in $SammelOrdner -and $t.Count -gt 2) { $t[0] + '\' + $t[1] } elseif ($t.Count -gt 1) { $t[0] } else { '' }
+    $pack = if ($t[0] -match $RxGattungsOrdner -and $t.Count -gt 2) { $t[0] + '\' + $t[1] } elseif ($t.Count -gt 1) { $t[0] } else { '' }
     return ($pack + '|' + [IO.Path]::GetFileNameWithoutExtension($datei)).ToLowerInvariant()
 }
 

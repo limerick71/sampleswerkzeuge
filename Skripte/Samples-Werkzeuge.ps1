@@ -1109,7 +1109,7 @@ Set-Klick $ui.LnkExcel { $c = Get-NeuesteInventur 'Sample'; if ($c) { Open-Pfad 
 Set-Klick $ui.LnkAenderungen { $c = Get-NeuesterVergleich; if ($c) { Open-Pfad $c.FullName } else { Show-Meldung 'Noch kein Vergleich vorhanden (entsteht ab dem zweiten Einlesen).' 'Warning' } }
 Set-Klick $ui.LnkPackArten {
     if (-not (Test-Path -LiteralPath $packArtenPfad)) { Set-Content -LiteralPath $packArtenPfad -Value 'Pack;Pack-Art' -Encoding UTF8 }
-    Show-Meldung ("Eine Zeile je Pack: Name des Packs (wie in der Bibliothek), Semikolon, Pack-Art.`nBeispiel:  Lofi Forest;Atmos/Field Recording`n`nMögliche Pack-Arten:`n" + ($PackArten -join ', ') + "`n`nDie Korrektur gilt ab dem nächsten Einlesen.")
+    Show-Meldung ("Eine Zeile je Pack: Name des Packs (wie in der Bibliothek), Semikolon, Pack-Art.`nBeispiel:  Forest Ambience Vol 1;Atmos/Field Recording`n`nMögliche Pack-Arten:`n" + ($PackArten -join ', ') + "`n`nDie Korrektur gilt ab dem nächsten Einlesen.")
     Open-Pfad $packArtenPfad
 }
 Set-Klick $ui.BtnEinstellungen { Show-Einstellungen }

@@ -1,10 +1,10 @@
 ﻿# (c) 2026 Herbert Stoecker. Kostenlos nutzbar. Bitte nur als Link auf die offizielle Download-Seite weitergeben; Verkauf und Veroeffentlichung geaenderter Fassungen nur mit Zustimmung.
 <#
 .SYNOPSIS
-  Kopiert Sounds & Samples aus dem Quellordner in den Zielordner (Standard:
-  "E:\Sounds und Samples" -> "E:\Samples"), sortiert nach Instrument
+  Kopiert Sounds & Samples aus den Quellen in den Zielordner, sortiert nach Instrument
   (One-Shots / Loops). Es wird NICHTS geloescht und NICHTS ueberschrieben.
-  Quelle und Ziel kommen aus Skripte\Einstellungen.json (in der Oberflaeche einstellbar).
+  Quellen und Ziel kommen aus den Einstellungen (in der Oberflaeche einstellbar; ab 4.1 im Datenordner
+  %LOCALAPPDATA%\Samples-Werkzeuge).
 
 .BENUTZUNG
   Ohne Schalter: Vorschau anzeigen, CSV in "Protokolle" schreiben und fragen,
@@ -148,10 +148,13 @@ $Instrumente = @(
     @('Atmos',     'ambient|ambience|atmo|field|(?<![a-z])rain(?![a-z])|street|nature|forest|(?<![a-z])birds?(?![a-z])'),
     @('DrumLoops', 'drum|beat|groove|full|top ?loop|brush|break|rhythm')
 )
-# Fallback je Pack, wenn weder Datei- noch Ordnername etwas hergeben
-$PackFallback = @(,
-    @('VOLTAGE REVELATIONS', 'DrumLoops')
-)
+# 4.1 (NFA-09): allgemeine Regeln statt Sonderregeln fuer einzelne Packs
+# Construction Kit: Ordnername "Construction Kit" - oder ein Ordner mit einer Master-/Full-Mix-Datei und Einzelspuren (Stems)
+$RxKitName   = '(?i)construction[ _-]?kits?'
+$RxMasterDatei = '(?i)(^|[ _.-])(master|full[ _-]?mix|mix[ _-]?down|komplett)([ _.-]|\d|$)'
+# Songs & Playalongs: Pack- bzw. Ordnername
+$RxSongName  = '(?i)(?<![a-z])(songs|st(\u00fc|ue)cke|playalongs?|play[ -]alongs?|backing ?tracks)(?![a-z])'
+$RxSongDatei = '(?i)play[ _-]?a?l(o|a)+ng|backing[ _-]?track'   # einzelne Playalongs im Dateinamen (auch "playlaong")
 
 $RxOneShot = 'one[ _-]?shot|(?<![a-z])shots(?![a-z])'   # 2.3.5: auch one_shots
 $RxLoop    = 'loop|bpm|(?<![a-z])(groove|beat|fill)s?(?![a-z])'
@@ -279,6 +282,13 @@ $alle = @($alle | Where-Object {
     $voll = $_.FullName
     -not @($Ausnahmen | Where-Object { $voll.StartsWith($_ + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) }).Count
 })
+# 4.1 (NFA-09): Ordner mit Master-/Full-Mix-Datei und 2 bis 60 Einzelspuren gelten als Construction Kit (Song in Stems).
+# Ein bis zwei Master-Dateien, sonst ist es eher ein Loop-Pack mit vielen "Full"-Loops.
+$kitOrdner = @{}
+foreach ($g in @($alle | Where-Object { $_.Name -match $RxAudio -and -not $_.Name.StartsWith('._') } | Group-Object DirectoryName)) {
+    $m = @($g.Group | Where-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name) -match $RxMasterDatei }).Count
+    if ($m -ge 1 -and $m -le 2 -and ($g.Count - $m) -ge 2 -and $g.Count -le 62) { $kitOrdner[$g.Name.ToLowerInvariant()] = $true }
+}
 foreach ($f in $alle) {
     $QWurzel = $wurzelVon[$f.FullName]
     $PWurzel = Get-PackWurzel $QWurzel
@@ -328,14 +338,15 @@ foreach ($f in $alle) {
     }
 
     # --- Pack bestimmen (Sammelordner haben Packs eine Ebene tiefer) ------
-    if ($artVon[$QWurzel] -eq 'Sammlung' -and ($teile[0] -in @('Drumloops','Lofi Sounds - Free Sample Pack','Vocals')) -and $teile.Count -gt 2) {
+    $gattung = ($artVon[$QWurzel] -eq 'Sammlung' -and $teile.Count -gt 1 -and $teile[0] -match $RxGattungsOrdner)
+    if ($gattung -and $teile.Count -gt 2) {
         $pack = $teile[1]; $packRel = $teile[2..($teile.Count - 1)]
     } elseif ($teile.Count -gt 1) {
         $pack = $teile[0]; $packRel = $teile[1..($teile.Count - 1)]
     } else {
         $pack = $(if ($einzelnVon.ContainsKey($QWurzel)) { $einzelnVon[$QWurzel] } else { '_Einzeldateien' }); $packRel = @($teile[0])
     }
-    if ($artVon[$QWurzel] -eq 'Sammlung' -and $teile[0] -eq 'Vocals' -and $teile.Count -eq 2) { $pack = 'Vocals (Einzeldateien)' }
+    if ($gattung -and $teile.Count -eq 2) { $pack = "$($teile[0]) (Einzeldateien)" }
     # 2.3.2: lose Dateien eines Ordners (z. B. Downloads) als Pack "Einzeldateien (Ordnername)"
     if ($artVon[$QWurzel] -eq 'Lose') { $pack = "Einzeldateien ($($teile[0]))" }
     $packOrdner = @(); if ($packRel.Count -gt 1) { $packOrdner = $packRel[0..($packRel.Count - 2)] }
@@ -348,10 +359,10 @@ foreach ($f in $alle) {
     $zr = $null; $kat = $null
 
     # --- Ganze Bibliotheken / Kits 1:1 ------------------------------------
-    if ($pack -match 'BSH126') {
-        $kat = 'Kits'; $zr = Join-Rel @($K.Kits, 'BSH126 Midnight Synth Funk', $relImPack); $eintrag.Dedup = $false
-    } elseif ($pack -match 'Tape Stacks') {
-        if ($nameL.EndsWith('.xmp')) { $eintrag.Aktion = 'Ignoriert'; $eintrag.Kategorie = 'Hilfsdatei'; $eintrag.Hinweis = 'Metadaten-Datei (.xmp)'; $plan.Add([pscustomobject]$eintrag); continue }
+    # 4.1 (NFA-09): Construction Kit am Namen (Pack oder Ordner darin) oder an Master-Datei plus Stems im selben Ordner
+    $istKit = (-not $nameL.EndsWith('.xmp')) -and $nameL -notmatch $RxDoku -and $artVon[$QWurzel] -ne 'Lose' -and
+              ($pack -match $RxKitName -or @($packOrdner | Where-Object { $_ -match $RxKitName }).Count -or $kitOrdner.ContainsKey($f.DirectoryName.ToLowerInvariant()))
+    if ($istKit) {
         $kat = 'Kits'; $zr = Join-Rel @($K.Kits, $pack, $relImPack); $eintrag.Dedup = $false
     } elseif (($idx = [array]::IndexOf(@($packOrdner | ForEach-Object { $_.ToUpperInvariant() }), 'DRUM KITS')) -ge 0) {
         $rest = $packRel[($idx + 1)..($packRel.Count - 1)]
@@ -362,10 +373,9 @@ foreach ($f in $alle) {
         $eintrag.Aktion = 'Ignoriert'; $eintrag.Kategorie = 'Hilfsdatei'
         $eintrag.Hinweis = if ($nameL.EndsWith('.xmp')) { 'Metadaten-Datei (.xmp)' } else { 'Ableton-Ordnerinformation (Ableton Folder/Project Info)' }
         $plan.Add([pscustomobject]$eintrag); continue
-    } elseif ($teile[0] -match '^Komplette St') {
-        $kat = 'Songs'; $zr = Join-Rel @($K.Songs, $teile[0], $relImPack)
-    } elseif ($teile[0] -match '100ufgrooves') {
-        $kat = 'Songs'; $zr = Join-Rel @($K.Songs, $teile[0], $relImPack)
+    } elseif ($nameL -match $RxAudio -and ($pack -match $RxSongName -or $basis -match $RxSongDatei)) {
+        # 4.1 (NFA-09): Songs & Playalongs am Pack-Namen, Aufbau des Packs bleibt erhalten
+        $kat = 'Songs'; $zr = Join-Rel @($K.Songs, $pack, $relImPack)
     } elseif ($nameL -match $RxDoku) {
         $kat = 'Infos'; $zr = Join-Rel @($K.Infos, $pack, $unter, $name)
     } elseif ($nameL -match '\.midi?$') {
@@ -377,29 +387,11 @@ foreach ($f in $alle) {
     # 2.3.2: Vocals auch ueber Ordnernamen im Pack erkennen (z. B. "Pack\Vocal Loops\...")
     # 4.0.2: Nennt der Dateiname ein anderes Instrument (z. B. "brass_saxophone_loop", "bass_synth_loop") und
     # kein Vocal-Wort, geht er dem Pack- bzw. Ordnernamen "Vocal" vor (Splice-Packs wie "Vocal Sessions ...").
-    elseif ($teile[0] -eq 'Vocals' -or (($pack -match 'Vocal' -or @($packOrdner | Where-Object { $_ -match '\bVocals?\b|\bVox\b|Acapella|A cappella' }).Count) -and -not (Test-AnderesInstrument $basis $pack))) {
+    elseif (($gattung -and $teile[0] -match '^(?i:vocals?|vox)$') -or (($pack -match 'Vocal' -or @($packOrdner | Where-Object { $_ -match '\bVocals?\b|\bVox\b|Acapella|A cappella' }).Count) -and -not (Test-AnderesInstrument $basis $pack))) {
         # 2.3.4: wie die anderen Kategorien ohne den inneren Ordnerweg (gleichnamige Dateien bekommen unten ihren Unterordner)
         $kat = 'Vocals'; $zr = Join-Rel @($K.Vocals, $pack, $unter, $name)
-    } elseif ($teile[0] -eq 'Brass') {
-        $kat = 'Brass'; $zr = Join-Rel @($K.Brass, 'Brass (Mugent)', $name)
-    } elseif ($pack -match 'Melancholic Rhodes|Lofi Blessings') {
-        $kat = 'Keys'; $zr = Join-Rel @($K.Keys, $pack, $unter, $name)
-    } elseif ($pack -match 'Zen Guitar') {
-        $kat = 'Guitar'; $zr = Join-Rel @($K.Guitar, $pack, $relImPack)
-    } elseif ($pack -match 'Ambiences') {
-        $kat = 'Atmos'; $zr = Join-Rel @($K.Atmos, $pack, $unter, $name)
-    } elseif ($pack -match 'Riemann Techno Basslines' -or $rel -match 'Sub Bass Loops') {
-        $kat = 'Bass'; $zr = Join-Rel @($K.Bass, 'Loops', $pack, $unter, $name)
     } elseif ($rel -match 'FX Kicks|Transition Kicks') {
         $kat = 'FX'; $zr = Join-Rel @($K.FX, $pack, $unter, $name)
-    } elseif ($pack -match 'Warped Foley') {
-        $kat = 'Foley'; $zr = Join-Rel @($K.Foley, 'Loops', $pack, $unter, $name)
-    } elseif ($pack -match 'Lofi Forest') {
-        if ($nameL -match 'atmo|forest|rain|creek|pad|bird') { $kat = 'Atmos'; $zr = Join-Rel @($K.Atmos, $pack, $unter, $name) }
-        else {
-            $typ = Get-Typ $basis $packOrdner $f.FullName $f.Length 'Foley' $false
-            $kat = 'Foley'; $zr = Join-Rel @($K.Foley, $typ, $pack, $unter, $name)
-        }
     }
     # --- Generisch: Instrument aus Dateiname, sonst Ordnern ---------------
     else {
@@ -407,12 +399,11 @@ foreach ($f in $alle) {
         if (-not $inst) {
             for ($i = $alleOrdner.Count - 1; $i -ge 0 -and -not $inst; $i--) { $inst = Find-Instrument $alleOrdner[$i] $pack }
         }
-        if (-not $inst) { foreach ($pf in $PackFallback) { if ($pack -match $pf[0]) { $inst = $pf[1]; break } } }
         if (-not $inst) {
             $kat = 'Unsortiert'; $zr = Join-Rel @($K.Unsortiert, $pack, $unter, $name)
         } else {
             $kat = $inst
-            $stdLoop = ($pack -match 'Hard Mechanical Rhythms') -or ($inst -in 'DrumLoops', 'Melodic')
+            $stdLoop = ($inst -in 'DrumLoops', 'Melodic')
             if ($MitTyp -contains $inst) {
                 $typ = Get-Typ $basis $packOrdner $f.FullName $f.Length $inst $stdLoop
                 $zr = Join-Rel @($K[$inst], $typ, $pack, $unter, $name)
